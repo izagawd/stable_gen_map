@@ -11,7 +11,7 @@ pub struct KeyData{
 pub unsafe trait Key : Copy + From<KeyData> {
     fn data(&self) -> KeyData;
 }
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DefaultKey{
     pub(crate) key_data: KeyData,
 }
