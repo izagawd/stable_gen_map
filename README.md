@@ -8,5 +8,8 @@ Requiring `&` instead of `&mut` for inserts avoids an exclusive borrow, lowering
 
 It is possible to remove elements with this structure if access to a `&mut` reference is available, which is generally done at events in code such as, for instance, the end of a frame in a videogame.
 
+# License
+
+This rust crate uses the MIT license
 
 
