@@ -62,8 +62,10 @@ impl HumanWithKey{
     }
 }
 
-// Again, requires &, not &mut
+
 let map = StableGenMap::<DefaultKey, HumanWithKey>::new();
+
+// Again, requires &, not &mut
 let (damian_key, damian_reference) = map.insert_with(|key| Box::new(HumanWithKey{
     human: Human{
         name: String::from("Damian"),
@@ -82,6 +84,7 @@ assert_eq!(damian_key, map[damian_friend_key].human.friend.get().unwrap());
 # License
 
 This rust crate uses the MIT license
+
 
 
 
