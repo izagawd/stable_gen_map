@@ -18,6 +18,8 @@ struct Human{
 }
 
 let map = StableGenMap::<DefaultKey /* custom keys can be made */,Human>::new();
+
+// insert requires &, not &mut
 let (drake_key, drake_reference) = map.insert(Box::new(Human{
     age: Cell::new(20),
     name: String::from("Drake"),
@@ -44,7 +46,7 @@ struct HumanWithKey{
 
 impl HumanWithKey{
     fn make_new_friend(&self, map: &StableGenMap<DefaultKey,HumanWithKey>){
-        // insert is taking &, not &mut
+        // insert requires &, not &mut
         let (key, reference) =  map.insert_with(|key| Box::new( HumanWithKey{
             human: Human{
                 age: Cell::new(21),
@@ -57,7 +59,7 @@ impl HumanWithKey{
     }
 }
 
-// Again, insert is taking &, not &mut
+// Again, requires &, not &mut
 let map_human_with_key = StableGenMap::<DefaultKey, HumanWithKey>::new();
 let (damian_key, damian_reference) = map_human_with_key.insert_with(|key| Box::new(HumanWithKey{
     human: Human{
@@ -77,6 +79,7 @@ assert_eq!(damian_key, map_human_with_key[damian_friend_key].human.friend.get().
 # License
 
 This rust crate uses the MIT license
+
 
 
 
