@@ -8,10 +8,10 @@ pub struct KeyData{
     pub(crate) generation: u32,
     pub(crate) idx: usize
 }
-pub unsafe trait Key : Copy + From<KeyData>{
+pub unsafe trait Key : Copy + From<KeyData> {
     fn data(&self) -> KeyData;
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct DefaultKey{
     pub(crate) key_data: KeyData,
 }
