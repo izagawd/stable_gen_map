@@ -10,6 +10,8 @@ It is possible to remove elements with this structure if access to a `&mut` refe
 
 # Example
 
+### Basic Insert
+
 ```rust
 struct Human{
     name: String,
@@ -28,7 +30,8 @@ let (drake_key, drake_reference) = map.insert(Box::new(Human{
 
 ```
 
-another example
+
+### Indirect Cyclic References via Keys, Struct storing its own key
 
 ```rust
 // Now, we want to store reference of the key in self.
@@ -79,6 +82,7 @@ assert_eq!(damian_key, map[damian_friend_key].human.friend.get().unwrap());
 # License
 
 This rust crate uses the MIT license
+
 
 
 
