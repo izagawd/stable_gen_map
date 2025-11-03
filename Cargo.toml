@@ -1,6 +1,12 @@
 [package]
 name = "stable_gen_map"
 version = "0.1.0"
-edition = "2024"
+edition = "2018"
+authors = ["Izagawd <theizaboss@gmail.com>"]
+license = "MIT"
+keywords = ["stablegenmap", "stable_gen_map", "allocator", "arena", "reference"]
+categories = ["memory-management", "data-structures"]
+license-file = "LICENSE"
+
 
 [dependencies]

@@ -1,5 +1,5 @@
-use std::ops::Deref;
-use std::cell::{Cell, UnsafeCell};
+use std::ops::{Deref, Index};
+use std::cell::{UnsafeCell};
 use std::collections::TryReserveError;
 use std::marker::PhantomData;
 
@@ -37,6 +37,13 @@ pub struct StableGenMap<K: Key, T: ?Sized> {
     slots: UnsafeCell<Vec<Slot<T>>>,
     free:  UnsafeCell<Vec<usize>>,
     phantom: PhantomData<fn(K)>,
+}
+
+impl<K: Key,T: ?Sized> Index<K> for StableGenMap<K,T> {
+    type Output = T;
+    fn index(&self, key: K) -> &Self::Output{
+        self.get(key).unwrap()
+    }
 }
 
 impl<K: Key,T: ?Sized> StableGenMap<K,T> {
