@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use std::cell::{Cell, UnsafeCell};
+use std::collections::TryReserveError;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -28,7 +29,6 @@ unsafe impl Key for DefaultKey{
 }
 struct Slot<T: ?Sized> {
     generation: u32,
-    is_inserting: Cell<bool>,
     val: Option<Box<T>>,
 }
 
@@ -49,17 +49,23 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             phantom: PhantomData,
         }
     }
-
-
+    #[inline]
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+       unsafe { &mut *self.slots.get() }.try_reserve(additional)
+    }
+    #[inline]
+    pub fn reserve(&self, additional_size: usize){
+        unsafe { &mut *self.slots.get() }.reserve(additional_size);
+    }
     /// Shared access to a value by key (no guard, plain &T).
     #[inline]
     pub fn get(&self, k: K) -> Option<&T> {
 
         let key_data = k.data();
         let slot = unsafe { &*self.slots.get() }.get(key_data.idx)?;
-        if !slot.is_inserting.get() && slot.generation == key_data.generation {
+        if  slot.generation == key_data.generation {
             // SAFETY: value is live; we never move the Box's allocation.
-            Some(unsafe { &*(&**slot.val.as_ref().unwrap_unchecked() as *const T) })
+            Some(unsafe { &*(&**slot.val.as_ref()? as *const T) })
         }
         else {
             None
@@ -71,22 +77,19 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     A use case will be in, for example, freeing memory after the end of a frame in a video game */
     #[inline]
     pub fn remove(&mut self, k: K) -> Option<Box<T>> {
-
-        let slot = self.slots.get_mut().get_mut(k.data().idx)?;
-        if slot.generation != k.data().generation { return None; }
+        let key_data = k.data();
+        let slot = self.slots.get_mut().get_mut(key_data.idx)?;
+        if slot.generation != key_data.generation { return None; }
         let boxed = slot.val.take()?;
         slot.generation = slot.generation.wrapping_add(1);
-        self.free.get_mut().push(k.data().idx);
+        self.free.get_mut().push(key_data.idx);
         Some(boxed)
     }
 
 
+
     #[inline]
-    pub fn insert_with(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T){
-      unsafe {  self.insert_with_unchecked::<true>(func) }
-    }
-    #[inline]
-    pub fn insert_with_unchecked<const USE_INSERTING_FLAG: bool>(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T) {
+    pub fn insert_with(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T) {
         let slots = unsafe { &mut *self.slots.get() };
         let free  = unsafe { &mut *self.free.get() };
 
@@ -95,9 +98,6 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             let generation = the_slot.generation;
             let key = K::from(KeyData { idx, generation });
 
-            if USE_INSERTING_FLAG {
-                the_slot.is_inserting.set(true);
-            }
 
             let value = func(key);
 
@@ -113,9 +113,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
              */
             the_slot = &mut slots[idx];
 
-            if USE_INSERTING_FLAG {
-                the_slot.is_inserting.set(false);
-            }
+
             the_slot.val = Some(value);
             let the_box = &*the_slot.val.as_ref().unwrap();
             let ptr = the_box.deref() as *const T;
@@ -127,7 +125,6 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
             slots.push(Slot {
                 generation: 0,
-                is_inserting: Cell::new(USE_INSERTING_FLAG),
                 val: None,
             });
             let created = func(key);
@@ -137,9 +134,6 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
             let acquired : & mut _ = &mut slots[idx];
 
-            if USE_INSERTING_FLAG {
-                acquired.is_inserting.set(false);
-            }
 
             acquired.val = Some(created);
 
@@ -148,7 +142,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     }
     #[inline]
     pub fn insert(&self, value: Box<T>) -> (K, &T) {
-       unsafe{ self.insert_with_unchecked::<false>(|key| value) }
+        self.insert_with(|key| value)
     }
 
 }
