@@ -17,7 +17,6 @@ struct Human{
     friend: Cell<Option<DefaultKey>> // custom keys can be made,
 }
 
-
 let map = StableGenMap::<DefaultKey /* custom keys can be made */,Human>::new();
 let (drake_key, drake_reference) = map.insert(Box::new(Human{
     age: Cell::new(20),
@@ -37,14 +36,14 @@ struct Human{
     age: Cell<u8>,
     friend: Cell<Option<DefaultKey>> // custom keys can be made,
 }
+
 struct HumanWithKey{
     human: Human,
     key: DefaultKey,
 }
+
 impl HumanWithKey{
-
     fn make_new_friend(&self, map: &StableGenMap<DefaultKey,HumanWithKey>){
-
         // insert is taking &, not &mut
         let (key, reference) =  map.insert_with(|key| Box::new( HumanWithKey{
             human: Human{
@@ -57,6 +56,7 @@ impl HumanWithKey{
         self.human.friend.set(Some(key));
     }
 }
+
 // Again, insert is taking &, not &mut
 let map_human_with_key = StableGenMap::<DefaultKey, HumanWithKey>::new();
 let (damian_key, damian_reference) = map_human_with_key.insert_with(|key| Box::new(HumanWithKey{
@@ -66,17 +66,18 @@ let (damian_key, damian_reference) = map_human_with_key.insert_with(|key| Box::n
         friend: Cell::new(None)
     },
     key,
-}) );
+}));
+
 damian_reference.make_new_friend(&map_human_with_key);
 
 let damian_friend_key = damian_reference.human.friend.get().unwrap();
 assert_eq!(damian_key, map_human_with_key[damian_friend_key].human.friend.get().unwrap());
-
 ```
 
 # License
 
 This rust crate uses the MIT license
+
 
 
 
