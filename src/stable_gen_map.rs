@@ -40,6 +40,8 @@ pub struct StableGenMap<K: Key, T: ?Sized> {
 }
 
 impl<K: Key,T: ?Sized> StableGenMap<K,T> {
+
+    #[inline]
     pub const fn new() -> Self {
         Self {
             slots: UnsafeCell::new(Vec::new()),
@@ -50,17 +52,16 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
 
     /// Shared access to a value by key (no guard, plain &T).
+    #[inline]
     pub fn get(&self, k: K) -> Option<&T> {
 
         let key_data = k.data();
         let slot = unsafe { &*self.slots.get() }.get(key_data.idx)?;
-        if slot.is_inserting.get(){
-            None
-        }
-        else if slot.generation == key_data.generation {
+        if !slot.is_inserting.get() && slot.generation == key_data.generation {
             // SAFETY: value is live; we never move the Box's allocation.
-            Some(unsafe { &*(&**slot.val.as_ref()? as *const T) })
-        } else {
+            Some(unsafe { &*(&**slot.val.as_ref().unwrap_unchecked() as *const T) })
+        }
+        else {
             None
         }
     }
@@ -68,6 +69,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /* Remove only with &mut self. This is safe because the borrow checker
     prevents calling this while any &'_ T derived from &self is alive.
     A use case will be in, for example, freeing memory after the end of a frame in a video game */
+    #[inline]
     pub fn remove(&mut self, k: K) -> Option<Box<T>> {
 
         let slot = self.slots.get_mut().get_mut(k.data().idx)?;
@@ -77,8 +79,14 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         self.free.get_mut().push(k.data().idx);
         Some(boxed)
     }
+
+
     #[inline]
-    pub fn insert_with(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T) {
+    pub fn insert_with(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T){
+      unsafe {  self.insert_with_unchecked::<true>(func) }
+    }
+    #[inline]
+    pub fn insert_with_unchecked<const USE_INSERTING_FLAG: bool>(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T) {
         let slots = unsafe { &mut *self.slots.get() };
         let free  = unsafe { &mut *self.free.get() };
 
@@ -87,7 +95,10 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             let generation = the_slot.generation;
             let key = K::from(KeyData { idx, generation });
 
-            the_slot.is_inserting.set(true);
+            if USE_INSERTING_FLAG {
+                the_slot.is_inserting.set(true);
+            }
+
             let value = func(key);
 
 
@@ -102,8 +113,9 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
              */
             the_slot = &mut slots[idx];
 
-
-            the_slot.is_inserting.set(false);
+            if USE_INSERTING_FLAG {
+                the_slot.is_inserting.set(false);
+            }
             the_slot.val = Some(value);
             let the_box = &*the_slot.val.as_ref().unwrap();
             let ptr = the_box.deref() as *const T;
@@ -115,7 +127,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
             slots.push(Slot {
                 generation: 0,
-                is_inserting: Cell::new(true),
+                is_inserting: Cell::new(USE_INSERTING_FLAG),
                 val: None,
             });
             let created = func(key);
@@ -124,7 +136,11 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             let slots = unsafe { &mut *self.slots.get() };
 
             let acquired : & mut _ = &mut slots[idx];
-            acquired.is_inserting.set(false);
+
+            if USE_INSERTING_FLAG {
+                acquired.is_inserting.set(false);
+            }
+
             acquired.val = Some(created);
 
             (key, unsafe{ acquired.val.as_ref().unwrap_unchecked().deref()})
@@ -132,7 +148,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     }
     #[inline]
     pub fn insert(&self, value: Box<T>) -> (K, &T) {
-        self.insert_with(|key| value)
+       unsafe{ self.insert_with_unchecked::<false>(|key| value) }
     }
 
 }
