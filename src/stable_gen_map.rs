@@ -32,8 +32,14 @@ struct Slot<T: ?Sized> {
     generation: usize,
     item: Option<AliasableBox<T>>,
 }
-
-
+impl<T: Clone> Clone for Slot<T> {
+    fn clone(&self) -> Self {
+        Self{
+            generation: self.generation,
+            item:  self.item.as_ref().map(|x| AliasableBox::from_unique(Box::new( (*x).clone())) ),
+        }
+    }
+}
 pub struct StableGenMap<K: Key, T: ?Sized> {
     slots: UnsafeCell<Vec<Slot<T>>>,
     free:  UnsafeCell<Vec<usize>>,
@@ -52,7 +58,18 @@ impl<K: Key,T: ?Sized> IndexMut<K> for StableGenMap<K,T> {
         self.get_mut(key).unwrap()
     }
 }
+impl<K: Key,T: Clone> Clone for StableGenMap<K,T> {
+    fn clone(&self) -> Self {
+        unsafe{
+            Self{
+                slots: UnsafeCell::new((&*self.slots.get()).clone()),
+                free: UnsafeCell::new((&*self.free.get()).clone()),
+                phantom: PhantomData,
+            }
+        }
 
+    }
+}
 impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
     #[inline]

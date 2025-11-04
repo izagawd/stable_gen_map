@@ -132,7 +132,62 @@ impl<K: PagedKey,T> IndexMut<K> for PagedStableGenMap<K,T> {
     }
 }
 
+impl<T: Clone> Clone for Slot<T> {
+    fn clone(&self) -> Self {
+        unsafe{
+            Self{
+                generation: self.generation,
+                item: UnsafeCell::new ((&*self.item.get()).clone()),
+            }
+        }
 
+    }
+}
+impl<T: Clone> Clone for Page<T> {
+    fn clone(&self) -> Self {
+        let len = self.slots.len();
+
+        // allocate new backing storage
+        let mut v: Vec<UnsafeCell<MaybeUninit<Slot<T>>>> = Vec::with_capacity(len);
+        for i in 0..len {
+            let cell: &UnsafeCell<MaybeUninit<Slot<T>>> = &self.slots[i];
+
+            // For indices < length_used, we assume initialized and clone.
+            // For the rest, keep them uninitialized.
+            let mu: MaybeUninit<Slot<T>> = if i < self.length_used {
+                unsafe {
+                    // SAFETY:
+                    // - By your invariant, 0..length_used are initialized.
+                    // - We never touch indices >= length_used here.
+                    let src: &MaybeUninit<Slot<T>> = &*cell.get();
+                    let slot_ref: &Slot<T> = src.assume_init_ref();
+                    MaybeUninit::new(slot_ref.clone())
+                }
+            } else {
+                MaybeUninit::uninit()
+            };
+
+            v.push(UnsafeCell::new(mu));
+        }
+
+        Self {
+            length_used: self.length_used,
+            // AliasableBox has `From<Box<T>>`, so this is straightforward.
+            slots: AliasableBox::from(v.into_boxed_slice()),
+        }
+    }
+}
+impl<K: PagedKey, T: Clone>  Clone for PagedStableGenMap<K,T> {
+    fn clone(&self) -> Self {
+        unsafe{
+            Self{
+                pages: UnsafeCell::new((&*self.pages.get()).clone()),
+                free: UnsafeCell::new((&*self.free.get()).clone()),
+                phantom: PhantomData,
+            }
+        }
+    }
+}
 impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
 
