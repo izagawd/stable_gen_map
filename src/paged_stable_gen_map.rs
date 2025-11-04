@@ -127,7 +127,7 @@ impl<K: PagedKey,T> Index<K> for PagedStableGenMap<K,T> {
 
 impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
-    
+
     #[inline]
     pub const fn new() -> Self {
         Self {
@@ -239,14 +239,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 let page =pages.get_unchecked_mut(key_data.page);
 
 
-                /*
-                SAFETY: func(key) might have caused a resize, changing the memory address of the_slot, so this is necessary
-                to ensure we are pointing to valid memory
-                 */
                 let the_slot =  page.get_slot(key_data.idx).unwrap_unchecked();
-
-
-
 
                 *the_slot.item.get() = Some(ManuallyDrop::new(created));
 
