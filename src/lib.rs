@@ -4,7 +4,7 @@ mod paged_stable_gen_map;
 
 
 #[cfg(test)]
-mod tests {
+mod stable_gen_map_tests {
 
 
     #[test]

@@ -257,7 +257,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
     }
     #[inline]
     pub fn insert(&self, value: T) -> (K, &T) {
-        self.insert_with(|key| value)
+        self.insert_with(|_| value)
     }
 
 }
