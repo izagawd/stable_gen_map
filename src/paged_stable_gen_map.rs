@@ -143,7 +143,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
         let key_data = k.data();
         let page = self.pages.get_mut().get_mut(key_data.page)?;
 
-        let mut slot = page.get_slot_mut(key_data.idx)?;
+        let slot = page.get_slot_mut(key_data.idx)?;
         if  slot.generation == key_data.generation {
             // SAFETY: value is live; we never move the Box's allocation.
             Some(slot.item.get_mut().as_mut()?)
