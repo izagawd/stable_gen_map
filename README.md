@@ -10,6 +10,8 @@ It is possible to remove elements with this structure if access to a `&mut` refe
 
 # Example
 
+### Basic Insert
+
 ```rust
 struct Human{
     name: String,
@@ -18,6 +20,8 @@ struct Human{
 }
 
 let map = StableGenMap::<DefaultKey /* custom keys can be made */,Human>::new();
+
+// insert requires &, not &mut
 let (drake_key, drake_reference) = map.insert(Box::new(Human{
     age: Cell::new(20),
     name: String::from("Drake"),
@@ -26,7 +30,8 @@ let (drake_key, drake_reference) = map.insert(Box::new(Human{
 
 ```
 
-another example
+
+### Indirect Cyclic References via Keys, Struct storing its own key
 
 ```rust
 // Now, we want to store reference of the key in self.
@@ -44,7 +49,7 @@ struct HumanWithKey{
 
 impl HumanWithKey{
     fn make_new_friend(&self, map: &StableGenMap<DefaultKey,HumanWithKey>){
-        // insert is taking &, not &mut
+        // insert requires &, not &mut
         let (key, reference) =  map.insert_with(|key| Box::new( HumanWithKey{
             human: Human{
                 age: Cell::new(21),
@@ -57,9 +62,11 @@ impl HumanWithKey{
     }
 }
 
-// Again, insert is taking &, not &mut
-let map_human_with_key = StableGenMap::<DefaultKey, HumanWithKey>::new();
-let (damian_key, damian_reference) = map_human_with_key.insert_with(|key| Box::new(HumanWithKey{
+
+let map = StableGenMap::<DefaultKey, HumanWithKey>::new();
+
+// Again, requires &, not &mut
+let (damian_key, damian_reference) = map.insert_with(|key| Box::new(HumanWithKey{
     human: Human{
         name: String::from("Damian"),
         age: Cell::new(40),
@@ -68,15 +75,19 @@ let (damian_key, damian_reference) = map_human_with_key.insert_with(|key| Box::n
     key,
 }));
 
-damian_reference.make_new_friend(&map_human_with_key);
+damian_reference.make_new_friend(&map);
 
 let damian_friend_key = damian_reference.human.friend.get().unwrap();
-assert_eq!(damian_key, map_human_with_key[damian_friend_key].human.friend.get().unwrap());
+assert_eq!(damian_key, map[damian_friend_key].human.friend.get().unwrap());
 ```
 
 # License
 
 This rust crate uses the MIT license
+
+
+
+
 
 
 
