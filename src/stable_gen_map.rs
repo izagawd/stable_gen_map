@@ -80,6 +80,20 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         }
     }
 
+    #[inline]
+    pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
+
+        let key_data = k.data();
+        let slot = self.slots.get_mut().get_mut(key_data.idx)?;
+        if  slot.generation == key_data.generation {
+            // SAFETY: value is live; we never move the Box's allocation.
+            Some(slot.item.as_mut()?.as_mut())
+        }
+        else {
+            None
+        }
+    }
+
     /* Remove only with &mut self. This is safe because the borrow checker
     prevents calling this while any &'_ T derived from &self is alive.
     A use case will be in, for example, freeing memory after the end of a frame in a video game */

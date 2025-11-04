@@ -137,6 +137,21 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
         }
     }
 
+    #[inline]
+    pub fn get_mut(&mut self, k: K) -> Option<&T> {
+
+        let key_data = k.data();
+        let page = self.pages.get_mut().get_mut(key_data.page)?;
+
+        let mut slot = page.get_slot_mut(key_data.idx)?;
+        if  slot.generation == key_data.generation {
+            // SAFETY: value is live; we never move the Box's allocation.
+            Some(slot.item.get_mut().as_mut()?)
+        }
+        else {
+            None
+        }
+    }
     /// Shared access to a value by key (no guard, plain &T).
     #[inline]
     pub fn get(&self, k: K) -> Option<&T> {
