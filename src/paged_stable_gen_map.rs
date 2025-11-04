@@ -1,14 +1,13 @@
-use std::ops::{Deref, Index};
-use std::cell::{Cell, UnsafeCell};
-use std::collections::TryReserveError;
+use aliasable::boxed::AliasableBox;
+use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
-use std::slice::SliceIndex;
-use aliasable::boxed::AliasableBox;
+use std::ops::{Deref, Index};
+
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PagedKeyData{
-    pub(crate) generation: u32,
+    pub(crate) generation: usize,
     pub(crate) idx: usize,
     pub(crate) page: usize,
 }
@@ -106,7 +105,7 @@ impl<T> Drop for Page<T>{
 }
 
 struct Slot<T>{
-    generation: u32,
+    generation: usize,
     item: UnsafeCell<Option<ManuallyDrop<T>>>
 }
 #[derive(Copy,Clone,Debug,Eq,Hash,PartialEq)]
@@ -128,6 +127,7 @@ impl<K: PagedKey,T> Index<K> for PagedStableGenMap<K,T> {
 
 impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
+    
     #[inline]
     pub const fn new() -> Self {
         Self {
@@ -159,31 +159,28 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
     A use case will be in, for example, freeing memory after the end of a frame in a video game */
     #[inline]
     pub fn remove(&mut self, k: K) -> Option<T> {
-        unsafe {
-            let key_data = k.data();
-            let page = self.pages.get_mut().get_mut(key_data.page)?;
+        let key_data = k.data();
+        let page = self.pages.get_mut().get_mut(key_data.page)?;
 
-            let slot = page.get_slot_mut(key_data.idx)?;
-            if slot.generation != key_data.generation { return None; }
-            let retrieved =slot.item.get_mut().take()?;
-            slot.generation = slot.generation.wrapping_add(1);
-            self.free.get_mut().push(FreeSpace{idx: key_data.idx, page: key_data.page});
-            Some(ManuallyDrop::into_inner(retrieved))
-        }
-
+        let slot = page.get_slot_mut(key_data.idx)?;
+        if slot.generation != key_data.generation { return None; }
+        let retrieved =slot.item.get_mut().take()?;
+        slot.generation = slot.generation.wrapping_add(1);
+        self.free.get_mut().push(FreeSpace{idx: key_data.idx, page: key_data.page});
+        Some(ManuallyDrop::into_inner(retrieved))
     }
 
 
     #[inline]
     pub fn insert_with(&self, func: impl FnOnce(K) -> T) -> (K, &T) {
         unsafe{
-            let pages = unsafe { &mut *self.pages.get() };
+            let pages =  &mut *self.pages.get();
 
-            let free_spaces = unsafe { &mut *self.free.get() };
+            let free_spaces = &mut *self.free.get();
 
             if let Some(free) = free_spaces.pop() {
-                let mut page = pages.get_mut(free.page).unwrap();
-                let mut the_slot = page.get_slot_mut(free.idx).unwrap();
+                let page = pages.get_mut(free.page).unwrap();
+                let the_slot = page.get_slot_mut(free.idx).unwrap();
                 let generation = the_slot.generation;
                 let key = K::from(PagedKeyData { idx: free.idx,page: free.page,  generation, });
 
@@ -193,73 +190,67 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "insert_with"*/
 
-                let pages = unsafe { &mut *self.pages.get() };
-                let mut page = pages.get_mut(free.page).unwrap();
+                let pages = &mut *self.pages.get();
+                let page = pages.get_mut(free.page).unwrap();
 
 
                 /*
                 SAFETY: func(key) might have caused a resize, changing the memory address of the_slot, so this is necessary
                 to ensure we are pointing to valid memory
                  */
-                let mut the_slot = page.get_slot(free.idx).unwrap();
+                let the_slot = page.get_slot(free.idx).unwrap();
 
 
-                unsafe{ *the_slot.item.get() = Some(ManuallyDrop::new(value));}
+                *the_slot.item.get() = Some(ManuallyDrop::new(value));
                 let items_ref = (&*the_slot.item.get()).as_ref().map(|x| ManuallyDrop::deref(x)).unwrap();
                 let ptr = items_ref as *const T;
-                (key, unsafe { &*ptr })
+                (key, &*ptr )
             } else {
-                if pages.last_mut().is_none()  {
-
+                let add_new_page = |pages: &mut Vec<Page<T>>| {
                     pages.push(
-                        unsafe {
-                            Page::new(5)
-                        }
-
-                    )
-
+                        Page::new(pages.last().map(|x| x.slots.len() * 2).unwrap_or(32))
+                    );
+                };
+                if pages.last_mut().is_none()  {
+                    add_new_page(pages);
                 }
 
-                let mut last = unsafe{pages.last_mut().unwrap_unchecked()};
+                let mut last = pages.last_mut().unwrap_unchecked();
 
                 if last.get_free_index().is_none() {
-                    pages.push(
-                        unsafe {
-                            Page::new(pages.last().map(|x| x.slots.len() * 2).unwrap_or(32))
-                        }
-                    );
-                    last = unsafe{pages.last_mut().unwrap_unchecked()};
+                    add_new_page(pages);
+                    last = pages.last_mut().unwrap_unchecked();
                 }
 
-                let inserted_index = unsafe {
+                let inserted_index =
                     last.insert_slot_unchecked( Slot {
                         item: UnsafeCell::new(None),
                         generation: 0
-                    })
-                };
+                    });
+
                 let key_data = PagedKeyData { idx: inserted_index, generation: 0, page: pages.len() - 1 };
-                let mut key = K::from(key_data);
+                let key = K::from(key_data);
 
                 let created = func(key);
 
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "insert_with"*/
 
-                let pages = unsafe { &mut *self.pages.get() };
-                let mut page = unsafe { pages.get_unchecked_mut(key_data.page) };
+                let pages = &mut *self.pages.get();
+                let page =pages.get_unchecked_mut(key_data.page);
 
 
                 /*
                 SAFETY: func(key) might have caused a resize, changing the memory address of the_slot, so this is necessary
                 to ensure we are pointing to valid memory
                  */
-                let the_slot = unsafe{ page.get_slot(key_data.idx).unwrap_unchecked()};
+                let the_slot =  page.get_slot(key_data.idx).unwrap_unchecked();
 
 
 
 
                 *the_slot.item.get() = Some(ManuallyDrop::new(created));
 
-                (key, unsafe{ (&*the_slot.item.get()).as_ref().unwrap_unchecked()})
+                (key,  (&*the_slot.item.get()).as_ref().unwrap_unchecked())
         }
 
         }

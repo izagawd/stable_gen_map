@@ -201,7 +201,7 @@ mod tests {
     fn drops_happen_on_remove_and_on_map_drop() {
         static DROPS: AtomicUsize = AtomicUsize::new(0);
 
-        struct CountDrop(&'static AtomicUsize, u32);
+        struct CountDrop(&'static AtomicUsize);
         impl Drop for CountDrop {
             fn drop(&mut self) {
                 self.0.fetch_add(1, Ordering::SeqCst);
@@ -212,9 +212,9 @@ mod tests {
         DROPS.store(0, Ordering::SeqCst);
 
         let mut map = StableGenMap::<DefaultKey, CountDrop>::new();
-        let (k1, _) = map.insert(Box::new(CountDrop(drops, 1)));
-        let (_k2, _) = map.insert(Box::new(CountDrop(drops, 2)));
-        let (_k3, _) = map.insert(Box::new(CountDrop(drops, 3)));
+        let (k1, _) = map.insert(Box::new(CountDrop(drops)));
+        let (_k2, _) = map.insert(Box::new(CountDrop(drops)));
+        let (_k3, _) = map.insert(Box::new(CountDrop(drops)));
 
         // Removing one should drop exactly one.
         assert_eq!(map.remove(k1).is_some(), true);
@@ -340,7 +340,7 @@ mod paged_stable_gen_map_tests {
     fn idx_of(k: DefaultPagedKey) -> usize {
         k.key_data.idx
     }
-    /// 1. First page should have capacity 32:
+    /// 1. First page should have capacity 32,assuming no initial page was allocated:
     ///    - The first 32 inserts must all be on page 0.
     ///    - Their indices are in [0, 32).
     ///    - The 33rd insert must be on page 1.
@@ -380,7 +380,7 @@ mod paged_stable_gen_map_tests {
         );
     }
 
-    /// 2. Second page should have capacity 64:
+    /// 2. Second page should have capacity 64, assuming no initial page was allocated:
     ///    - Inserts 32..(32+64) must be on page 1.
     ///    - Their idx are in [0, 64).
     #[test]
@@ -571,6 +571,7 @@ mod paged_stable_gen_map_tests {
 
         let mut map = PagedStableGenMap::<DefaultPagedKey, CountDrop>::new();
         let (k1, _) = map.insert(CountDrop(drops, 1));
+
         let (_k2, _) = map.insert(CountDrop(drops, 2));
         let (_k3, _) = map.insert(CountDrop(drops, 3));
 

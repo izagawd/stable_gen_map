@@ -6,7 +6,7 @@ use aliasable::boxed::AliasableBox;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyData{
-    pub(crate) generation: u32,
+    pub(crate) generation: usize,
     pub(crate) idx: usize
 }
 pub unsafe trait Key : Copy + From<KeyData> {
@@ -29,8 +29,8 @@ unsafe impl Key for DefaultKey{
     }
 }
 struct Slot<T: ?Sized> {
-    generation: u32,
-    val: Option<AliasableBox<T>>,
+    generation: usize,
+    item: Option<AliasableBox<T>>,
 }
 
 
@@ -73,7 +73,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         let slot = unsafe { &*self.slots.get() }.get(key_data.idx)?;
         if  slot.generation == key_data.generation {
             // SAFETY: value is live; we never move the Box's allocation.
-            Some(unsafe { &*(&**slot.val.as_ref()? as *const T) })
+            Some(unsafe { &*(&**slot.item.as_ref()? as *const T) })
         }
         else {
             None
@@ -88,7 +88,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         let key_data = k.data();
         let slot = self.slots.get_mut().get_mut(key_data.idx)?;
         if slot.generation != key_data.generation { return None; }
-        let boxed = slot.val.take()?;
+        let boxed = slot.item.take()?;
         slot.generation = slot.generation.wrapping_add(1);
         self.free.get_mut().push(key_data.idx);
         Some(AliasableBox::into_unique(boxed))
@@ -122,8 +122,8 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             the_slot = unsafe {slots.get_unchecked_mut(idx)};
 
 
-            the_slot.val = Some(AliasableBox::from(value));
-            let the_box = &*the_slot.val.as_ref().unwrap();
+            the_slot.item = Some(AliasableBox::from(value));
+            let the_box = &*the_slot.item.as_ref().unwrap();
             let ptr = the_box.deref() as *const T;
             (key, unsafe { &*ptr })
         } else {
@@ -133,7 +133,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
             slots.push(Slot {
                 generation: 0,
-                val: None,
+                item: None,
             });
             let created = func(key);
 
@@ -143,14 +143,14 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             let acquired : & mut _ = unsafe {slots.get_unchecked_mut(idx)};
 
 
-            acquired.val = Some(AliasableBox::from(created));
+            acquired.item = Some(AliasableBox::from(created));
 
-            (key, unsafe{ acquired.val.as_ref().unwrap_unchecked().deref()})
+            (key, unsafe{ acquired.item.as_ref().unwrap_unchecked().deref()})
         }
     }
     #[inline]
     pub fn insert(&self, value: Box<T>) -> (K, &T) {
-        self.insert_with(|key| value)
+        self.insert_with(|_| value)
     }
 
 }
