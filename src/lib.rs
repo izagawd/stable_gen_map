@@ -1,5 +1,5 @@
 pub mod stable_gen_map;
-mod paged_stable_gen_map;
+pub mod paged_stable_gen_map;
 
 
 
