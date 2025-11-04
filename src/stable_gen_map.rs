@@ -94,7 +94,10 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         Some(AliasableBox::into_unique(boxed))
     }
 
-
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        unsafe { &*self.slots.get() }.capacity()
+    }
 
     #[inline]
     pub fn insert_with(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T) {
