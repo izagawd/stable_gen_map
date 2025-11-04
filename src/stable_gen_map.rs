@@ -2,6 +2,7 @@ use std::ops::{Deref, Index};
 use std::cell::{UnsafeCell};
 use std::collections::TryReserveError;
 use std::marker::PhantomData;
+use aliasable::boxed::AliasableBox;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyData{
@@ -29,7 +30,7 @@ unsafe impl Key for DefaultKey{
 }
 struct Slot<T: ?Sized> {
     generation: u32,
-    val: Option<Box<T>>,
+    val: Option<AliasableBox<T>>,
 }
 
 
@@ -90,7 +91,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         let boxed = slot.val.take()?;
         slot.generation = slot.generation.wrapping_add(1);
         self.free.get_mut().push(key_data.idx);
-        Some(boxed)
+        Some(AliasableBox::into_unique(boxed))
     }
 
 
@@ -121,7 +122,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             the_slot = &mut slots[idx];
 
 
-            the_slot.val = Some(value);
+            the_slot.val = Some(AliasableBox::from(value));
             let the_box = &*the_slot.val.as_ref().unwrap();
             let ptr = the_box.deref() as *const T;
             (key, unsafe { &*ptr })
@@ -142,7 +143,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             let acquired : & mut _ = &mut slots[idx];
 
 
-            acquired.val = Some(created);
+            acquired.val = Some(AliasableBox::from(created));
 
             (key, unsafe{ acquired.val.as_ref().unwrap_unchecked().deref()})
         }
