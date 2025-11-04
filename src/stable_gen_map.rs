@@ -1,4 +1,4 @@
-use std::ops::{Deref, Index};
+use std::ops::{Deref, Index, IndexMut};
 use std::cell::{UnsafeCell};
 use std::collections::TryReserveError;
 use std::marker::PhantomData;
@@ -44,6 +44,12 @@ impl<K: Key,T: ?Sized> Index<K> for StableGenMap<K,T> {
     type Output = T;
     fn index(&self, key: K) -> &Self::Output{
         self.get(key).unwrap()
+    }
+}
+impl<K: Key,T: ?Sized> IndexMut<K> for StableGenMap<K,T> {
+
+    fn index_mut(&mut self, key: K) -> &mut Self::Output{
+        self.get_mut(key).unwrap()
     }
 }
 

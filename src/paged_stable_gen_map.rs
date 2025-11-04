@@ -2,7 +2,7 @@ use aliasable::boxed::AliasableBox;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
-use std::ops::{Deref, Index};
+use std::ops::{Deref, Index, IndexMut};
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -125,6 +125,14 @@ impl<K: PagedKey,T> Index<K> for PagedStableGenMap<K,T> {
     }
 }
 
+impl<K: PagedKey,T> IndexMut<K> for PagedStableGenMap<K,T> {
+
+    fn index_mut(&mut self, key: K) -> &mut Self::Output{
+        self.get_mut(key).unwrap()
+    }
+}
+
+
 impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
 
@@ -138,7 +146,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
     }
 
     #[inline]
-    pub fn get_mut(&mut self, k: K) -> Option<&T> {
+    pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
 
         let key_data = k.data();
         let page = self.pages.get_mut().get_mut(key_data.page)?;
