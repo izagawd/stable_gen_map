@@ -102,7 +102,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         let free  = unsafe { &mut *self.free.get() };
 
         if let Some(idx) = free.pop() {
-            let mut the_slot = &mut slots[idx];
+            let mut the_slot = unsafe { slots.get_unchecked_mut(idx) };
             let generation = the_slot.generation;
             let key = K::from(KeyData { idx, generation });
 
@@ -119,7 +119,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             SAFETY: func(key) might have caused a resize, changing the memory address of the_slot, so this is necessary
             to ensure we are pointing to valid memory
              */
-            the_slot = &mut slots[idx];
+            the_slot = unsafe {slots.get_unchecked_mut(idx)};
 
 
             the_slot.val = Some(AliasableBox::from(value));
@@ -140,7 +140,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             //SAFETY: we are reassigning slot here, to avoid double mut ub, since func can re-enter "insert_with"
             let slots = unsafe { &mut *self.slots.get() };
 
-            let acquired : & mut _ = &mut slots[idx];
+            let acquired : & mut _ = unsafe {slots.get_unchecked_mut(idx)};
 
 
             acquired.val = Some(AliasableBox::from(created));
