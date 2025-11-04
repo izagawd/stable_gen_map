@@ -10,3 +10,4 @@ license-file = "LICENSE"
 
 
 [dependencies]
+aliasable = "0.1.3"
