@@ -1,8 +1,8 @@
-use std::ops::{Deref, DerefMut, Index, IndexMut};
-use std::cell::{UnsafeCell};
+use aliasable::boxed::AliasableBox;
+use std::cell::UnsafeCell;
 use std::collections::TryReserveError;
 use std::marker::PhantomData;
-use aliasable::boxed::AliasableBox;
+use std::ops::{Deref, Index, IndexMut};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyData{
@@ -216,6 +216,16 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         self.free.get_mut().clear();
 
     }
+
+    #[inline]
+    pub fn with_capacity(size: usize) -> Self {
+        Self{
+            slots: UnsafeCell::new(Vec::with_capacity(size)),
+            free: UnsafeCell::new(Vec::new()),
+            phantom: PhantomData
+        }
+    }
+
     #[inline]
     pub const fn new() -> Self {
         Self {
