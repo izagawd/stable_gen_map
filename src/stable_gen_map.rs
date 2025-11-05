@@ -1,4 +1,4 @@
-use std::ops::{Deref, Index, IndexMut};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::cell::{UnsafeCell};
 use std::collections::TryReserveError;
 use std::marker::PhantomData;
@@ -132,10 +132,23 @@ impl<K: Key,T: ?Sized> IndexMut<K> for StableGenMap<K,T> {
 }
 impl<K: Key,T: Clone> Clone for StableGenMap<K,T> {
     fn clone(&self) -> Self {
+
         unsafe{
+            let slots = &*self.slots.get();
+            let mut item_references = Vec::with_capacity(slots.len());
+            item_references.extend(slots
+                .iter()
+                .filter_map(|x| x.item.as_ref().map(|y| y.deref()))
+                .collect::<Vec<_>>());
+
+            /* simple self.slots.clone() would be UB, as clone() might insert to the StableGen during iteration.
+            Cloning with an owned vec solves this possible undefined behaviour.
+             */
             Self{
-                slots: UnsafeCell::new((&*self.slots.get()).clone()),
-                free: UnsafeCell::new((&*self.free.get()).clone()),
+                slots: UnsafeCell::new(item_references.into_iter().map(|x| Slot{
+                    generation: 0,
+                    item: Some(AliasableBox::from_unique(Box::new(x.clone()))), }).collect()),
+                free: UnsafeCell::new(Vec::new()),
                 phantom: PhantomData,
             }
         }
@@ -273,38 +286,40 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     #[inline]
     pub fn try_insert_with_key<E>(&self, func: impl FnOnce(K) -> Result<Box<T>,E>) -> Result<(K, &T),E> {
         unsafe {
-            let slots = unsafe { &mut *self.slots.get() };
-            let free  = unsafe { &mut *self.free.get() };
+            let slots = &mut *self.slots.get();
+            let free  = &mut *self.free.get();
 
             if let Some(idx) = free.pop() {
-                let mut the_slot = unsafe { slots.get_unchecked_mut(idx) };
+                let mut the_slot = slots.get_unchecked_mut(idx);
                 let generation = the_slot.generation;
                 let key = K::from(KeyData { idx, generation });
 
 
                 let value = func(key);
+
+                /* SAFETY: We are reassigning "free" here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
                 let mut free = &mut *self.free.get();
                 if let Err(error) =  value{
                     free.push(idx);
                     return Err(error);
                 }
-                let value = unsafe{ value.unwrap_unchecked()};
-                /* SAFETY: We are reassigning slots here, to avoid double mut ub, since func can re-enter "insert_with"*/
+                let value = value.unwrap_unchecked();
+                /* SAFETY: We are reassigning slots here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
 
-                let slots = unsafe { &mut *self.slots.get() };
+                let slots = &mut *self.slots.get();
 
 
                 /*
                 SAFETY: func(key) might have caused a resize, changing the memory address of the_slot, so this is necessary
                 to ensure we are pointing to valid memory
                  */
-                the_slot = unsafe {slots.get_unchecked_mut(idx)};
+                the_slot = slots.get_unchecked_mut(idx);
 
 
                 the_slot.item = Some(AliasableBox::from(value));
                 let the_box = &*the_slot.item.as_ref().unwrap();
                 let ptr = the_box.deref() as *const T;
-                Ok((key, unsafe { &*ptr }))
+                Ok((key,&*ptr ))
             } else {
                 let idx = slots.len();
                 let key = K::from(KeyData { idx, generation: 0 });
@@ -316,20 +331,20 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                     return Err(error);
                 }
                 let created = created.unwrap_unchecked();
-                //SAFETY: we are reassigning slot here, to avoid double mut ub, since func can re-enter "insert_with"
-                let slots = unsafe { &mut *self.slots.get() };
+                //SAFETY: we are reassigning slot here, to avoid double mut ub, since func can re-enter "try_insert_with_key"
+                let slots = &mut *self.slots.get();
 
                 slots.push(Slot {
                     generation: 0,
                     item: None,
                 });
 
-                let acquired : & mut _ = unsafe {slots.get_unchecked_mut(idx)};
+                let acquired : & mut _ = slots.get_unchecked_mut(idx);
 
 
                 acquired.item = Some(AliasableBox::from(created));
 
-                Ok((key, unsafe{ acquired.item.as_ref().unwrap_unchecked().deref()}))
+                Ok((key, acquired.item.as_ref().unwrap_unchecked().deref()))
             }
         }
     }

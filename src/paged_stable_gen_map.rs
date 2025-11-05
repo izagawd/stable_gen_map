@@ -437,6 +437,8 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
 
                 let value = func(key);
+
+                /* SAFETY: We are reassigning "free_spaces" here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
                 let free_spaces = &mut *self.free.get();
                 if let Err(value) = value {
                     free_spaces.push(free);
@@ -444,7 +446,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 }
                 let value = value.unwrap_unchecked();
 
-                /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "insert_with"*/
+                /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
 
                 let pages = &mut *self.pages.get();
                 let page = pages.get_mut(free.page).unwrap();
@@ -492,7 +494,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                     return Err(created);
                 }
                 let created = created.unwrap_unchecked();
-                /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "insert_with"*/
+                /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
 
                 let pages = &mut *self.pages.get();
                 let page =pages.get_unchecked_mut(key_data.page);
