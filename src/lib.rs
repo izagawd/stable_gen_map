@@ -6,6 +6,136 @@ pub mod paged_stable_gen_map;
 #[cfg(test)]
 mod stable_gen_map_tests {
 
+    // ============================
+    // StableGenMap<T> tests
+    // ============================
+
+    #[test]
+    fn stable_try_insert_with_key_ok_path_new_slot() {
+        let map: StableMap<i32> = StableGenMap::new();
+
+        // OK path on a fresh map (no free slots; uses "new slot" branch).
+        let (k, v) = map
+            .try_insert_with_key(|_k| -> Result<Box<i32>, &'static str> {
+                Ok(Box::new(10))
+            })
+            .unwrap();
+
+        assert_eq!(*v, 10);
+        assert_eq!(*map.get(k).unwrap(), 10);
+    }
+
+    #[test]
+    fn stable_try_insert_with_key_error_reuses_free_slot() {
+        let map: StableMap<i32> = StableGenMap::new();
+
+        // First insert via the simple insert API so we can remove it later.
+        let (k1, _) = map.insert(Box::new(1));
+
+        // Move to a mutable binding so we can call remove.
+        let mut map = map;
+
+        let old_data = k1.data();
+        let removed = map.remove(k1).unwrap();
+        assert_eq!(*removed, 1);
+        assert!(map.get(k1).is_none());
+
+        // Now we have one free slot at (idx = old_data.idx).
+        // Call try_insert_with_key but make it return Err.
+        let res_err: Result<(DefaultKey, &i32), &'static str> =
+            (&map as &StableMap<i32>).try_insert_with_key(
+                |_k| -> Result<Box<i32>, &'static str> {
+                    Err("oops")
+                },
+            );
+
+        assert!(res_err.is_err());
+
+        // Slot should have been put back onto the free list.
+        // Next successful insert should reuse the same idx, with the
+        // incremented generation from the earlier remove.
+        let (k2, v2) =
+            (&map as &StableMap<i32>)
+                .try_insert_with_key::<()>(|_k| Ok(Box::new(99)))
+                .unwrap();
+
+        let new_data = k2.data();
+
+        // Same index reused, generation bumped once by remove (and not changed by the failed insert).
+        assert_eq!(old_data.idx, new_data.idx);
+        assert_ne!(old_data.generation, new_data.generation);
+
+        assert_eq!(*v2, 99);
+        assert_eq!(*map.get(k2).unwrap(), 99);
+
+        // Old key remains stale.
+        assert!(map.get(k1).is_none());
+        assert!(map.get_mut(k1).is_none());
+        assert!(map.remove(k1).is_none());
+    }
+
+    type StableMap<T> = StableGenMap<DefaultKey, T>;
+
+    #[test]
+    fn stable_try_insert_with_key_reentrant_and_error_miri_stress() {
+        let map: StableMap<i32> = StableGenMap::new();
+
+        // Seed one element that both map and clones can see.
+        let (seed_key, _) = map.insert(Box::new(1));
+
+        // We'll record an inner key created inside the closure.
+        let inner_key_cell: Cell<Option<DefaultKey>> = Cell::new(None);
+
+        // Outer try_insert_with_key:
+        //  - re-enters via insert_with_key
+        //  - clones the map inside the closure
+        //  - finally returns Err to hit the error path of try_insert_with_key
+        let res: Result<(DefaultKey, &i32), &'static str> =
+            map.try_insert_with_key(|_outer_k| {
+                // Re-entrant insertion into the same map using insert_with_key
+                let (inner_k, inner_ref) =
+                    map.insert_with_key(|_k2| Box::new(100));
+                assert_eq!(*inner_ref, 100);
+
+                inner_key_cell.set(Some(inner_k));
+
+                // Clone inside the closure and read from it.
+                let clone = map.clone();
+                assert_eq!(*clone.get(seed_key).unwrap(), 1);
+                assert_eq!(*clone.get(inner_k).unwrap(), 100);
+
+                // Force the error path.
+                Err("boom")
+            });
+
+        assert!(res.is_err());
+
+        // After the failed outer insertion, the inner insertion must still be valid
+        // and we must not have created a "phantom" extra live element.
+        let inner_k = inner_key_cell.get().expect("inner key recorded");
+
+        assert_eq!(*map.get(seed_key).unwrap(), 1);
+        assert_eq!(*map.get(inner_k).unwrap(), 100);
+
+        // Count live elements by probing all indices at generation 0.
+        // We only inserted twice, never removed, so all live keys are gen=0.
+        let mut live = 0;
+        let cap = map.capacity();
+        for idx in 0..cap {
+            let key = DefaultKey {
+                key_data: KeyData {
+                    idx,
+                    generation: 0,
+                },
+            };
+            if map.get(key).is_some() {
+                live += 1;
+            }
+        }
+
+        assert_eq!(live, 2);
+    }
+
 
     #[test]
     fn stable_ref_survives_many_vec_resizes() {
@@ -38,7 +168,7 @@ mod stable_gen_map_tests {
         assert_eq!(map.remove(k_old).map(|b| *b), Some(111));
 
         // Reinsert into the freed slot using insert_with; inside, blow up the Vec.
-        let (k_new, r_new) = map.insert_with(|k_self| {
+        let (k_new, r_new) = map.insert_with_key(|k_self| {
             // While inserting, the slot is marked "inserting": get() must hide it.
             assert!(map.get(k_self).is_none());
 
@@ -62,7 +192,7 @@ mod stable_gen_map_tests {
     fn get_returns_none_during_insert_even_while_resizing() {
         let map = StableGenMap::<DefaultKey, String>::new();
 
-        let (_k, r) = map.insert_with(|k_self| {
+        let (_k, r) = map.insert_with_key(|k_self| {
             // During the window where is_inserting=true, get() must return None.
             assert!(map.get(k_self).is_none());
 
@@ -111,15 +241,16 @@ mod stable_gen_map_tests {
         assert_eq!(map.get(k).unwrap().to_string(), "hello");
     }
 
+    use crate::stable_gen_map::{DefaultKey, Key, KeyData, StableGenMap};
+    use std::cell::Cell;
     use std::fmt::Display;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use crate::stable_gen_map::{DefaultKey, Key, KeyData, StableGenMap};
 
     #[test]
     fn get_during_insert_returns_none_and_reentrancy_is_ok() {
         let map = StableGenMap::<DefaultKey, String>::new();
 
-        let (k_outer, r_outer) = map.insert_with(|k| {
+        let (k_outer, r_outer) = map.insert_with_key(|k| {
             // During construction, the slot is marked inserting; get() must return None.
             assert!(map.get(k).is_none());
 
@@ -181,7 +312,7 @@ mod stable_gen_map_tests {
         // Seed with one value so we can check visibility from the clone.
         let (k1, _) = map.insert(Box::new(1));
 
-        let (k2, v2) = map.insert_with(|k| {
+        let (k2, v2) = map.insert_with_key(|k| {
             // Clone *inside* the insert_with closure.
             let clone = map.clone();
 
@@ -336,7 +467,7 @@ mod stable_gen_map_tests {
         let map = StableGenMap::<DefaultKey, String>::new();
 
         let (k1, r1) = map.insert(Box::new("X".into()));
-        let (k2, r2) = map.insert_with(|_| Box::new("Y".into()));
+        let (k2, r2) = map.insert_with_key(|_| Box::new("Y".into()));
 
         assert_eq!(r1.as_str(), "X");
         assert_eq!(r2.as_str(), "Y");
@@ -347,13 +478,109 @@ mod stable_gen_map_tests {
 
 #[cfg(test)]
 mod paged_stable_gen_map_tests {
+    use std::cell::Cell;
     use std::collections::BTreeSet;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::paged_stable_gen_map::{PagedStableGenMap, DefaultPagedKey, PagedKeyData, PagedKey};
-    use crate::stable_gen_map::DefaultKey;
+    use crate::paged_stable_gen_map::{DefaultPagedKey, PagedKey, PagedKeyData, PagedStableGenMap};
+    type PagedMap<T>  = PagedStableGenMap<DefaultPagedKey, T>;
 
+    #[test]
+    fn paged_try_insert_with_key_ok_path_new_page_slot() {
+        let paged: PagedMap<i32> = PagedStableGenMap::new();
 
+        // OK path with a brand new map (no free slots, allocate in first page).
+        let (k, v) = paged
+            .try_insert_with_key(|_k| -> Result<i32, &'static str> {
+                Ok(10)
+            })
+            .unwrap();
+
+        assert_eq!(*v, 10);
+        assert_eq!(*paged.get(k).unwrap(), 10);
+    }
+
+    #[test]
+    fn paged_try_insert_with_key_error_reuses_free_slot() {
+        let paged: PagedMap<i32> = PagedStableGenMap::new();
+
+        // First insert through the simple insert API so we can remove it.
+        let (k1, _) = paged.insert(1);
+
+        // Move to a mutable binding for remove.
+        let mut paged = paged;
+
+        let old_data = k1.data();
+        let removed = paged.remove(k1).unwrap();
+        assert_eq!(removed, 1);
+        assert!(paged.get(k1).is_none());
+
+        // Now there is exactly one free slot recorded in `free` for that (page, idx).
+        let res_err: Result<(DefaultPagedKey, &i32), &'static str> =
+            (&paged as &PagedMap<i32>)
+                .try_insert_with_key(|_k| -> Result<i32, &'static str> {
+                    Err("oops")
+                });
+
+        assert!(res_err.is_err());
+
+        // Next successful try_insert_with_key should reuse the same (page, idx),
+        // with the bumped generation from remove.
+        let (k2, v2) =
+            (&paged as &PagedMap<i32>)
+                .try_insert_with_key::<()>(|_k| Ok(99))
+                .unwrap();
+
+        let new_data = k2.data();
+
+        assert_eq!(old_data.page, new_data.page);
+        assert_eq!(old_data.idx, new_data.idx);
+        assert_ne!(old_data.generation, new_data.generation);
+
+        assert_eq!(*v2, 99);
+        assert_eq!(*paged.get(k2).unwrap(), 99);
+
+        // Old key is stale.
+        assert!(paged.get(k1).is_none());
+        assert!(paged.get_mut(k1).is_none());
+        assert!(paged.remove(k1).is_none());
+    }
+
+    #[test]
+    fn paged_try_insert_with_key_reentrant_and_error_miri_stress() {
+        let paged: PagedMap<i32> = PagedStableGenMap::new();
+
+        // Seed one element.
+        let (seed_key, _) = paged.insert(1);
+
+        let inner_key_cell: Cell<Option<DefaultPagedKey>> = Cell::new(None);
+
+        let res: Result<(DefaultPagedKey, &i32), &'static str> =
+            paged.try_insert_with_key(|_outer_k| {
+                // Re-entrant insertion into same map using insert_with_key.
+                let (inner_k, inner_ref) =
+                    paged.insert_with_key(|_k2| 100);
+                assert_eq!(*inner_ref, 100);
+
+                inner_key_cell.set(Some(inner_k));
+
+                // Clone inside the closure and read keys.
+                let clone = paged.clone();
+                assert_eq!(*clone.get(seed_key).unwrap(), 1);
+                assert_eq!(*clone.get(inner_k).unwrap(), 100);
+
+                // Force the error path in the outer try_insert_with_key.
+                Err("boom")
+            });
+
+        assert!(res.is_err());
+
+        // After error, the inner insertion must still be valid.
+        let inner_k = inner_key_cell.get().expect("inner key recorded");
+
+        assert_eq!(*paged.get(seed_key).unwrap(), 1);
+        assert_eq!(*paged.get(inner_k).unwrap(), 100);
+    }
     #[test]
     fn paged_clone_inside_insert_with() {
         let paged: PagedStableGenMap<DefaultPagedKey, i32> = PagedStableGenMap::new();
@@ -361,7 +588,7 @@ mod paged_stable_gen_map_tests {
         // Seed with one value.
         let (k1, _) = paged.insert(1);
 
-        let (k2, v2) = paged.insert_with(|k| {
+        let (k2, v2) = paged.insert_with_key(|k| {
             // Clone *inside* the insert_with closure.
             let clone = paged.clone();
 
@@ -512,7 +739,7 @@ mod paged_stable_gen_map_tests {
         assert_eq!(map.remove(k_old), Some(111));
 
         // Reinsert into the freed slot using insert_with; inside, blow up the Vec.
-        let (k_new, r_new) = map.insert_with(|k_self| {
+        let (k_new, r_new) = map.insert_with_key(|k_self| {
             // While inserting, the slot must not be visible.
             assert!(map.get(k_self).is_none());
 
@@ -543,7 +770,7 @@ mod paged_stable_gen_map_tests {
     fn paged_get_returns_none_during_insert_even_while_resizing() {
         let map = PagedStableGenMap::<DefaultPagedKey, String>::new();
 
-        let (_k, r) = map.insert_with(|k_self| {
+        let (_k, r) = map.insert_with_key(|k_self| {
             // During the window where the slot is logically "inserting",
             // get() must not expose a partially-constructed value.
             assert!(map.get(k_self).is_none());
@@ -664,7 +891,7 @@ mod paged_stable_gen_map_tests {
     fn paged_get_during_insert_returns_none_and_reentrancy_is_ok() {
         let map = PagedStableGenMap::<DefaultPagedKey, String>::new();
 
-        let (k_outer, r_outer) = map.insert_with(|k| {
+        let (k_outer, r_outer) = map.insert_with_key(|k| {
             // During construction, the slot is "inserting"; get() must return None.
             assert!(map.get(k).is_none());
 
@@ -814,7 +1041,7 @@ mod paged_stable_gen_map_tests {
         let map = PagedStableGenMap::<DefaultPagedKey, String>::new();
 
         let (k1, r1) = map.insert("X".into());
-        let (k2, r2) = map.insert_with(|_| "Y".into());
+        let (k2, r2) = map.insert_with_key(|_| "Y".into());
 
         assert_eq!(r1.as_str(), "X");
         assert_eq!(r2.as_str(), "Y");

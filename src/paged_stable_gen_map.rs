@@ -247,10 +247,12 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
         self.free.get_mut().push(FreeSpace{idx: key_data.idx, page: key_data.page});
         Some(ManuallyDrop::into_inner(retrieved))
     }
-
-
     #[inline]
-    pub fn insert_with(&self, func: impl FnOnce(K) -> T) -> (K, &T) {
+    pub fn insert_with_key(&self, func: impl FnOnce(K) -> T) -> (K, &T){
+        self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
+    }
+    #[inline]
+    pub fn try_insert_with_key<E>(&self, func: impl FnOnce(K) -> Result<T,E>) -> Result<(K, &T), E> {
         unsafe{
             let pages =  &mut *self.pages.get();
 
@@ -264,7 +266,12 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
 
                 let value = func(key);
-
+                let free_spaces = &mut *self.free.get();
+                if let Err(value) = value {
+                    free_spaces.push(free);
+                    return Err(value);
+                }
+                let value = value.unwrap_unchecked();
 
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "insert_with"*/
 
@@ -282,7 +289,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 *the_slot.item.get() = Some(ManuallyDrop::new(value));
                 let items_ref = (&*the_slot.item.get()).as_ref().map(|x| ManuallyDrop::deref(x)).unwrap();
                 let ptr = items_ref as *const T;
-                (key, &*ptr )
+                Ok((key, &*ptr ))
             } else {
                 let add_new_page = |pages: &mut Vec<Page<T>>| {
                     pages.push(
@@ -310,7 +317,10 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 let key = K::from(key_data);
 
                 let created = func(key);
-
+                if let Err(created) = created {
+                    return Err(created);
+                }
+                let created = created.unwrap_unchecked();
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "insert_with"*/
 
                 let pages = &mut *self.pages.get();
@@ -321,14 +331,14 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
                 *the_slot.item.get() = Some(ManuallyDrop::new(created));
 
-                (key,  (&*the_slot.item.get()).as_ref().unwrap_unchecked())
+                Ok((key,  (&*the_slot.item.get()).as_ref().unwrap_unchecked()))
         }
 
         }
     }
     #[inline]
     pub fn insert(&self, value: T) -> (K, &T) {
-        self.insert_with(|_| value)
+        self.insert_with_key(|_| value)
     }
 
 }

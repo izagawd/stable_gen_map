@@ -135,62 +135,77 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     pub fn capacity(&self) -> usize {
         unsafe { &*self.slots.get() }.capacity()
     }
-
     #[inline]
-    pub fn insert_with(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T) {
-        let slots = unsafe { &mut *self.slots.get() };
-        let free  = unsafe { &mut *self.free.get() };
-
-        if let Some(idx) = free.pop() {
-            let mut the_slot = unsafe { slots.get_unchecked_mut(idx) };
-            let generation = the_slot.generation;
-            let key = K::from(KeyData { idx, generation });
-
-
-            let value = func(key);
-
-
-            /* SAFETY: We are reassigning slots here, to avoid double mut ub, since func can re-enter "insert_with"*/
-
-            let slots = unsafe { &mut *self.slots.get() };
-
-
-            /*
-            SAFETY: func(key) might have caused a resize, changing the memory address of the_slot, so this is necessary
-            to ensure we are pointing to valid memory
-             */
-            the_slot = unsafe {slots.get_unchecked_mut(idx)};
-
-
-            the_slot.item = Some(AliasableBox::from(value));
-            let the_box = &*the_slot.item.as_ref().unwrap();
-            let ptr = the_box.deref() as *const T;
-            (key, unsafe { &*ptr })
-        } else {
-            let idx = slots.len();
-            let key = K::from(KeyData { idx, generation: 0 });
-
-
-            slots.push(Slot {
-                generation: 0,
-                item: None,
-            });
-            let created = func(key);
-
-            //SAFETY: we are reassigning slot here, to avoid double mut ub, since func can re-enter "insert_with"
-            let slots = unsafe { &mut *self.slots.get() };
-
-            let acquired : & mut _ = unsafe {slots.get_unchecked_mut(idx)};
-
-
-            acquired.item = Some(AliasableBox::from(created));
-
-            (key, unsafe{ acquired.item.as_ref().unwrap_unchecked().deref()})
-        }
+    pub fn insert_with_key(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T){
+        self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
     }
     #[inline]
+    pub fn try_insert_with_key<E>(&self, func: impl FnOnce(K) -> Result<Box<T>,E>) -> Result<(K, &T),E> {
+        unsafe {
+            let slots = unsafe { &mut *self.slots.get() };
+            let free  = unsafe { &mut *self.free.get() };
+
+            if let Some(idx) = free.pop() {
+                let mut the_slot = unsafe { slots.get_unchecked_mut(idx) };
+                let generation = the_slot.generation;
+                let key = K::from(KeyData { idx, generation });
+
+
+                let value = func(key);
+                let mut free = &mut *self.free.get();
+                if let Err(error) =  value{
+                    free.push(idx);
+                    return Err(error);
+                }
+                let value = unsafe{ value.unwrap_unchecked()};
+                /* SAFETY: We are reassigning slots here, to avoid double mut ub, since func can re-enter "insert_with"*/
+
+                let slots = unsafe { &mut *self.slots.get() };
+
+
+                /*
+                SAFETY: func(key) might have caused a resize, changing the memory address of the_slot, so this is necessary
+                to ensure we are pointing to valid memory
+                 */
+                the_slot = unsafe {slots.get_unchecked_mut(idx)};
+
+
+                the_slot.item = Some(AliasableBox::from(value));
+                let the_box = &*the_slot.item.as_ref().unwrap();
+                let ptr = the_box.deref() as *const T;
+                Ok((key, unsafe { &*ptr }))
+            } else {
+                let idx = slots.len();
+                let key = K::from(KeyData { idx, generation: 0 });
+
+
+
+                let created = func(key);
+                if let Err(error) =  created {
+                    return Err(error);
+                }
+                let created = created.unwrap_unchecked();
+                //SAFETY: we are reassigning slot here, to avoid double mut ub, since func can re-enter "insert_with"
+                let slots = unsafe { &mut *self.slots.get() };
+
+                slots.push(Slot {
+                    generation: 0,
+                    item: None,
+                });
+
+                let acquired : & mut _ = unsafe {slots.get_unchecked_mut(idx)};
+
+
+                acquired.item = Some(AliasableBox::from(created));
+
+                Ok((key, unsafe{ acquired.item.as_ref().unwrap_unchecked().deref()}))
+            }
+        }
+    }
+
+    #[inline]
     pub fn insert(&self, value: Box<T>) -> (K, &T) {
-        self.insert_with(|_| value)
+        self.insert_with_key(|_| value)
     }
 
 }
