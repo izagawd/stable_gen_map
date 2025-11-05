@@ -232,6 +232,12 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
         }
     }
 
+    #[inline]
+    pub fn clear(&mut self) {
+        self.free.get_mut().clear();
+        self.pages.get_mut().clear();
+    }
+
     /* Remove only with &mut self. This is safe because the borrow checker
     prevents calling this while any &'_ T derived from &self is alive.
     A use case will be in, for example, freeing memory after the end of a frame in a video game */

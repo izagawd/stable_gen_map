@@ -73,6 +73,12 @@ impl<K: Key,T: Clone> Clone for StableGenMap<K,T> {
 impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
     #[inline]
+    pub fn clear(&mut self){
+        self.slots.get_mut().clear();
+        self.free.get_mut().clear();
+
+    }
+    #[inline]
     pub const fn new() -> Self {
         Self {
             slots: UnsafeCell::new(Vec::new()),
