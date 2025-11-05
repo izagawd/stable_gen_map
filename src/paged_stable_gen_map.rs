@@ -46,7 +46,7 @@ impl<T> Page<T>{
     unsafe fn insert_slot_unchecked(&mut self,  slot: Slot<T>) -> usize  {
         let gotten = self.slots.get_unchecked(self.length_used);
         let index = self.length_used;
-        self.length_used += 1;
+        self.length_used = self.length_used.wrapping_add(1);
          *gotten.get() = MaybeUninit::new(slot);
         index
     }
