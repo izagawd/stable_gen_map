@@ -40,6 +40,78 @@ impl<T: Clone> Clone for Slot<T> {
         }
     }
 }
+
+pub struct IterMut<'a, K: Key, T: ?Sized> {
+    ptr: *mut Slot<T>,
+    len: usize,
+    idx: usize,
+    _marker: PhantomData<&'a mut T>,
+    _key_marker: PhantomData<K>,
+}
+
+impl<K: Key, T: ?Sized> StableGenMap<K, T> {
+    #[inline]
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, T> {
+        let slots = self.slots.get_mut(); // &mut Vec<Slot<T>>
+        IterMut {
+            ptr: slots.as_mut_ptr(),
+            len: slots.len(),
+            idx: 0,
+            _marker: PhantomData,
+            _key_marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, K: Key, T: ?Sized> Iterator for IterMut<'a, K, T> {
+    type Item = (K, &'a mut T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.idx < self.len {
+            let idx = self.idx;
+            self.idx += 1;
+
+            let slot: &mut Slot<T> = unsafe { &mut *self.ptr.add(idx) };
+
+            let boxed = match slot.item.as_mut() {
+                Some(b) => b,
+                None => continue,
+            };
+
+            let key_data = KeyData {
+                idx,
+                generation: slot.generation,
+            };
+            let key = K::from(key_data);
+
+            let value: &mut T = boxed.as_mut();
+
+            return Some((key, value));
+        }
+
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining_slots = self.len.saturating_sub(self.idx);
+        (0, Some(remaining_slots))
+    }
+}
+
+impl<'a, K: Key, T: ?Sized> IntoIterator for &'a mut StableGenMap<K, T> {
+    type Item = (K, &'a mut T);
+    type IntoIter = IterMut<'a, K, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+
+
+
+
 pub struct StableGenMap<K: Key, T: ?Sized> {
     slots: UnsafeCell<Vec<Slot<T>>>,
     free:  UnsafeCell<Vec<usize>>,
@@ -70,6 +142,59 @@ impl<K: Key,T: Clone> Clone for StableGenMap<K,T> {
 
     }
 }
+
+pub struct IntoIter<K: Key, T: ?Sized> {
+    slots: std::vec::IntoIter<Slot<T>>,
+    idx: usize,
+    _marker: PhantomData<K>,
+}
+
+impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> {
+    type Item = (K, Box<T>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(slot) = self.slots.next() {
+            let idx = self.idx;
+            self.idx += 1;
+
+            let alias = match slot.item {
+                Some(a) => a,
+                None => continue,
+            };
+
+            let key_data = KeyData {
+                idx,
+                generation: slot.generation,
+            };
+            let key = K::from(key_data);
+
+            let boxed = AliasableBox::into_unique(alias);
+            return Some((key, boxed));
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining_slots = self.slots.len().saturating_sub(self.idx);
+        (0, Some(remaining_slots))
+    }
+}
+
+impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> {
+    type Item = (K, Box<T>);
+    type IntoIter = IntoIter<K, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let slots_vec = self.slots.into_inner();
+        IntoIter {
+            slots: slots_vec.into_iter(),
+            idx: 0,
+            _marker: PhantomData,
+        }
+    }
+}
+
+
 impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
     #[inline]

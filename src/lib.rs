@@ -6,10 +6,41 @@ pub mod paged_stable_gen_map;
 #[cfg(test)]
 mod stable_gen_map_tests {
 
-    // ============================
-    // StableGenMap<T> tests
-    // ============================
 
+
+    #[test]
+    fn stable_iter_mut_can_modify_all_values() {
+        let mut map: StableMap<i32> = StableGenMap::new();
+
+        for i in 0..5 {
+            let (_k, _) = map.insert(Box::new(i));
+        }
+
+        for (_k, v) in map.iter_mut() {
+            *v += 10;
+        }
+
+        let mut values: Vec<i32> = (&mut map).into_iter().map(|(_, v)| *v).collect();
+        values.sort();
+        assert_eq!(values, (10..15).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn stable_into_iter_consumes_and_yields_boxes() {
+        let mut map: StableMap<String> = StableGenMap::new();
+
+        for i in 0..3 {
+            let (_k, _) = map.insert(Box::new(format!("v{}", i)));
+        }
+
+        let mut seen: Vec<String> = map
+            .into_iter()
+            .map(|(_k, b)| *b) // Box<String> -> String
+            .collect();
+
+        seen.sort();
+        assert_eq!(seen, vec!["v0", "v1", "v2"]);
+    }
     #[test]
     fn stable_try_insert_with_key_ok_path_new_slot() {
         let map: StableMap<i32> = StableGenMap::new();
@@ -482,8 +513,50 @@ mod paged_stable_gen_map_tests {
     use std::collections::BTreeSet;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+
+    // try_insert_with_key while iterating with iter()
+
+    // iter() inside try_insert_with_key closure
+
     use crate::paged_stable_gen_map::{DefaultPagedKey, PagedKey, PagedKeyData, PagedStableGenMap};
     type PagedMap<T>  = PagedStableGenMap<DefaultPagedKey, T>;
+
+
+
+    #[test]
+    fn paged_iter_mut_can_modify_all_values() {
+        let mut map: PagedMap<i32> = PagedStableGenMap::new();
+
+        for i in 0..40 {
+            let (_k, _) = map.insert(i);
+        }
+
+        for (_k, v) in map.iter_mut() {
+            *v += 1000;
+        }
+
+        let mut values: Vec<i32> = (&mut map).into_iter().map(|(_, v)| *v).collect();
+        values.sort();
+        assert_eq!(values, (1000..1040).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn paged_into_iter_consumes_and_yields_owned_values() {
+        let mut map: PagedMap<i32> = PagedStableGenMap::new();
+
+        for i in 0..40 {
+            let (_k, _) = map.insert(i);
+        }
+
+        let mut seen: Vec<i32> = map.into_iter().map(|(_k, v)| v).collect();
+        seen.sort();
+        assert_eq!(seen.len(), 40);
+        assert_eq!(seen[0], 0);
+        for i in seen.clone(){
+
+        }
+        assert_eq!(seen[39], 39);
+    }
 
     #[test]
     fn paged_try_insert_with_key_ok_path_new_page_slot() {

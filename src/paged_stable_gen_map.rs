@@ -177,6 +177,12 @@ impl<T: Clone> Clone for Page<T> {
         }
     }
 }
+
+
+
+
+
+
 impl<K: PagedKey, T: Clone>  Clone for PagedStableGenMap<K,T> {
     fn clone(&self) -> Self {
         unsafe{
@@ -188,6 +194,164 @@ impl<K: PagedKey, T: Clone>  Clone for PagedStableGenMap<K,T> {
         }
     }
 }
+
+pub struct IterMut<'a, K: PagedKey, T> {
+    map: &'a PagedStableGenMap<K, T>,
+    page_idx: usize,
+    slot_idx: usize,
+    _marker: PhantomData<&'a mut T>,
+}
+
+impl<K: PagedKey, T> PagedStableGenMap<K, T> {
+    #[inline]
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, T> {
+        IterMut {
+            map: self,
+            page_idx: 0,
+            slot_idx: 0,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, K: PagedKey, T> Iterator for IterMut<'a, K, T> {
+    type Item = (K, &'a mut T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let pages: &Vec<Page<T>> = unsafe { &*self.map.pages.get() };
+
+            if self.page_idx >= pages.len() {
+                return None;
+            }
+
+            let page = &pages[self.page_idx];
+
+            if self.slot_idx >= page.length_used {
+                self.page_idx += 1;
+                self.slot_idx = 0;
+                continue;
+            }
+
+            let idx_in_page = self.slot_idx;
+            self.slot_idx += 1;
+
+            let slot = match page.get_slot(idx_in_page) {
+                Some(s) => s,
+                None => continue,
+            };
+
+            // UnsafeCell gives us mutable access to the Option<ManuallyDrop<T>>
+            let opt_ref: &mut Option<ManuallyDrop<T>> =
+                unsafe { &mut *slot.item.get() };
+
+            let md = match opt_ref.as_mut() {
+                Some(m) => m,
+                None => continue,
+            };
+
+            let value: &mut T = &mut *md;
+
+            let key_data = PagedKeyData {
+                generation: slot.generation,
+                idx: idx_in_page,
+                page: self.page_idx,
+            };
+            let key = K::from(key_data);
+
+            return Some((key, value));
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, None)
+    }
+}
+
+
+pub struct IntoIter<K: PagedKey, T> {
+    pages: Vec<Page<T>>,
+    page_idx: usize,
+    slot_idx: usize,
+    _marker: PhantomData<K>,
+}
+
+impl<K: PagedKey, T> Iterator for IntoIter<K, T> {
+    type Item = (K, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.page_idx >= self.pages.len() {
+                return None;
+            }
+
+            let page = &mut self.pages[self.page_idx];
+
+            if self.slot_idx >= page.length_used {
+                self.page_idx += 1;
+                self.slot_idx = 0;
+                continue;
+            }
+
+            let idx_in_page = self.slot_idx;
+            self.slot_idx += 1;
+
+            let slot = match page.get_slot_mut(idx_in_page) {
+                Some(s) => s,
+                None => continue,
+            };
+
+            let opt = slot.item.get_mut();
+            let md = match opt.take() {
+                Some(m) => m,
+                None => continue,
+            };
+
+            let value = ManuallyDrop::into_inner(md);
+
+            let key_data = PagedKeyData {
+                generation: slot.generation,
+                idx: idx_in_page,
+                page: self.page_idx,
+            };
+            let key = K::from(key_data);
+
+            return Some((key, value));
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, None)
+    }
+}
+
+impl<K: PagedKey, T> IntoIterator for PagedStableGenMap<K, T> {
+    type Item = (K, T);
+    type IntoIter = IntoIter<K, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let pages_vec = self.pages.into_inner();
+        IntoIter {
+            pages: pages_vec,
+            page_idx: 0,
+            slot_idx: 0,
+            _marker: PhantomData,
+        }
+    }
+}
+
+
+impl<'a, K: PagedKey, T> IntoIterator for &'a mut PagedStableGenMap<K, T> {
+    type Item = (K, &'a mut T);
+    type IntoIter = IterMut<'a, K, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+
 impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
 
@@ -231,6 +395,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
             None
         }
     }
+
 
     #[inline]
     pub fn clear(&mut self) {
