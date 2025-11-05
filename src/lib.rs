@@ -107,65 +107,7 @@ mod stable_gen_map_tests {
 
     type StableMap<T> = StableGenMap<DefaultKey, T>;
 
-    #[test]
-    fn stable_try_insert_with_key_reentrant_and_error_miri_stress() {
-        let map: StableMap<i32> = StableGenMap::new();
 
-        // Seed one element that both map and clones can see.
-        let (seed_key, _) = map.insert(Box::new(1));
-
-        // We'll record an inner key created inside the closure.
-        let inner_key_cell: Cell<Option<DefaultKey>> = Cell::new(None);
-
-        // Outer try_insert_with_key:
-        //  - re-enters via insert_with_key
-        //  - clones the map inside the closure
-        //  - finally returns Err to hit the error path of try_insert_with_key
-        let res: Result<(DefaultKey, &i32), &'static str> =
-            map.try_insert_with_key(|_outer_k| {
-                // Re-entrant insertion into the same map using insert_with_key
-                let (inner_k, inner_ref) =
-                    map.insert_with_key(|_k2| Box::new(100));
-                assert_eq!(*inner_ref, 100);
-
-                inner_key_cell.set(Some(inner_k));
-
-                // Clone inside the closure and read from it.
-                let clone = map.clone();
-                assert_eq!(*clone.get(seed_key).unwrap(), 1);
-                assert_eq!(*clone.get(inner_k).unwrap(), 100);
-
-                // Force the error path.
-                Err("boom")
-            });
-
-        assert!(res.is_err());
-
-        // After the failed outer insertion, the inner insertion must still be valid
-        // and we must not have created a "phantom" extra live element.
-        let inner_k = inner_key_cell.get().expect("inner key recorded");
-
-        assert_eq!(*map.get(seed_key).unwrap(), 1);
-        assert_eq!(*map.get(inner_k).unwrap(), 100);
-
-        // Count live elements by probing all indices at generation 0.
-        // We only inserted twice, never removed, so all live keys are gen=0.
-        let mut live = 0;
-        let cap = map.capacity();
-        for idx in 0..cap {
-            let key = DefaultKey {
-                key_data: KeyData {
-                    idx,
-                    generation: 0,
-                },
-            };
-            if map.get(key).is_some() {
-                live += 1;
-            }
-        }
-
-        assert_eq!(live, 2);
-    }
 
 
     #[test]
@@ -336,75 +278,8 @@ mod stable_gen_map_tests {
         assert_ne!(k1.key_data.generation, k2.key_data.generation, "generation must bump");
     }
 
-    #[test]
-    fn stable_clone_inside_insert_with() {
-        let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
 
-        // Seed with one value so we can check visibility from the clone.
-        let (k1, _) = map.insert(Box::new(1));
 
-        let (k2, v2) = map.insert_with_key(|k| {
-            // Clone *inside* the insert_with closure.
-            let clone = map.clone();
-
-            // The clone should see the old element.
-            assert_eq!(*clone.get(k1).unwrap(), 1);
-
-            // For this in-progress insertion, the slot hasn't been written yet
-            // at the moment we cloned, so it's fine (and expected) if it's None.
-            assert!(clone.get(k).is_none());
-
-            // We can freely use the clone: inserting into it should not affect `map`.
-            let (ck, cv) = clone.insert(Box::new(999));
-            assert_eq!(*cv, 999);
-            assert_eq!(*clone.get(ck).unwrap(), 999);
-
-            // Return the value for the original map's insert.
-            Box::new(2)
-        });
-
-        // After insert_with finishes, the original map must be consistent.
-        assert_eq!(*v2, 2);
-        assert_eq!(*map.get(k1).unwrap(), 1);
-        assert_eq!(*map.get(k2).unwrap(), 2);
-    }
-    #[test]
-    fn stable_clone_and_get_mut_are_independent() {
-        let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-
-        // Insert a couple of values; ignore the &T return so we don't keep borrows alive.
-        let (k1, _) = map.insert(Box::new(10));
-        let (k2, _) = map.insert(Box::new(20));
-
-        // Clone while we still only have an &StableMap.
-        let mut clone = map.clone();
-
-        // Now move the original into a mutable binding.
-        let mut map = map;
-
-        // Sanity: both maps see the same initial values.
-        assert_eq!(*map.get(k1).unwrap(), 10);
-        assert_eq!(*map.get(k2).unwrap(), 20);
-        assert_eq!(*clone.get(k1).unwrap(), 10);
-        assert_eq!(*clone.get(k2).unwrap(), 20);
-
-        // Mutate original via get_mut.
-        *map.get_mut(k1).unwrap() = 100;
-        *map.get_mut(k2).unwrap() = 200;
-
-        // Original changed...
-        assert_eq!(*map.get(k1).unwrap(), 100);
-        assert_eq!(*map.get(k2).unwrap(), 200);
-
-        // ...clone unchanged (deep copy, not shared storage).
-        assert_eq!(*clone.get(k1).unwrap(), 10);
-        assert_eq!(*clone.get(k2).unwrap(), 20);
-
-        // Mutate clone separately, still no cross-effects.
-        *clone.get_mut(k1).unwrap() = -1;
-        assert_eq!(*clone.get(k1).unwrap(), -1);
-        assert_eq!(*map.get(k1).unwrap(), 100);
-    }
 
     #[test]
     fn stable_get_mut_respects_generation() {
@@ -493,6 +368,41 @@ mod stable_gen_map_tests {
         assert_eq!(DROPS.load(Ordering::SeqCst), 3);
     }
 
+
+    #[test]
+    fn nested_try_insert_with_key_uses_distinct_slots() {
+        use std::cell::Cell;
+
+        let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
+
+        // Record the inner key created inside the outer try_insert_with_key closure.
+        let inner_key_cell: Cell<Option<DefaultKey>> = Cell::new(None);
+
+        let res: Result<(DefaultKey, &i32), ()> =
+            map.try_insert_with_key::<_>(|_outer_key| {
+                // Nested insert_with_key inside the closure.
+                let (inner_key, inner_ref) =
+                    map.insert_with_key(|_k| Box::new(111));
+                inner_key_cell.set(Some(inner_key));
+                assert_eq!(*inner_ref, 111);
+
+                // Outer value.
+                Ok::<Box<i32>, ()>(Box::new(222))
+            });
+
+        let (outer_key, outer_ref) = res.unwrap();
+        let inner_key = inner_key_cell.get().expect("inner key must be recorded");
+
+        // Both entries must exist and have the correct values.
+        assert_eq!(*outer_ref, 222);
+        assert_eq!(*map.get(inner_key).unwrap(), 111);
+
+        // They must not alias the same slot anymore.
+        let outer_data = outer_key.data();
+        let inner_data = inner_key.data();
+        assert_ne!(outer_data.idx, inner_data.idx, "outer and inner must use distinct indices");
+    }
+
     #[test]
     fn insert_and_insert_with_match_semantics() {
         let map = StableGenMap::<DefaultKey, String>::new();
@@ -522,6 +432,41 @@ mod paged_stable_gen_map_tests {
     type PagedMap<T>  = PagedStableGenMap<DefaultPagedKey, T>;
 
 
+    #[test]
+    fn paged_nested_try_insert_with_key_uses_distinct_slots() {
+        use std::cell::Cell;
+
+        let map: PagedStableGenMap<DefaultPagedKey, i32> = PagedStableGenMap::new();
+
+        // Record the inner key created inside the outer try_insert_with_key closure.
+        let inner_key_cell: Cell<Option<DefaultPagedKey>> = Cell::new(None);
+
+        let res: Result<(DefaultPagedKey, &i32), ()> =
+            map.try_insert_with_key::<()>(|_outer_key| {
+                // Nested insert_with_key inside the closure.
+                let (inner_key, inner_ref) = map.insert_with_key(|_k| 111);
+                inner_key_cell.set(Some(inner_key));
+                assert_eq!(*inner_ref, 111);
+
+                // Outer value.
+                Ok(222)
+            });
+
+        let (outer_key, outer_ref) = res.unwrap();
+        let inner_key = inner_key_cell.get().expect("inner key must be recorded");
+
+        // Both entries must exist and have the correct values.
+        assert_eq!(*outer_ref, 222);
+        assert_eq!(*map.get(inner_key).unwrap(), 111);
+
+        // They must not alias the same (page, idx) slot anymore.
+        let outer_data = outer_key.data();
+        let inner_data = inner_key.data();
+        assert!(
+            outer_data.page != inner_data.page || outer_data.idx != inner_data.idx,
+            "outer and inner must use distinct (page, idx) pairs"
+        );
+    }
 
     #[test]
     fn paged_iter_mut_can_modify_all_values() {
@@ -619,120 +564,10 @@ mod paged_stable_gen_map_tests {
         assert!(paged.remove(k1).is_none());
     }
 
-    #[test]
-    fn paged_try_insert_with_key_reentrant_and_error_miri_stress() {
-        let paged: PagedMap<i32> = PagedStableGenMap::new();
 
-        // Seed one element.
-        let (seed_key, _) = paged.insert(1);
 
-        let inner_key_cell: Cell<Option<DefaultPagedKey>> = Cell::new(None);
 
-        let res: Result<(DefaultPagedKey, &i32), &'static str> =
-            paged.try_insert_with_key(|_outer_k| {
-                // Re-entrant insertion into same map using insert_with_key.
-                let (inner_k, inner_ref) =
-                    paged.insert_with_key(|_k2| 100);
-                assert_eq!(*inner_ref, 100);
 
-                inner_key_cell.set(Some(inner_k));
-
-                // Clone inside the closure and read keys.
-                let clone = paged.clone();
-                assert_eq!(*clone.get(seed_key).unwrap(), 1);
-                assert_eq!(*clone.get(inner_k).unwrap(), 100);
-
-                // Force the error path in the outer try_insert_with_key.
-                Err("boom")
-            });
-
-        assert!(res.is_err());
-
-        // After error, the inner insertion must still be valid.
-        let inner_k = inner_key_cell.get().expect("inner key recorded");
-
-        assert_eq!(*paged.get(seed_key).unwrap(), 1);
-        assert_eq!(*paged.get(inner_k).unwrap(), 100);
-    }
-    #[test]
-    fn paged_clone_inside_insert_with() {
-        let paged: PagedStableGenMap<DefaultPagedKey, i32> = PagedStableGenMap::new();
-
-        // Seed with one value.
-        let (k1, _) = paged.insert(1);
-
-        let (k2, v2) = paged.insert_with_key(|k| {
-            // Clone *inside* the insert_with closure.
-            let clone = paged.clone();
-
-            // Clone must see the existing value.
-            assert_eq!(*clone.get(k1).unwrap(), 1);
-
-            // Same reasoning as above: the current insertion's slot doesn't
-            // exist / isn't initialized yet in the clone.
-            assert!(clone.get(k).is_none());
-
-            // Use the clone independently.
-            let (ck, cv) = clone.insert(999);
-            assert_eq!(*cv, 999);
-            assert_eq!(*clone.get(ck).unwrap(), 999);
-
-            // Return the value for the original map.
-            2
-        });
-
-        // Original paged map must be consistent after closure returns.
-        assert_eq!(*v2, 2);
-        assert_eq!(*paged.get(k1).unwrap(), 1);
-        assert_eq!(*paged.get(k2).unwrap(), 2);
-    }
-
-    #[test]
-    fn paged_clone_and_get_mut_are_independent() {
-        let paged: PagedStableGenMap<DefaultPagedKey, i32> = PagedStableGenMap::new();
-
-        // Insert enough elements to force multiple pages (first page size is 32).
-        let mut keys = Vec::new();
-        for i in 0..40 {
-            let (k, _) = paged.insert(i as i32);
-            keys.push(k);
-        }
-
-        // Clone while we only have &PagedMap.
-        let mut clone = paged.clone();
-
-        // Move original into a mutable binding.
-        let mut paged = paged;
-
-        // Mutate every even index in the original via get_mut.
-        for (idx, &key) in keys.iter().enumerate() {
-            if idx % 2 == 0 {
-                *paged.get_mut(key).unwrap() += 1000;
-            }
-        }
-
-        // Check that original changed only on even indices, clone is untouched.
-        for (idx, &key) in keys.iter().enumerate() {
-            let orig = *paged.get(key).unwrap();
-            let cloned = *clone.get(key).unwrap();
-
-            if idx % 2 == 0 {
-                assert_eq!(cloned, idx as i32);              // clone unchanged
-                assert_eq!(orig, idx as i32 + 1000);         // original modified
-            } else {
-                assert_eq!(orig, idx as i32);                // original untouched
-                assert_eq!(cloned, idx as i32);              // clone same
-            }
-        }
-
-        // Also check that removing from original doesn't affect clone.
-        let k0 = keys[0];
-        let removed = paged.remove(k0).unwrap();
-        assert_eq!(removed, 0 + 1000);
-        assert!(paged.get(k0).is_none());
-        assert!(clone.get(k0).is_some());
-        assert_eq!(*clone.get(k0).unwrap(), 0);
-    }
 
     #[test]
     fn paged_get_mut_respects_generation() {

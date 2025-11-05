@@ -3,7 +3,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, Index, IndexMut};
-
+use crate::stable_gen_map::{Key, StableGenMap};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PagedKeyData{
@@ -132,68 +132,7 @@ impl<K: PagedKey,T> IndexMut<K> for PagedStableGenMap<K,T> {
     }
 }
 
-impl<T: Clone> Clone for Slot<T> {
-    fn clone(&self) -> Self {
-        unsafe{
-            Self{
-                generation: self.generation,
-                item: UnsafeCell::new ((&*self.item.get()).clone()),
-            }
-        }
 
-    }
-}
-impl<T: Clone> Clone for Page<T> {
-    fn clone(&self) -> Self {
-        let len = self.slots.len();
-
-        // allocate new backing storage
-        let mut v: Vec<UnsafeCell<MaybeUninit<Slot<T>>>> = Vec::with_capacity(len);
-        for i in 0..len {
-            let cell: &UnsafeCell<MaybeUninit<Slot<T>>> = &self.slots[i];
-
-            // For indices < length_used, we assume initialized and clone.
-            // For the rest, keep them uninitialized.
-            let mu: MaybeUninit<Slot<T>> = if i < self.length_used {
-                unsafe {
-                    // SAFETY:
-                    // - By your invariant, 0..length_used are initialized.
-                    // - We never touch indices >= length_used here.
-                    let src: &MaybeUninit<Slot<T>> = &*cell.get();
-                    let slot_ref: &Slot<T> = src.assume_init_ref();
-                    MaybeUninit::new(slot_ref.clone())
-                }
-            } else {
-                MaybeUninit::uninit()
-            };
-
-            v.push(UnsafeCell::new(mu));
-        }
-
-        Self {
-            length_used: self.length_used,
-            // AliasableBox has `From<Box<T>>`, so this is straightforward.
-            slots: AliasableBox::from(v.into_boxed_slice()),
-        }
-    }
-}
-
-
-
-
-
-
-impl<K: PagedKey, T: Clone>  Clone for PagedStableGenMap<K,T> {
-    fn clone(&self) -> Self {
-        unsafe{
-            Self{
-                pages: UnsafeCell::new((&*self.pages.get()).clone()),
-                free: UnsafeCell::new((&*self.free.get()).clone()),
-                phantom: PhantomData,
-            }
-        }
-    }
-}
 
 pub struct IterMut<'a, K: PagedKey, T> {
     map: &'a PagedStableGenMap<K, T>,
@@ -436,20 +375,51 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 let key = K::from(PagedKeyData { idx: free.idx,page: free.page,  generation, });
 
 
-                let value = func(key);
+ 
 
-                /* SAFETY: We are reassigning "free_spaces" here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
-                let free_spaces = &mut *self.free.get();
+                // RAII "reservation" for a single index in `free`.
+                struct FreeGuard<'a, K: PagedKey, T> {
+                    map: &'a PagedStableGenMap<K, T>,
+                    free: FreeSpace,
+                }
+
+                impl<'a, K: PagedKey, T> FreeGuard<'a, K, T> {
+                    fn commit(self) {
+                        std::mem::forget(self);
+                    }
+                }
+
+                impl<'a, K: PagedKey, T> Drop for FreeGuard<'a, K, T> {
+                    fn drop(&mut self) {
+
+                        unsafe {
+                            // Put the index back on the free list.
+                            let free = &mut *self.map.free.get();
+                            free.push(self.free);
+                            let generation = &mut (&mut *self.map.pages.get()).get_unchecked_mut(self.free.page).slots.get_unchecked_mut(self.free.idx).get_mut().assume_init_mut().generation;
+                            *generation = generation.wrapping_add(1);
+                            // increment generation to invalidate previous indexes
+                        }
+                    }
+                }
+
+                // to avoid memory leaks if func(key) panics
+                let free_guard = FreeGuard{
+                    map: self,
+                    free
+                };
+                let value = func(key);
+          
                 if let Err(value) = value {
-                    free_spaces.push(free);
                     return Err(value);
                 }
+                free_guard.commit();
                 let value = value.unwrap_unchecked();
 
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
 
                 let pages = &mut *self.pages.get();
-                let page = pages.get_mut(free.page).unwrap();
+                let page = pages.get_unchecked_mut(free.page);
 
 
                 /*
