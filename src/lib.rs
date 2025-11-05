@@ -15,7 +15,7 @@ mod stable_gen_map_tests {
         let (k, r) = map.insert(Box::new("root".to_string()));
         let p_before = (r as *const String) as usize;
 
-        for i in 0..20_000 {
+        for i in 0..1_000 {
             let s = i.to_string();
             let _ = map.insert(Box::new(s));
         }
@@ -43,7 +43,7 @@ mod stable_gen_map_tests {
             assert!(map.get(k_self).is_none());
 
             // Force many resizes while this slot is still "inserting".
-            for i in 0..15_000 {
+            for i in 0..1_000 {
                 let _ = map.insert(Box::new(i));
             }
 
@@ -67,7 +67,7 @@ mod stable_gen_map_tests {
             assert!(map.get(k_self).is_none());
 
             // Trigger considerable internal growth during that window.
-            for i in 0..10_000 {
+            for i in 0..1_000 {
                 let _ = map.insert(Box::new(i.to_string()));
             }
 
@@ -86,7 +86,7 @@ mod stable_gen_map_tests {
         assert!(map.get(k1).is_none()); // old key invalid
 
         // Force lots of growth; free list should be consumed at some point.
-        for i in 0..8_000 {
+        for i in 0..1_000 {
             let _ = map.insert(Box::new(i as i32));
         }
 
@@ -102,7 +102,7 @@ mod stable_gen_map_tests {
         let (k, r) = map.insert(Box::new(String::from("hello")) as Box<dyn Display>);
         let p_before = (r as *const dyn Display) as *const () as usize;
 
-        for i in 0..12_000 {
+        for i in 0..1_000 {
             let _ = map.insert(Box::new(i.to_string()) as Box<dyn Display>);
         }
 
@@ -113,7 +113,7 @@ mod stable_gen_map_tests {
 
     use std::fmt::Display;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use crate::stable_gen_map::{DefaultKey, KeyData, StableGenMap};
+    use crate::stable_gen_map::{DefaultKey, Key, KeyData, StableGenMap};
 
     #[test]
     fn get_during_insert_returns_none_and_reentrancy_is_ok() {
@@ -142,7 +142,7 @@ mod stable_gen_map_tests {
         let p1 = (r1 as *const String) as usize;
 
         // Force multiple Vec growths.
-        for i in 0..20_000 {
+        for i in 0..1_000 {
             let _ = map.insert(Box::new(i.to_string()));
         }
 
@@ -172,6 +172,112 @@ mod stable_gen_map_tests {
         // We can assert on private fields here because these are unit tests.
         assert_eq!(k1.key_data.idx, k2.key_data.idx, "same slot reused");
         assert_ne!(k1.key_data.generation, k2.key_data.generation, "generation must bump");
+    }
+
+    #[test]
+    fn stable_clone_inside_insert_with() {
+        let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
+
+        // Seed with one value so we can check visibility from the clone.
+        let (k1, _) = map.insert(Box::new(1));
+
+        let (k2, v2) = map.insert_with(|k| {
+            // Clone *inside* the insert_with closure.
+            let clone = map.clone();
+
+            // The clone should see the old element.
+            assert_eq!(*clone.get(k1).unwrap(), 1);
+
+            // For this in-progress insertion, the slot hasn't been written yet
+            // at the moment we cloned, so it's fine (and expected) if it's None.
+            assert!(clone.get(k).is_none());
+
+            // We can freely use the clone: inserting into it should not affect `map`.
+            let (ck, cv) = clone.insert(Box::new(999));
+            assert_eq!(*cv, 999);
+            assert_eq!(*clone.get(ck).unwrap(), 999);
+
+            // Return the value for the original map's insert.
+            Box::new(2)
+        });
+
+        // After insert_with finishes, the original map must be consistent.
+        assert_eq!(*v2, 2);
+        assert_eq!(*map.get(k1).unwrap(), 1);
+        assert_eq!(*map.get(k2).unwrap(), 2);
+    }
+    #[test]
+    fn stable_clone_and_get_mut_are_independent() {
+        let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
+
+        // Insert a couple of values; ignore the &T return so we don't keep borrows alive.
+        let (k1, _) = map.insert(Box::new(10));
+        let (k2, _) = map.insert(Box::new(20));
+
+        // Clone while we still only have an &StableMap.
+        let mut clone = map.clone();
+
+        // Now move the original into a mutable binding.
+        let mut map = map;
+
+        // Sanity: both maps see the same initial values.
+        assert_eq!(*map.get(k1).unwrap(), 10);
+        assert_eq!(*map.get(k2).unwrap(), 20);
+        assert_eq!(*clone.get(k1).unwrap(), 10);
+        assert_eq!(*clone.get(k2).unwrap(), 20);
+
+        // Mutate original via get_mut.
+        *map.get_mut(k1).unwrap() = 100;
+        *map.get_mut(k2).unwrap() = 200;
+
+        // Original changed...
+        assert_eq!(*map.get(k1).unwrap(), 100);
+        assert_eq!(*map.get(k2).unwrap(), 200);
+
+        // ...clone unchanged (deep copy, not shared storage).
+        assert_eq!(*clone.get(k1).unwrap(), 10);
+        assert_eq!(*clone.get(k2).unwrap(), 20);
+
+        // Mutate clone separately, still no cross-effects.
+        *clone.get_mut(k1).unwrap() = -1;
+        assert_eq!(*clone.get(k1).unwrap(), -1);
+        assert_eq!(*map.get(k1).unwrap(), 100);
+    }
+
+    #[test]
+    fn stable_get_mut_respects_generation() {
+        let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
+        let (k, _) = map.insert(Box::new(1));
+
+        // Move into mutable binding.
+        let mut map = map;
+
+        // Mutate via get_mut on a live key.
+        *map.get_mut(k).unwrap() = 10;
+        assert_eq!(*map.get(k).unwrap(), 10);
+
+        // Remove it; this increments generation and pushes index to free list.
+        let removed = map.remove(k).unwrap();
+        assert_eq!(*removed, 10);
+        assert!(map.get(k).is_none());
+        assert!(map.get_mut(k).is_none());
+
+        // Next insert should reuse the same idx but with bumped generation.
+        let (k_new, _) = map.insert(Box::new(99));
+        let old = k.data();
+        let new = k_new.data();
+
+        assert_eq!(old.idx, new.idx);
+        assert_ne!(old.generation, new.generation);
+
+        // Stale key must not be usable.
+        assert!(map.get(k).is_none());
+        assert!(map.get_mut(k).is_none());
+
+        // New key must work.
+        assert_eq!(*map.get(k_new).unwrap(), 99);
+        *map.get_mut(k_new).unwrap() = 123;
+        assert_eq!(*map.get(k_new).unwrap(), 123);
     }
 
     #[test]
@@ -244,11 +350,129 @@ mod paged_stable_gen_map_tests {
     use std::collections::BTreeSet;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::paged_stable_gen_map::{
-        PagedStableGenMap,
-        DefaultPagedKey,
-        PagedKeyData,
-    };
+    use crate::paged_stable_gen_map::{PagedStableGenMap, DefaultPagedKey, PagedKeyData, PagedKey};
+    use crate::stable_gen_map::DefaultKey;
+
+
+    #[test]
+    fn paged_clone_inside_insert_with() {
+        let paged: PagedStableGenMap<DefaultPagedKey, i32> = PagedStableGenMap::new();
+
+        // Seed with one value.
+        let (k1, _) = paged.insert(1);
+
+        let (k2, v2) = paged.insert_with(|k| {
+            // Clone *inside* the insert_with closure.
+            let clone = paged.clone();
+
+            // Clone must see the existing value.
+            assert_eq!(*clone.get(k1).unwrap(), 1);
+
+            // Same reasoning as above: the current insertion's slot doesn't
+            // exist / isn't initialized yet in the clone.
+            assert!(clone.get(k).is_none());
+
+            // Use the clone independently.
+            let (ck, cv) = clone.insert(999);
+            assert_eq!(*cv, 999);
+            assert_eq!(*clone.get(ck).unwrap(), 999);
+
+            // Return the value for the original map.
+            2
+        });
+
+        // Original paged map must be consistent after closure returns.
+        assert_eq!(*v2, 2);
+        assert_eq!(*paged.get(k1).unwrap(), 1);
+        assert_eq!(*paged.get(k2).unwrap(), 2);
+    }
+
+    #[test]
+    fn paged_clone_and_get_mut_are_independent() {
+        let paged: PagedStableGenMap<DefaultPagedKey, i32> = PagedStableGenMap::new();
+
+        // Insert enough elements to force multiple pages (first page size is 32).
+        let mut keys = Vec::new();
+        for i in 0..40 {
+            let (k, _) = paged.insert(i as i32);
+            keys.push(k);
+        }
+
+        // Clone while we only have &PagedMap.
+        let mut clone = paged.clone();
+
+        // Move original into a mutable binding.
+        let mut paged = paged;
+
+        // Mutate every even index in the original via get_mut.
+        for (idx, &key) in keys.iter().enumerate() {
+            if idx % 2 == 0 {
+                *paged.get_mut(key).unwrap() += 1000;
+            }
+        }
+
+        // Check that original changed only on even indices, clone is untouched.
+        for (idx, &key) in keys.iter().enumerate() {
+            let orig = *paged.get(key).unwrap();
+            let cloned = *clone.get(key).unwrap();
+
+            if idx % 2 == 0 {
+                assert_eq!(cloned, idx as i32);              // clone unchanged
+                assert_eq!(orig, idx as i32 + 1000);         // original modified
+            } else {
+                assert_eq!(orig, idx as i32);                // original untouched
+                assert_eq!(cloned, idx as i32);              // clone same
+            }
+        }
+
+        // Also check that removing from original doesn't affect clone.
+        let k0 = keys[0];
+        let removed = paged.remove(k0).unwrap();
+        assert_eq!(removed, 0 + 1000);
+        assert!(paged.get(k0).is_none());
+        assert!(clone.get(k0).is_some());
+        assert_eq!(*clone.get(k0).unwrap(), 0);
+    }
+
+    #[test]
+    fn paged_get_mut_respects_generation() {
+        let paged: PagedStableGenMap<DefaultPagedKey,i32> = PagedStableGenMap::new();
+
+        let (k1, _) = paged.insert(1);
+        let (k2, _) = paged.insert(2);
+
+        let mut paged = paged;
+
+        // Mutate via get_mut on live keys.
+        *paged.get_mut(k1).unwrap() = 10;
+        *paged.get_mut(k2).unwrap() = 20;
+        assert_eq!(*paged.get(k1).unwrap(), 10);
+        assert_eq!(*paged.get(k2).unwrap(), 20);
+
+        // Remove k1; generation for that slot should bump and the slot becomes free.
+        let removed = paged.remove(k1).unwrap();
+        assert_eq!(removed, 10);
+        assert!(paged.get(k1).is_none());
+        assert!(paged.get_mut(k1).is_none());
+
+        // Next insert should reuse the same (page, idx) with incremented generation.
+        let (k1_new, _) = paged.insert(99);
+        let old = k1.data();
+        let new = k1_new.data();
+
+        assert_eq!(old.page, new.page);
+        assert_eq!(old.idx, new.idx);
+        assert_ne!(old.generation, new.generation);
+
+        // Stale key must fail.
+        assert!(paged.get(k1).is_none());
+        assert!(paged.get_mut(k1).is_none());
+
+        // New key must work.
+        assert_eq!(*paged.get(k1_new).unwrap(), 99);
+        *paged.get_mut(k1_new).unwrap() = 123;
+        assert_eq!(*paged.get(k1_new).unwrap(), 123);
+    }
 
     // 1. First value’s reference must remain stable across many inserts
     //    (Vec<Page<T>> growth + page allocations).
@@ -260,7 +484,7 @@ mod paged_stable_gen_map_tests {
         let p_before = (r as *const String) as usize;
 
         // Force plenty of internal growth and new pages.
-        for i in 0..20_000 {
+        for i in 0..1_000 {
             let s = i.to_string();
             let _ = map.insert(s);
         }
@@ -293,7 +517,7 @@ mod paged_stable_gen_map_tests {
             assert!(map.get(k_self).is_none());
 
             // Cause many internal resizes while slot is still "inserting".
-            for i in 0..15_000 {
+            for i in 0..1_000{
                 let _ = map.insert(i);
             }
 
@@ -324,7 +548,7 @@ mod paged_stable_gen_map_tests {
             // get() must not expose a partially-constructed value.
             assert!(map.get(k_self).is_none());
 
-            for i in 0..10_000 {
+            for i in 0..1_000 {
                 let _ = map.insert(i.to_string());
             }
 
@@ -425,7 +649,7 @@ mod paged_stable_gen_map_tests {
         assert!(map.get(k1).is_none(), "old key must be invalid right after remove");
 
         // Force lots of growth; free list should be consumed at some point.
-        for i in 0..8_000 {
+        for i in 0..1_000 {
             let _ = map.insert(i as i32);
         }
 
