@@ -8,6 +8,8 @@ use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, Index, IndexMut};
 
+
+
 struct Page<T, K: Key>{
     slots:  AliasableBox<[UnsafeCell<MaybeUninit<Slot<T, K::Gen>>>]>,
     length_used: usize,
@@ -79,20 +81,23 @@ struct Slot<T, Gen>{
     item: UnsafeCell<Option<ManuallyDrop<T>>>
 }
 
-pub struct PagedStableGenMap<K: Key, T,const SLOTS_NUM_PER_PAGE: usize = DEFAULT_SLOTS_NUM_PER_PAGE> {
+pub struct PagedStableGenMapAbstract<K: Key, T, const SLOTS_NUM_PER_PAGE: usize = DEFAULT_SLOTS_NUM_PER_PAGE> {
     pub(crate) pages: UnsafeCell<Vec<Page<T, K>>>,
     free:  UnsafeCell<Vec<K::Idx>>,
     phantom: PhantomData<fn(K)>,
     num_elements: Cell<usize>,
 }
-impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> Index<K> for PagedStableGenMap<K,T, SLOTS_NUM_PER_PAGE> {
+
+
+pub type PagedStableGenMap<K,T> = PagedStableGenMapAbstract<K,T,DEFAULT_SLOTS_NUM_PER_PAGE>;
+impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> Index<K> for PagedStableGenMapAbstract<K,T, SLOTS_NUM_PER_PAGE> {
     type Output = T;
     fn index(&self, key: K) -> &Self::Output{
         self.get(key).unwrap()
     }
 }
 
-impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> IndexMut<K> for PagedStableGenMap<K,T, SLOTS_NUM_PER_PAGE> {
+impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> IndexMut<K> for PagedStableGenMapAbstract<K,T, SLOTS_NUM_PER_PAGE> {
 
     fn index_mut(&mut self, key: K) -> &mut Self::Output{
         self.get_mut(key).unwrap()
@@ -102,13 +107,15 @@ impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> IndexMut<K> for PagedStableGenMa
 
 
 pub struct IterMut<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
-    map: &'a PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE>,
+    map: &'a PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>,
     page: usize,
     idx: usize,
     _marker: PhantomData<&'a mut T>,
 }
 
-impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE> {
+impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE> {
+    
+    /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, T, SLOTS_NUM_PER_PAGE> {
         IterMut {
@@ -237,10 +244,11 @@ impl<K: Key, T, const  SLOTS_NUM_PER_PAGE: usize> Iterator for IntoIter<K, T, SL
     }
 
 }
-impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator for PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE> {
+impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator for PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE> {
     type Item = (K, T);
     type IntoIter = IntoIter<K, T, SLOTS_NUM_PER_PAGE>;
 
+    /// Converts the map into an iterator that owns all elements. This operation consumes the map
     fn into_iter(self) -> Self::IntoIter {
         let pages_vec = self.pages.into_inner();
         IntoIter {
@@ -255,7 +263,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator for PagedStableGen
 }
 
 
-impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator for &'a mut PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE> {
+impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator for &'a mut PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE> {
     type Item = (K, &'a mut T);
     type IntoIter = IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>;
 
@@ -269,7 +277,7 @@ impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator for &'a mut Pa
 
 // RAII "reservation" for a single index in `free`.
 struct FreeGuard<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
-    map: &'a PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE>,
+    map: &'a PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>,
     idx: K::Idx,
 }
 
@@ -284,7 +292,7 @@ pub struct SplitIdx {
     pub(crate) slot_idx: usize
 }
 
-
+/// compresses the index of a page and the index of a slot into one, which is stored in keys
 #[inline]
 pub fn encode_index<Idx: Numeric>(page_idx: usize, slot_idx: usize, slots_num_per_page: usize) -> Idx {
 
@@ -340,9 +348,10 @@ impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> Drop for FreeGuard<'a, K, T
     }
 }
 
-impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K,T, SLOTS_NUM_PER_PAGE> {
+impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K,T, SLOTS_NUM_PER_PAGE> {
 
 
+    /// Creates a new, empty PagedStableGenMap
     #[inline]
     pub const fn new() -> Self {
         const {
@@ -356,6 +365,7 @@ impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K,T, SLOTS_NUM
         }
     }
 
+    /// Gets a unique reference to an element
     #[inline]
     pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
 
@@ -372,7 +382,7 @@ impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K,T, SLOTS_NUM
             None
         }
     }
-    /// Shared access to a value by key (no guard, plain &T).
+    /// Gets a shared reference to an element
     #[inline]
     pub fn get(&self, k: K) -> Option<&T> {
 
@@ -390,7 +400,7 @@ impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K,T, SLOTS_NUM
         }
     }
 
-
+    /// Empties the map, removing all elements
     #[inline]
     pub fn clear(&mut self) {
         self.free.get_mut().clear();
@@ -398,15 +408,17 @@ impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K,T, SLOTS_NUM
         self.num_elements.set(0);
     }
 
+    /// Gets the number of elements in the map
     #[inline]
     pub fn len(&self) -> usize {
         self.num_elements.get()
     }
 
 
-    /* Remove only with &mut self. This is safe because the borrow checker
-    prevents calling this while any &'_ T derived from &self is alive.
-    A use case will be in, for example, freeing memory after the end of a frame in a video game */
+    /// Removes an element of the supplied key from the map, and returns its owned value
+    /// Removes only with &mut self. This is safe because the borrow checker
+    /// prevents calling this while any &'_ T derived from &self is alive.
+    /// A use case will be in, for example, freeing memory after the end of a frame in a video game */
     #[inline]
     pub fn remove(&mut self, k: K) -> Option<T> {
         let key_data = k.data();
@@ -429,10 +441,57 @@ impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K,T, SLOTS_NUM
             }
         }
     }
+
+
+
+    /// Inserts a value given by the inputted function into the map. The key where the
+    /// value will be stored is passed into the inputted function.
+    /// This is useful to store values that contain their own key.
+    /// # Examples
+    /// ```
+    /// # use stable_gen_map::key::DefaultKey;
+    /// use stable_gen_map::paged_stable_gen_map::PagedStableGenMap;
+    /// let mut sm = PagedStableGenMap::new();
+    /// #[derive(Eq,PartialEq, Debug)]
+    /// struct KeyHolder{
+    ///     key: DefaultKey
+    /// }
+    /// let (key, reference) = sm.insert_with_key(|k| KeyHolder{
+    ///     key: k
+    /// });
+    /// assert_eq!(sm[key], KeyHolder{key});
+    /// ```
     #[inline]
     pub fn insert_with_key(&self, func: impl FnOnce(K) -> T) -> (K, &T){
         self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
     }
+
+
+    /// Inserts a value given by the inputted function into the map. The key where the
+    /// value will be stored is passed into the inputted function.
+    /// This is useful to store values that contain their own key.
+    /// This version allows the closure to return a `Result`, so you can propagate errors.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use stable_gen_map::key::DefaultKey;
+    /// use stable_gen_map::paged_stable_gen_map::PagedStableGenMap;
+    ///
+    /// #[derive(Eq, PartialEq, Debug)]
+    /// struct KeyHolder {
+    ///     key: DefaultKey,
+    /// }
+    ///
+    /// let sm = PagedStableGenMap::new();
+    ///
+    /// let (key, reference) = sm
+    ///     .try_insert_with_key::<()>(|k| Ok(KeyHolder { key: k }))
+    ///     .unwrap();
+    ///
+    /// assert_eq!(sm[key], KeyHolder { key });
+    /// // optional: also prove `reference` really points to the same element:
+    /// assert!(std::ptr::eq(reference, &sm[key]));
+    /// ```
     #[inline]
     pub fn try_insert_with_key<E>(&self, func: impl FnOnce(K) -> Result<T,E>) -> Result<(K, &T), E> {
         unsafe{
@@ -527,6 +586,17 @@ impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K,T, SLOTS_NUM
 
         }
     }
+
+    /// Simple insert. When it inserts, it returns the key and reference
+    /// # Examples
+    /// ```rust
+    /// use stable_gen_map::key::DefaultKey;
+    /// use stable_gen_map::paged_stable_gen_map::PagedStableGenMap;
+    /// let sm = PagedStableGenMap::<DefaultKey,_>::new();
+    /// let (key, reference) = sm.insert(4);
+    /// assert_eq!(*reference, 4);
+    /// assert_eq!(*sm.get(key).unwrap(), 4);
+    ///```
     #[inline]
     pub fn insert(&self, value: T) -> (K, &T) {
         self.insert_with_key(|_| value)

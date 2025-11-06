@@ -5,6 +5,8 @@ pub struct KeyData<Idx, Generation>{
     pub(crate) idx: Idx,
     pub(crate) generation: Generation,
 }
+
+
 pub unsafe trait Key : Copy + From<KeyData<Self::Idx, Self::Gen>> {
     type Idx : Numeric;
     type Gen : Numeric;
