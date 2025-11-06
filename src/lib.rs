@@ -214,9 +214,53 @@ mod stable_gen_map_tests {
         assert_eq!(map.get(k).unwrap().to_string(), "hello");
     }
 
+    // New-slot branch + Err: index 0 must be reusable.
+    #[test]
+    fn stable_try_insert_with_key_err_reuses_reserved_new_slot() {
+        let map: StableMap<i32> = StableGenMap::new();
+
+        // No free slots yet → this uses the "push new slot" branch.
+        let res: Result<(DefaultKey, &i32), &'static str> =
+            map.try_insert_with_key(|_k| -> Result<Box<i32>, &'static str> {
+                Err("oops in constructor")
+            });
+
+        assert!(res.is_err());
+
+        // After the error, the reserved slot must have been returned
+        // to the free list and be reusable as idx 0.
+        let (k_ok, v_ok) = map.insert(Box::new(123));
+        let kd = k_ok.data();
+
+        assert_eq!(kd.idx, 0, "first live insert after error should reuse idx 0");
+        assert_eq!(*v_ok, 123);
+    }
+
+    // New-slot branch + panic: index 0 must be reusable.
+    #[test]
+    fn stable_try_insert_with_key_panic_reuses_reserved_new_slot() {
+        let map: StableMap<i32> = StableGenMap::new();
+
+        // Again, empty map → "new slot" branch.
+        let res = catch_unwind(AssertUnwindSafe(|| {
+            let _ = map.try_insert_with_key::<()>(|_k| -> Result<Box<i32>, ()> {
+                panic!("boom in new-slot branch");
+            });
+        }));
+        assert!(res.is_err(), "panic should be caught by catch_unwind");
+
+        // Next insert should reuse idx 0, not silently leak it.
+        let (k_ok, v_ok) = map.insert(Box::new(123));
+        let kd = k_ok.data();
+
+        assert_eq!(kd.idx, 0, "first live insert after panic should reuse idx 0");
+        assert_eq!(*v_ok, 123);
+    }
+
     use crate::stable_gen_map::{DefaultKey, Key, KeyData, StableGenMap};
     use std::cell::Cell;
     use std::fmt::Display;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
@@ -340,6 +384,62 @@ mod stable_gen_map_tests {
         assert!(map.remove(bad).is_none(), "wrong generation should not remove");
     }
 
+
+    #[test]
+    fn stable_try_insert_with_key_panic_reuses_free_slot() {
+        let mut map: StableMap<i32> = StableGenMap::new();
+
+        // Insert one, then remove it so its index goes onto the free list.
+        let (k1, _) = map.insert(Box::new(10));
+
+        let old = k1.data();
+        assert_eq!(map.remove(k1).map(|b| *b), Some(10));
+        assert!(map.get(k1).is_none());
+
+        // This try_insert_with_key will go down the free-slot path and then panic
+        // inside the closure. After our fix, the popped index must be returned
+        // to the free list even on panic.
+        let res = catch_unwind(AssertUnwindSafe(|| {
+            let _ = (&map as &StableMap<i32>).try_insert_with_key::<()>(
+                |_k| -> Result<Box<i32>, ()> {
+                    panic!("boom in free-slot branch");
+                },
+            );
+        }));
+        assert!(res.is_err());
+
+        // Now insert again; it should reuse the same index that was freed earlier.
+        let (k2, v2) = (&map as &StableMap<i32>)
+            .try_insert_with_key::<()>(|_k| Ok(Box::new(99)))
+            .unwrap();
+
+        let new = k2.data();
+        assert_eq!(new.idx, old.idx, "free-slot index must be reused after panic");
+        assert_eq!(*v2, 99);
+    }
+
+    #[test]
+    fn stable_try_insert_with_key_panic_reuses_reserved_slot() {
+        let map: StableMap<i32> = StableGenMap::new();
+
+        // No free slots; this call will go down the "new slot" path and panic
+        // inside the closure. After our fix, that reserved slot is returned
+        // to the free list and can be reused.
+        let res = catch_unwind(AssertUnwindSafe(|| {
+            let _ = map.try_insert_with_key::<()>(|_k| -> Result<Box<i32>, ()> {
+                panic!("boom in new-slot branch");
+            });
+        }));
+        assert!(res.is_err());
+
+        // Now do a normal insert; it should reuse index 0 rather than silently
+        // leaking the reserved slot.
+        let (k_ok, v_ok) = map.insert(Box::new(123));
+        let kd = k_ok.data();
+
+        assert_eq!(kd.idx, 0, "first slot index should be reused after panic");
+        assert_eq!(*v_ok, 123);
+    }
     #[test]
     fn drops_happen_on_remove_and_on_map_drop() {
         static DROPS: AtomicUsize = AtomicUsize::new(0);
@@ -421,6 +521,7 @@ mod stable_gen_map_tests {
 mod paged_stable_gen_map_tests {
     use std::cell::Cell;
     use std::collections::BTreeSet;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
 
@@ -430,6 +531,50 @@ mod paged_stable_gen_map_tests {
 
     use crate::paged_stable_gen_map::{DefaultPagedKey, PagedKey, PagedKeyData, PagedStableGenMap};
     type PagedMap<T>  = PagedStableGenMap<DefaultPagedKey, T>;
+
+    // New-slot branch + Err: (page=0, idx=0) must be reusable.
+    #[test]
+    fn paged_try_insert_with_key_err_reuses_reserved_new_slot() {
+        let map: PagedMap<i32> = PagedStableGenMap::new();
+
+        // Empty map → allocates first page and first slot, then returns Err.
+        let res: Result<(DefaultPagedKey, &i32), &'static str> =
+            map.try_insert_with_key(|_k| -> Result<i32, &'static str> {
+                Err("oops in paged constructor")
+            });
+
+        assert!(res.is_err());
+
+        // Next insert should reuse (page=0, idx=0).
+        let (k_ok, v_ok) = map.insert(123);
+        let kd = k_ok.data();
+
+        assert_eq!(kd.page, 0);
+        assert_eq!(kd.idx, 0, "first live insert after error should reuse page 0, idx 0");
+        assert_eq!(*v_ok, 123);
+    }
+
+    // New-slot branch + panic: (page=0, idx=0) must be reusable.
+    #[test]
+    fn paged_try_insert_with_key_panic_reuses_reserved_new_slot() {
+        let map: PagedMap<i32> = PagedStableGenMap::new();
+
+        // Empty map → "new slot" path, then panic inside func.
+        let res = catch_unwind(AssertUnwindSafe(|| {
+            let _ = map.try_insert_with_key::<()>(|_k| -> Result<i32, ()> {
+                panic!("boom in paged new-slot branch");
+            });
+        }));
+        assert!(res.is_err(), "panic should be caught by catch_unwind");
+
+        // First real insert must reuse that first slot.
+        let (k_ok, v_ok) = map.insert(123);
+        let kd = k_ok.data();
+
+        assert_eq!(kd.page, 0);
+        assert_eq!(kd.idx, 0, "first live insert after panic should reuse page 0, idx 0");
+        assert_eq!(*v_ok, 123);
+    }
 
 
     #[test]

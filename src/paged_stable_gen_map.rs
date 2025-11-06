@@ -291,6 +291,33 @@ impl<'a, K: PagedKey, T> IntoIterator for &'a mut PagedStableGenMap<K, T> {
 }
 
 
+
+// RAII "reservation" for a single index in `free`.
+struct FreeGuard<'a, K: PagedKey, T> {
+    map: &'a PagedStableGenMap<K, T>,
+    free: FreeSpace,
+}
+
+impl<'a, K: PagedKey, T> FreeGuard<'a, K, T> {
+    fn commit(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl<'a, K: PagedKey, T> Drop for FreeGuard<'a, K, T> {
+    fn drop(&mut self) {
+
+        unsafe {
+            // Put the index back on the free list.
+            let free = &mut *self.map.free.get();
+            free.push(self.free);
+            let generation = &mut (&mut *self.map.pages.get()).get_unchecked_mut(self.free.page).slots.get_unchecked_mut(self.free.idx).get_mut().assume_init_mut().generation;
+            *generation = generation.wrapping_add(1);
+            // increment generation to invalidate previous indexes
+        }
+    }
+}
+
 impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
 
@@ -375,47 +402,17 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 let key = K::from(PagedKeyData { idx: free.idx,page: free.page,  generation, });
 
 
- 
-
-                // RAII "reservation" for a single index in `free`.
-                struct FreeGuard<'a, K: PagedKey, T> {
-                    map: &'a PagedStableGenMap<K, T>,
-                    free: FreeSpace,
-                }
-
-                impl<'a, K: PagedKey, T> FreeGuard<'a, K, T> {
-                    fn commit(self) {
-                        std::mem::forget(self);
-                    }
-                }
-
-                impl<'a, K: PagedKey, T> Drop for FreeGuard<'a, K, T> {
-                    fn drop(&mut self) {
-
-                        unsafe {
-                            // Put the index back on the free list.
-                            let free = &mut *self.map.free.get();
-                            free.push(self.free);
-                            let generation = &mut (&mut *self.map.pages.get()).get_unchecked_mut(self.free.page).slots.get_unchecked_mut(self.free.idx).get_mut().assume_init_mut().generation;
-                            *generation = generation.wrapping_add(1);
-                            // increment generation to invalidate previous indexes
-                        }
-                    }
-                }
 
                 // to avoid memory leaks if func(key) panics
                 let free_guard = FreeGuard{
                     map: self,
                     free
                 };
-                let value = func(key);
+                let value = func(key)?;
           
-                if let Err(value) = value {
-                    return Err(value);
-                }
+          
                 free_guard.commit();
-                let value = value.unwrap_unchecked();
-
+                
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
 
                 let pages = &mut *self.pages.get();
@@ -456,16 +453,21 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                         generation: 0
                     });
 
+   
                 let key_data = PagedKeyData { idx: inserted_index, generation: 0, page: pages.len() - 1 };
                 let key = K::from(key_data);
-
-                let created = func(key);
-                if let Err(created) = created {
-                    return Err(created);
-                }
-                let created = created.unwrap_unchecked();
+                let free_guard = FreeGuard{
+                    map: self,
+                    free: FreeSpace{
+                        idx: key_data.idx,
+                        page: key_data.page
+                    }
+                };
+                let created = func(key)?;
+                free_guard.commit();
+                let created = created;
+                
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
-
                 let pages = &mut *self.pages.get();
                 let page =pages.get_unchecked_mut(key_data.page);
 

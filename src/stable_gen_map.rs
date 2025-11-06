@@ -183,6 +183,31 @@ impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> {
     }
 }
 
+// RAII "reservation" for a single index in `free`.
+struct FreeGuard<'a, K: Key, T: ?Sized> {
+    map: &'a StableGenMap<K, T>,
+    idx: usize,
+}
+
+impl<'a, K: Key, T: ?Sized> FreeGuard<'a, K, T> {
+    fn commit(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl<'a, K: Key, T: ?Sized> Drop for FreeGuard<'a, K, T> {
+    fn drop(&mut self) {
+
+        unsafe {
+            // Put the index back on the free list.
+            let free = &mut *self.map.free.get();
+            free.push(self.idx);
+            let generation = &mut (&mut *self.map.slots.get()).get_unchecked_mut(self.idx).generation;
+            *generation = generation.wrapping_add(1);
+            // increment generation to invalidate previous indexes
+        }
+    }
+}
 
 impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
@@ -271,11 +296,8 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     }
     #[inline]
     pub fn try_insert_with_key<E>(&self, func: impl FnOnce(K) -> Result<Box<T>,E>) -> Result<(K, &T),E> {
+
         unsafe {
-
-
-
-
             let slots = &mut *self.slots.get();
             let free  = &mut *self.free.get();
 
@@ -284,44 +306,16 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 let generation = the_slot.generation;
                 let key = K::from(KeyData { idx, generation });
 
-                // RAII "reservation" for a single index in `free`.
-                struct FreeGuard<'a, K: Key, T: ?Sized> {
-                    map: &'a StableGenMap<K, T>,
-                    idx: usize,
-                }
 
-                impl<'a, K: Key, T: ?Sized> FreeGuard<'a, K, T> {
-                    fn commit(self) {
-                        std::mem::forget(self);
-                    }
-                }
 
-                impl<'a, K: Key, T: ?Sized> Drop for FreeGuard<'a, K, T> {
-                    fn drop(&mut self) {
-
-                        unsafe {
-                            // Put the index back on the free list.
-                            let free = &mut *self.map.free.get();
-                            free.push(self.idx);
-                            let generation = &mut (&mut *self.map.slots.get()).get_unchecked_mut(self.idx).generation;
-                            *generation = generation.wrapping_add(1);
-                            // increment generation to invalidate previous indexes
-                        }
-                    }
-                }
-
-                // to avoid memory leaks if func(key) panics
-                let mut free_guard = FreeGuard{
+                // to avoid memory leaks if func() fails/panics
+                let free_guard = FreeGuard{
                     map: self,
                     idx,
                 };
-                let value = func(key);
-
-                if let Err(error) =  value{
-                    return Err(error);
-                }
+                let value = func(key)?;
                 free_guard.commit();
-                let value = value.unwrap_unchecked();
+
                 /* SAFETY: We are reassigning slots here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
 
                 let slots = &mut *self.slots.get();
@@ -341,19 +335,24 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             } else {
                 let idx = slots.len();
                 let key = K::from(KeyData { idx, generation: 0 });
+
+
                 slots.push(Slot {
                     generation: 0,
                     item: None,
                 });
 
+                // to avoid memory leaks if func() fails/panics
+                let free_guard = FreeGuard{
+                    map: self,
+                    idx
+                };
 
-                let created = func(key);
-                if let Err(error) =  created {
-                    return Err(error);
-                }
-                let created = created.unwrap_unchecked();
+                let created = func(key)?;
+                free_guard.commit();
 
-
+                /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
+                let slots = &mut *self.slots.get();
                 let acquired : & mut _ = slots.get_unchecked_mut(idx);
 
 
