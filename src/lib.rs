@@ -8,6 +8,7 @@ mod tests{
     #[cfg(test)]
     mod stable_gen_map_tests;
 
+    #[cfg(test)]
     mod paged_stable_gen_map_tests;
 }
 
