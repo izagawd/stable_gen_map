@@ -6,9 +6,14 @@ pub struct KeyData<Idx, Generation>{
     pub(crate) generation: Generation,
 }
 
-
+/// This trait should be implemented for any custom key that is desired
 pub unsafe trait Key : Copy + From<KeyData<Self::Idx, Self::Gen>> {
+
+
+    /// This type will be used as the Idx type for the key
     type Idx : Numeric;
+
+    /// This type will be used as the Gen type for the key
     type Gen : Numeric;
 
     fn data(&self) -> KeyData<Self::Idx, Self::Gen>;
