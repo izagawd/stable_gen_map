@@ -87,7 +87,7 @@ impl<T, K: PagedKey> Page<T, K>{
     // gets an index that is free, if possible
     #[inline]
     fn has_free_index(&self) -> bool{
-        self.slots.len() > self.length_used.into_usize()
+        self.slots.len() > self.length_used
     }
 }
 impl<T, K: PagedKey> Drop for Page<T, K>{
@@ -170,9 +170,9 @@ impl<'a, K: PagedKey, T> Iterator for IterMut<'a, K, T> {
                 return None;
             }
 
-            let page = &pages[self.page.into_usize()];
+            let page = &pages[self.page];
 
-            if self.idx >= page.length_used.into_usize() {
+            if self.idx >= page.length_used {
                 self.page += 1;
                 self.idx = 0;
                 continue;
@@ -227,13 +227,13 @@ impl<K: PagedKey, T> Iterator for IntoIter<K, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self.page.into_usize() >= self.pages.len() {
+            if self.page >= self.pages.len() {
                 return None;
             }
 
-            let page = &mut self.pages[self.page.into_usize()];
+            let page = &mut self.pages[self.page];
 
-            if self.idx >= page.length_used.into_usize() {
+            if self.idx >= page.length_used {
                 self.page += 1;
                 self.idx = 0;
                 continue;
@@ -399,7 +399,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
         if slot.generation != key_data.generation { return None; }
         let retrieved =slot.item.get_mut().take()?;
         self.num_elements.set(self.num_elements.get() - 1);
-        
+
         match slot.generation.checked_add(&K::Gen::one()) {
             Some(generation) => {
                 slot.generation = generation;

@@ -104,7 +104,7 @@ impl<'a, K: Key, T: ?Sized> Iterator for IterMut<'a, K, T> where K::Idx : Numeri
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining_slots = self.len.saturating_sub(self.idx.into_usize());
+        let remaining_slots = self.len.saturating_sub(self.idx);
         (0, Some(remaining_slots))
     }
 }
@@ -146,7 +146,7 @@ impl<K: Key,T: ?Sized> IndexMut<K> for StableGenMap<K,T> {
 
 pub struct IntoIter<K: Key, T: ?Sized> {
     slots: std::vec::IntoIter<Slot<T, K::Gen>>,
-    idx: K::Idx,
+    idx: usize,
     _marker: PhantomData<K>,
 }
 
@@ -156,7 +156,7 @@ impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> where <K as Key>::Idx : Nume
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(slot) = self.slots.next() {
             let idx = self.idx;
-            self.idx += K::Idx::one();
+            self.idx += 1;
 
             let alias = match slot.item {
                 Some(a) => a,
@@ -164,7 +164,7 @@ impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> where <K as Key>::Idx : Nume
             };
 
             let key_data = KeyData {
-                idx,
+                idx: K::Idx::from_usize(idx),
                 generation: slot.generation,
             };
             let key = K::from(key_data);
@@ -176,7 +176,7 @@ impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> where <K as Key>::Idx : Nume
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining_slots = self.slots.len().saturating_sub(self.idx.into_usize());
+        let remaining_slots = self.slots.len().saturating_sub(self.idx);
         (0, Some(remaining_slots))
     }
 }
@@ -189,7 +189,7 @@ impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> where <K as Key>::Id
         let slots_vec = self.slots.into_inner();
         IntoIter {
             slots: slots_vec.into_iter(),
-            idx: K::Idx::zero(),
+            idx: 0,
             _marker: PhantomData,
         }
     }
