@@ -114,7 +114,7 @@ pub struct IterMut<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
 }
 
 impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE> {
-    
+
     /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, T, SLOTS_NUM_PER_PAGE> {
