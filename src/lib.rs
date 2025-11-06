@@ -1,7 +1,7 @@
 pub mod stable_gen_map;
 pub mod paged_stable_gen_map;
 
-
+pub mod numeric;
 
 #[cfg(test)]
 mod stable_gen_map_tests {
@@ -591,6 +591,8 @@ mod paged_stable_gen_map_tests {
     // iter() inside try_insert_with_key closure
 
     use crate::paged_stable_gen_map::{DefaultPagedKey, PagedKey, PagedKeyData, PagedStableGenMap};
+    use crate::stable_gen_map::Key;
+
     type PagedMap<T>  = PagedStableGenMap<DefaultPagedKey, T>;
 
     // New-slot branch + Err: (page=0, idx=0) must be reusable.
@@ -962,10 +964,10 @@ mod paged_stable_gen_map_tests {
         assert_eq!(r.as_str(), "done");
     }
     // Helper to make reading key internals less noisy.
-    fn page_of(k: DefaultPagedKey) -> usize {
+    fn page_of(k: DefaultPagedKey) -> <DefaultPagedKey as PagedKey>::Page {
         k.key_data.page
     }
-    fn idx_of(k: DefaultPagedKey) -> usize {
+    fn idx_of(k: DefaultPagedKey) -> <DefaultPagedKey as PagedKey>::Idx {
         k.key_data.idx
     }
     /// 1. First page should have capacity 32,assuming no initial page was allocated:
@@ -1164,7 +1166,7 @@ mod paged_stable_gen_map_tests {
         let bogus = DefaultPagedKey {
             key_data: PagedKeyData {
                 idx: 999_999,
-                page: 999_999,
+                page: 999_9,
                 generation: 0,
             },
         };

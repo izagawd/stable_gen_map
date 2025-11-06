@@ -1,38 +1,49 @@
+use crate::numeric::Numeric;
 use aliasable::boxed::AliasableBox;
+use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::collections::TryReserveError;
 use std::marker::PhantomData;
 use std::ops::{Deref, Index, IndexMut};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct KeyData{
-    pub(crate) generation: usize,
-    pub(crate) idx: usize
+#[derive(Clone,Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KeyData<Idx, Generation>{
+    pub(crate) idx: Idx,
+    pub(crate) generation: Generation,
 }
-pub unsafe trait Key : Copy + From<KeyData> {
-    fn data(&self) -> KeyData;
-}
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DefaultKey{
-    pub(crate) key_data: KeyData,
+pub unsafe trait Key : Copy + From<KeyData<Self::Idx, Self::Gen>> {
+    type Idx : Numeric;
+    type Gen : Numeric;
+
+    fn data(&self) -> KeyData<Self::Idx, Self::Gen>;
 }
 
-impl From<KeyData> for DefaultKey{
-    fn from(key_data: KeyData) -> Self {
+
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DefaultKey{
+    pub(crate) key_data: KeyData<u32,u32>,
+}
+
+impl From<KeyData<u32,u32>> for DefaultKey{
+    fn from(key_data: KeyData<u32,u32>) -> Self {
         DefaultKey{key_data: key_data}
     }
 }
 
 unsafe impl Key for DefaultKey{
-    fn data(&self) -> KeyData{
+    type Idx = u32;
+    type Gen = u32;
+
+    fn data(&self) -> KeyData<u32,u32>{
         self.key_data
     }
 }
-struct Slot<T: ?Sized> {
-    generation: usize,
+struct Slot<T: ?Sized, Generation> {
+    generation: Generation,
     item: Option<AliasableBox<T>>,
 }
-impl<T: Clone> Clone for Slot<T> {
+impl<T: Clone, Generation: Copy> Clone for Slot<T, Generation> {
     fn clone(&self) -> Self {
         Self{
             generation: self.generation,
@@ -42,14 +53,14 @@ impl<T: Clone> Clone for Slot<T> {
 }
 
 pub struct IterMut<'a, K: Key, T: ?Sized> {
-    ptr: *mut Slot<T>,
+    ptr: *mut Slot<T,K::Gen>,
     len: usize,
     idx: usize,
     _marker: PhantomData<&'a mut T>,
     _key_marker: PhantomData<K>,
 }
 
-impl<K: Key, T: ?Sized> StableGenMap<K, T> {
+impl<K: Key, T: ?Sized> StableGenMap<K, T> where K::Idx : Zero {
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, T> {
         let slots = self.slots.get_mut(); // &mut Vec<Slot<T>>
@@ -63,7 +74,7 @@ impl<K: Key, T: ?Sized> StableGenMap<K, T> {
     }
 }
 
-impl<'a, K: Key, T: ?Sized> Iterator for IterMut<'a, K, T> {
+impl<'a, K: Key, T: ?Sized> Iterator for IterMut<'a, K, T> where K::Idx : Numeric, K::Gen: Numeric {
     type Item = (K, &'a mut T);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -71,7 +82,7 @@ impl<'a, K: Key, T: ?Sized> Iterator for IterMut<'a, K, T> {
             let idx = self.idx;
             self.idx += 1;
 
-            let slot: &mut Slot<T> = unsafe { &mut *self.ptr.add(idx) };
+            let slot: &mut Slot<T, K::Gen> = unsafe { &mut *self.ptr.add(idx) };
 
             let boxed = match slot.item.as_mut() {
                 Some(b) => b,
@@ -79,7 +90,7 @@ impl<'a, K: Key, T: ?Sized> Iterator for IterMut<'a, K, T> {
             };
 
             let key_data = KeyData {
-                idx,
+                idx: K::Idx::from_usize(idx),
                 generation: slot.generation,
             };
             let key = K::from(key_data);
@@ -93,12 +104,12 @@ impl<'a, K: Key, T: ?Sized> Iterator for IterMut<'a, K, T> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining_slots = self.len.saturating_sub(self.idx);
+        let remaining_slots = self.len.saturating_sub(self.idx.into_usize());
         (0, Some(remaining_slots))
     }
 }
 
-impl<'a, K: Key, T: ?Sized> IntoIterator for &'a mut StableGenMap<K, T> {
+impl<'a, K: Key, T: ?Sized> IntoIterator for &'a mut StableGenMap<K, T> where K::Idx : Numeric, <K as Key>::Gen: Numeric {
     type Item = (K, &'a mut T);
     type IntoIter = IterMut<'a, K, T>;
 
@@ -113,8 +124,8 @@ impl<'a, K: Key, T: ?Sized> IntoIterator for &'a mut StableGenMap<K, T> {
 
 
 pub struct StableGenMap<K: Key, T: ?Sized> {
-    slots: UnsafeCell<Vec<Slot<T>>>,
-    free:  UnsafeCell<Vec<usize>>,
+    slots: UnsafeCell<Vec<Slot<T, K::Gen>>>,
+    free:  UnsafeCell<Vec<K::Idx>>,
     phantom: PhantomData<fn(K)>,
     num_elements: Cell<usize>,
 }
@@ -134,18 +145,18 @@ impl<K: Key,T: ?Sized> IndexMut<K> for StableGenMap<K,T> {
 
 
 pub struct IntoIter<K: Key, T: ?Sized> {
-    slots: std::vec::IntoIter<Slot<T>>,
-    idx: usize,
+    slots: std::vec::IntoIter<Slot<T, K::Gen>>,
+    idx: K::Idx,
     _marker: PhantomData<K>,
 }
 
-impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> {
+impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> where <K as Key>::Idx : Numeric{
     type Item = (K, Box<T>);
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(slot) = self.slots.next() {
             let idx = self.idx;
-            self.idx += 1;
+            self.idx += K::Idx::one();
 
             let alias = match slot.item {
                 Some(a) => a,
@@ -165,12 +176,12 @@ impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining_slots = self.slots.len().saturating_sub(self.idx);
+        let remaining_slots = self.slots.len().saturating_sub(self.idx.into_usize());
         (0, Some(remaining_slots))
     }
 }
 
-impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> {
+impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> where <K as Key>::Idx: Numeric{
     type Item = (K, Box<T>);
     type IntoIter = IntoIter<K, T>;
 
@@ -178,7 +189,7 @@ impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> {
         let slots_vec = self.slots.into_inner();
         IntoIter {
             slots: slots_vec.into_iter(),
-            idx: 0,
+            idx: K::Idx::zero(),
             _marker: PhantomData,
         }
     }
@@ -187,7 +198,7 @@ impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> {
 // RAII "reservation" for a single index in `free`.
 struct FreeGuard<'a, K: Key, T: ?Sized> {
     map: &'a StableGenMap<K, T>,
-    idx: usize,
+    idx: K::Idx,
 }
 
 impl<'a, K: Key, T: ?Sized> FreeGuard<'a, K, T> {
@@ -203,8 +214,8 @@ impl<'a, K: Key, T: ?Sized> Drop for FreeGuard<'a, K, T> {
             // Put the index back on the free list.
             let free = &mut *self.map.free.get();
             free.push(self.idx);
-            let generation = &mut (&mut *self.map.slots.get()).get_unchecked_mut(self.idx).generation;
-            *generation = generation.wrapping_add(1);
+            let generation = &mut (&mut *self.map.slots.get()).get_unchecked_mut(self.idx.into_usize()).generation;
+            *generation = generation.checked_add(&K::Gen::one()).unwrap();
             // increment generation to invalidate previous indexes
         }
     }
@@ -251,7 +262,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     pub fn get(&self, k: K) -> Option<&T> {
 
         let key_data = k.data();
-        let slot = unsafe { &*self.slots.get() }.get(key_data.idx)?;
+        let slot = unsafe { &*self.slots.get() }.get(key_data.idx.into_usize())?;
         if  slot.generation == key_data.generation {
             // SAFETY: value is live; we never move the Box's allocation.
             Some(unsafe { &*(&**slot.item.as_ref()? as *const T) })
@@ -265,7 +276,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
 
         let key_data = k.data();
-        let slot = self.slots.get_mut().get_mut(key_data.idx)?;
+        let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?;
         if  slot.generation == key_data.generation {
             // SAFETY: value is live; we never move the Box's allocation.
             Some(slot.item.as_mut()?.as_mut())
@@ -281,10 +292,10 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     #[inline]
     pub fn remove(&mut self, k: K) -> Option<Box<T>> {
         let key_data = k.data();
-        let slot = self.slots.get_mut().get_mut(key_data.idx)?;
+        let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?;
         if slot.generation != key_data.generation { return None; }
         let boxed = slot.item.take()?;
-        slot.generation = slot.generation.wrapping_add(1);
+        slot.generation = slot.generation.checked_add(&K::Gen::one()).unwrap();
         self.free.get_mut().push(key_data.idx);
         self.num_elements.set(self.num_elements.get() - 1);
         Some(AliasableBox::into_unique(boxed))
@@ -311,7 +322,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             let free  = &mut *self.free.get();
 
             if let Some(idx) = free.pop() {
-                let mut the_slot = slots.get_unchecked_mut(idx);
+                let mut the_slot = slots.get_unchecked_mut(idx.into_usize());
                 let generation = the_slot.generation;
                 let key = K::from(KeyData { idx, generation });
 
@@ -334,7 +345,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 SAFETY: func(key) might have caused a resize, changing the memory address of the_slot, so this is necessary
                 to ensure we are pointing to valid memory
                  */
-                the_slot = slots.get_unchecked_mut(idx);
+                the_slot = slots.get_unchecked_mut(idx.into_usize());
 
 
                 the_slot.item = Some(AliasableBox::from(value));
@@ -346,12 +357,12 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 let ptr = the_box.deref() as *const T;
                 Ok((key,&*ptr ))
             } else {
-                let idx = slots.len();
-                let key = K::from(KeyData { idx, generation: 0 });
+                let idx = K::Idx::from_usize(slots.len());
+                let key = K::from(KeyData { idx, generation: K::Gen::zero() });
 
 
                 slots.push(Slot {
-                    generation: 0,
+                    generation: K::Gen::zero(),
                     item: None,
                 });
 
@@ -366,7 +377,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
                 let slots = &mut *self.slots.get();
-                let acquired : & mut _ = slots.get_unchecked_mut(idx);
+                let acquired : & mut _ = slots.get_unchecked_mut(idx.into_usize());
 
 
                 acquired.item = Some(AliasableBox::from(created));

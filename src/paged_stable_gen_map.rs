@@ -1,31 +1,37 @@
+use crate::numeric::Numeric;
+use crate::stable_gen_map::Key;
 use aliasable::boxed::AliasableBox;
+use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, Index, IndexMut};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PagedKeyData{
-    pub(crate) generation: usize,
-    pub(crate) idx: usize,
-    pub(crate) page: usize,
+pub struct PagedKeyData<Page, Idx,Gen>{
+    pub(crate) idx: Idx,
+    pub(crate) page: Page,
+    pub(crate) generation: Gen,
 }
-pub unsafe trait PagedKey : Copy + From<PagedKeyData> {
-    fn data(&self) -> PagedKeyData;
+pub unsafe trait PagedKey : Copy + From<PagedKeyData<Self::Page, Self::Idx, Self::Gen>> {
+    type Page: Numeric;
+    type Idx: Numeric;
+    type Gen: Numeric;
+    fn data(&self) -> PagedKeyData<Self::Page, Self::Idx,Self::Gen>;
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DefaultPagedKey{
-    pub(crate) key_data: PagedKeyData,
+    pub(crate) key_data: PagedKeyData<u16,u32,u32>,
 }
 
 
-struct Page<T>{
-    slots:  AliasableBox<[UnsafeCell<MaybeUninit<Slot<T>>>]>,
-    length_used:  usize,
+struct Page<T, K: PagedKey>{
+    slots:  AliasableBox<[UnsafeCell<MaybeUninit<Slot<T, K::Gen>>>]>,
+    length_used: K::Idx,
 }
 
-impl From<PagedKeyData> for DefaultPagedKey {
-    fn from(value: PagedKeyData) -> Self {
+impl From<PagedKeyData<u16,u32,u32>> for DefaultPagedKey {
+    fn from(value: PagedKeyData<u16,u32,u32>) -> Self {
         Self{
             key_data: value,
         }
@@ -33,67 +39,71 @@ impl From<PagedKeyData> for DefaultPagedKey {
 }
 
 unsafe impl PagedKey for DefaultPagedKey {
-    fn data(&self) -> PagedKeyData {
+    type Page = u16;
+    type Idx = u32;
+    type Gen = u32;
+
+    fn data(&self) -> PagedKeyData<u16,u32,u32> {
         self.key_data
     }
 }
 
-impl<T> Page<T>{
+impl<T, K: PagedKey> Page<T, K>{
 
 
     #[inline]
-    unsafe fn insert_slot_unchecked(&mut self,  slot: Slot<T>) -> usize  {
-        let gotten = self.slots.get_unchecked(self.length_used);
+    unsafe fn insert_slot_unchecked(&mut self,  slot: Slot<T, K::Gen>) -> K::Idx  {
+        let gotten = self.slots.get_unchecked(self.length_used.into_usize());
         let index = self.length_used;
-        self.length_used = self.length_used.wrapping_add(1);
+        self.length_used = self.length_used.checked_add(&K::Idx::one()).unwrap();
          *gotten.get() = MaybeUninit::new(slot);
         index
     }
     #[inline]
-    unsafe fn new(size: usize) -> Self{
+    unsafe fn new(size: K::Idx) -> Self{
 
         Self{
-            slots: AliasableBox::from_unique((0..size).map(|_| UnsafeCell::new(MaybeUninit::uninit())).collect()),
-            length_used: 0,
+            slots: AliasableBox::from_unique((0..size.into_usize()).map(|_| UnsafeCell::new(MaybeUninit::uninit())).collect()),
+            length_used: K::Idx::zero(),
         }
     }
     #[inline]
-    fn get_slot(&self, idx: usize) -> Option<&Slot<T>> {
+    fn get_slot(&self, idx: K::Idx) -> Option<&Slot<T, K::Gen>> {
         if self.length_used <= idx{
             None
         } else {
-            self.slots.get(idx).map(|x| unsafe {(&*x.get()).assume_init_ref()})
+            self.slots.get(idx.into_usize()).map(|x| unsafe {(&*x.get()).assume_init_ref()})
         }
     }
 
     #[inline]
-    fn get_slot_mut(&mut self, idx: usize) -> Option<&mut Slot<T>> {
+    fn get_slot_mut(&mut self, idx: K::Idx) -> Option<&mut Slot<T, K::Gen>> {
         if self.length_used <= idx{
             None
         } else {
-            self.slots.get_mut(idx).map(|x| unsafe {x.get_mut().assume_init_mut()})
+            self.slots.get_mut(idx.into_usize()).map(|x| unsafe {x.get_mut().assume_init_mut()})
         }
     }
     // gets an index that is free, if possible
     #[inline]
-    fn get_free_index(&self) -> Option<usize>{
-        if self.slots.len() <= self.length_used{
+    fn get_free_index(&self) -> Option<K::Idx>{
+        if self.slots.len() <= self.length_used.into_usize(){
             None
         } else {
             Some(self.length_used)
         }
     }
 }
-impl<T> Drop for Page<T>{
+impl<T, K: PagedKey> Drop for Page<T, K>{
     #[inline]
     fn drop(&mut self) {
         unsafe {
 
             for slot in self.slots.iter_mut(){
-                if self.length_used == 0{
+                if self.length_used == K::Idx::zero(){
                     break
                 }
-                self.length_used -= 1;
+                self.length_used -= K::Idx::one();
                 if let Some(ref mut slot_item) = &mut slot.get_mut().assume_init_mut().item.get_mut() {
                    ManuallyDrop::drop(slot_item)
                 }
@@ -103,18 +113,18 @@ impl<T> Drop for Page<T>{
     }
 }
 
-struct Slot<T>{
-    generation: usize,
+struct Slot<T, Gen>{
+    generation: Gen,
     item: UnsafeCell<Option<ManuallyDrop<T>>>
 }
 #[derive(Copy,Clone,Debug,Eq,Hash,PartialEq)]
-struct FreeSpace{
-    page: usize,
-    idx: usize,
+struct FreeSpace<K: PagedKey>{
+    page: K::Page,
+    idx: K::Idx,
 }
 pub struct PagedStableGenMap<K: PagedKey, T> {
-    pages: UnsafeCell<Vec<Page<T>>>,
-    free:  UnsafeCell<Vec<FreeSpace>>,
+    pages: UnsafeCell<Vec<Page<T, K>>>,
+    free:  UnsafeCell<Vec<FreeSpace<K>>>,
     phantom: PhantomData<fn(K)>,
     num_elements: Cell<usize>,
 }
@@ -136,8 +146,8 @@ impl<K: PagedKey,T> IndexMut<K> for PagedStableGenMap<K,T> {
 
 pub struct IterMut<'a, K: PagedKey, T> {
     map: &'a PagedStableGenMap<K, T>,
-    page_idx: usize,
-    slot_idx: usize,
+    page: usize,
+    idx: usize,
     _marker: PhantomData<&'a mut T>,
 }
 
@@ -146,8 +156,8 @@ impl<K: PagedKey, T> PagedStableGenMap<K, T> {
     pub fn iter_mut(&mut self) -> IterMut<'_, K, T> {
         IterMut {
             map: self,
-            page_idx: 0,
-            slot_idx: 0,
+            page: 0,
+            idx: 0,
             _marker: PhantomData,
         }
     }
@@ -158,22 +168,22 @@ impl<'a, K: PagedKey, T> Iterator for IterMut<'a, K, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let pages: &Vec<Page<T>> = unsafe { &*self.map.pages.get() };
+            let pages: &Vec<Page<T, K>> = unsafe { &*self.map.pages.get() };
 
-            if self.page_idx >= pages.len() {
+            if self.page >= pages.len() {
                 return None;
             }
 
-            let page = &pages[self.page_idx];
+            let page = &pages[self.page.into_usize()];
 
-            if self.slot_idx >= page.length_used {
-                self.page_idx += 1;
-                self.slot_idx = 0;
+            if self.idx >= page.length_used.into_usize() {
+                self.page += 1;
+                self.idx = 0;
                 continue;
             }
 
-            let idx_in_page = self.slot_idx;
-            self.slot_idx += 1;
+            let idx_in_page =K::Idx::from_usize(self.idx);
+            self.idx += 1;
 
             let slot = match page.get_slot(idx_in_page) {
                 Some(s) => s,
@@ -194,7 +204,7 @@ impl<'a, K: PagedKey, T> Iterator for IterMut<'a, K, T> {
             let key_data = PagedKeyData {
                 generation: slot.generation,
                 idx: idx_in_page,
-                page: self.page_idx,
+                page: K::Page::from_usize(self.page),
             };
             let key = K::from(key_data);
 
@@ -203,15 +213,16 @@ impl<'a, K: PagedKey, T> Iterator for IterMut<'a, K, T> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
+
         (0, None)
     }
 }
 
 
 pub struct IntoIter<K: PagedKey, T> {
-    pages: Vec<Page<T>>,
-    page_idx: usize,
-    slot_idx: usize,
+    pages: Vec<Page<T, K>>,
+    page: usize,
+    idx: usize,
     _marker: PhantomData<K>,
 }
 
@@ -220,20 +231,20 @@ impl<K: PagedKey, T> Iterator for IntoIter<K, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self.page_idx >= self.pages.len() {
+            if self.page.into_usize() >= self.pages.len() {
                 return None;
             }
 
-            let page = &mut self.pages[self.page_idx];
+            let page = &mut self.pages[self.page.into_usize()];
 
-            if self.slot_idx >= page.length_used {
-                self.page_idx += 1;
-                self.slot_idx = 0;
+            if self.idx >= page.length_used.into_usize() {
+                self.page += 1;
+                self.idx = 0;
                 continue;
             }
 
-            let idx_in_page = self.slot_idx;
-            self.slot_idx += 1;
+            let idx_in_page = K::Idx::from_usize(self.idx);
+            self.idx += 1;
 
             let slot = match page.get_slot_mut(idx_in_page) {
                 Some(s) => s,
@@ -251,7 +262,7 @@ impl<K: PagedKey, T> Iterator for IntoIter<K, T> {
             let key_data = PagedKeyData {
                 generation: slot.generation,
                 idx: idx_in_page,
-                page: self.page_idx,
+                page: K::Page::from_usize(self.page),
             };
             let key = K::from(key_data);
 
@@ -272,8 +283,8 @@ impl<K: PagedKey, T> IntoIterator for PagedStableGenMap<K, T> {
         let pages_vec = self.pages.into_inner();
         IntoIter {
             pages: pages_vec,
-            page_idx: 0,
-            slot_idx: 0,
+            page: 0,
+            idx: 0,
             _marker: PhantomData,
         }
     }
@@ -295,7 +306,7 @@ impl<'a, K: PagedKey, T> IntoIterator for &'a mut PagedStableGenMap<K, T> {
 // RAII "reservation" for a single index in `free`.
 struct FreeGuard<'a, K: PagedKey, T> {
     map: &'a PagedStableGenMap<K, T>,
-    free: FreeSpace,
+    free: FreeSpace<K>,
 }
 
 impl<'a, K: PagedKey, T> FreeGuard<'a, K, T> {
@@ -311,8 +322,8 @@ impl<'a, K: PagedKey, T> Drop for FreeGuard<'a, K, T> {
             // Put the index back on the free list.
             let free = &mut *self.map.free.get();
             free.push(self.free);
-            let generation = &mut (&mut *self.map.pages.get()).get_unchecked_mut(self.free.page).slots.get_unchecked_mut(self.free.idx).get_mut().assume_init_mut().generation;
-            *generation = generation.wrapping_add(1);
+            let generation = &mut (&mut *self.map.pages.get()).get_unchecked_mut(self.free.page.into_usize()).slots.get_unchecked_mut(self.free.idx.into_usize()).get_mut().assume_init_mut().generation;
+            *generation = generation.checked_add(&K::Gen::one()).unwrap();
             // increment generation to invalidate previous indexes
         }
     }
@@ -335,7 +346,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
     pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
 
         let key_data = k.data();
-        let page = self.pages.get_mut().get_mut(key_data.page)?;
+        let page = self.pages.get_mut().get_mut(key_data.page.into_usize())?;
 
         let slot = page.get_slot_mut(key_data.idx)?;
         if  slot.generation == key_data.generation {
@@ -351,7 +362,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
     pub fn get(&self, k: K) -> Option<&T> {
 
         let key_data = k.data();
-        let page = unsafe { &*self.pages.get() }.get(key_data.page)?;
+        let page = unsafe { &*self.pages.get() }.get(key_data.page.into_usize())?;
 
         let slot = page.get_slot(key_data.idx)?;
         if  slot.generation == key_data.generation {
@@ -383,12 +394,12 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
     #[inline]
     pub fn remove(&mut self, k: K) -> Option<T> {
         let key_data = k.data();
-        let page = self.pages.get_mut().get_mut(key_data.page)?;
+        let page = self.pages.get_mut().get_mut(key_data.page.into_usize())?;
 
         let slot = page.get_slot_mut(key_data.idx)?;
         if slot.generation != key_data.generation { return None; }
         let retrieved =slot.item.get_mut().take()?;
-        slot.generation = slot.generation.wrapping_add(1);
+        slot.generation = slot.generation.checked_add(&K::Gen::one()).unwrap();
         self.num_elements.set(self.num_elements.get() - 1);
         self.free.get_mut().push(FreeSpace{idx: key_data.idx, page: key_data.page});
         Some(ManuallyDrop::into_inner(retrieved))
@@ -405,7 +416,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
             let free_spaces = &mut *self.free.get();
 
             if let Some(free) = free_spaces.pop() {
-                let page = pages.get_mut(free.page).unwrap_unchecked();
+                let page = pages.get_mut(free.page.into_usize()).unwrap_unchecked();
                 let the_slot = page.get_slot_mut(free.idx).unwrap_unchecked();
                 let generation = the_slot.generation;
                 let key = K::from(PagedKeyData { idx: free.idx,page: free.page,  generation, });
@@ -425,7 +436,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
 
                 let pages = &mut *self.pages.get();
-                let page = pages.get_unchecked_mut(free.page);
+                let page = pages.get_unchecked_mut(free.page.into_usize());
 
 
                 /*
@@ -441,9 +452,10 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 let ptr = items_ref as *const T;
                 Ok((key, &*ptr ))
             } else {
-                let add_new_page = |pages: &mut Vec<Page<T>>| {
+
+                let add_new_page = |pages: &mut Vec<Page<T,K>>| {
                     pages.push(
-                        Page::new(pages.last().map(|x| x.slots.len() * 2).unwrap_or(32))
+                        Page::new(pages.last().map(|x| K::Idx::from_usize(x.slots.len() * 2)).unwrap_or(K::Idx::from_usize(32)))
                     );
                 };
                 if pages.last_mut().is_none()  {
@@ -460,11 +472,11 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 let inserted_index =
                     last.insert_slot_unchecked( Slot {
                         item: UnsafeCell::new(None),
-                        generation: 0
+                        generation: K::Gen::zero(),
                     });
 
 
-                let key_data = PagedKeyData { idx: inserted_index, generation: 0, page: pages.len() - 1 };
+                let key_data = PagedKeyData { idx: inserted_index, generation: K::Gen::zero(), page: K::Page::from_usize(pages.len() - 1)};
                 let key = K::from(key_data);
                 let free_guard = FreeGuard{
                     map: self,
@@ -479,7 +491,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
                 let pages = &mut *self.pages.get();
-                let page =pages.get_unchecked_mut(key_data.page);
+                let page =pages.get_unchecked_mut(key_data.page.into_usize());
 
 
                 let the_slot =  page.get_slot(key_data.idx).unwrap_unchecked();
