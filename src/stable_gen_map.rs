@@ -211,12 +211,16 @@ impl<'a, K: Key, T: ?Sized> Drop for FreeGuard<'a, K, T> {
     fn drop(&mut self) {
 
         unsafe {
-            // Put the index back on the free list.
-            let free = &mut *self.map.free.get();
-            free.push(self.idx);
-            let generation = &mut (&mut *self.map.slots.get()).get_unchecked_mut(self.idx.into_usize()).generation;
-            *generation = generation.checked_add(&K::Gen::one()).unwrap();
+
             // increment generation to invalidate previous indexes
+            let generation = &mut (&mut *self.map.slots.get()).get_unchecked_mut(self.idx.into_usize()).generation;
+            let checked_add_maybe = generation.checked_add(&K::Gen::one());
+            if let Some(checked_add) = checked_add_maybe {
+                *generation  = checked_add;
+                let free = &mut *self.map.free.get();
+                free.push(self.idx);
+            }
+
         }
     }
 }
@@ -295,10 +299,18 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?;
         if slot.generation != key_data.generation { return None; }
         let boxed = slot.item.take()?;
-        slot.generation = slot.generation.checked_add(&K::Gen::one()).unwrap();
-        self.free.get_mut().push(key_data.idx);
-        self.num_elements.set(self.num_elements.get() - 1);
-        Some(AliasableBox::into_unique(boxed))
+        match slot.generation.checked_add(&K::Gen::one()) {
+            Some(generation) => {
+                slot.generation = generation;
+                self.free.get_mut().push(key_data.idx);
+                self.num_elements.set(self.num_elements.get() - 1);
+                Some(AliasableBox::into_unique(boxed))
+            }
+            None => {
+                Some(AliasableBox::into_unique(boxed))
+            }
+        }
+
     }
     #[inline]
     pub fn len(&self) -> usize {

@@ -27,7 +27,7 @@ pub struct DefaultPagedKey{
 
 struct Page<T, K: PagedKey>{
     slots:  AliasableBox<[UnsafeCell<MaybeUninit<Slot<T, K::Gen>>>]>,
-    length_used: K::Idx,
+    length_used: usize,
 }
 
 impl From<PagedKeyData<u16,u32,u32>> for DefaultPagedKey {
@@ -52,24 +52,24 @@ impl<T, K: PagedKey> Page<T, K>{
 
 
     #[inline]
-    unsafe fn insert_slot_unchecked(&mut self,  slot: Slot<T, K::Gen>) -> K::Idx  {
-        let gotten = self.slots.get_unchecked(self.length_used.into_usize());
+    unsafe fn insert_slot(&mut self, slot: Slot<T, K::Gen>) -> K::Idx  {
+        let gotten = self.slots.get_unchecked(self.length_used);
         let index = self.length_used;
-        self.length_used = self.length_used.checked_add(&K::Idx::one()).unwrap();
+        self.length_used = self.length_used.checked_add(1).unwrap();
          *gotten.get() = MaybeUninit::new(slot);
-        index
+        K::Idx::from_usize(index)
     }
     #[inline]
     unsafe fn new(size: K::Idx) -> Self{
 
         Self{
             slots: AliasableBox::from_unique((0..size.into_usize()).map(|_| UnsafeCell::new(MaybeUninit::uninit())).collect()),
-            length_used: K::Idx::zero(),
+            length_used: 0,
         }
     }
     #[inline]
     fn get_slot(&self, idx: K::Idx) -> Option<&Slot<T, K::Gen>> {
-        if self.length_used <= idx{
+        if self.length_used <= idx.into_usize(){
             None
         } else {
             self.slots.get(idx.into_usize()).map(|x| unsafe {(&*x.get()).assume_init_ref()})
@@ -78,7 +78,7 @@ impl<T, K: PagedKey> Page<T, K>{
 
     #[inline]
     fn get_slot_mut(&mut self, idx: K::Idx) -> Option<&mut Slot<T, K::Gen>> {
-        if self.length_used <= idx{
+        if self.length_used <= idx.into_usize(){
             None
         } else {
             self.slots.get_mut(idx.into_usize()).map(|x| unsafe {x.get_mut().assume_init_mut()})
@@ -86,12 +86,8 @@ impl<T, K: PagedKey> Page<T, K>{
     }
     // gets an index that is free, if possible
     #[inline]
-    fn get_free_index(&self) -> Option<K::Idx>{
-        if self.slots.len() <= self.length_used.into_usize(){
-            None
-        } else {
-            Some(self.length_used)
-        }
+    fn has_free_index(&self) -> bool{
+        self.slots.len() > self.length_used.into_usize()
     }
 }
 impl<T, K: PagedKey> Drop for Page<T, K>{
@@ -100,10 +96,10 @@ impl<T, K: PagedKey> Drop for Page<T, K>{
         unsafe {
 
             for slot in self.slots.iter_mut(){
-                if self.length_used == K::Idx::zero(){
+                if self.length_used == 0{
                     break
                 }
-                self.length_used -= K::Idx::one();
+                self.length_used -= 1;
                 if let Some(ref mut slot_item) = &mut slot.get_mut().assume_init_mut().item.get_mut() {
                    ManuallyDrop::drop(slot_item)
                 }
@@ -320,11 +316,14 @@ impl<'a, K: PagedKey, T> Drop for FreeGuard<'a, K, T> {
 
         unsafe {
             // Put the index back on the free list.
-            let free = &mut *self.map.free.get();
-            free.push(self.free);
+
             let generation = &mut (&mut *self.map.pages.get()).get_unchecked_mut(self.free.page.into_usize()).slots.get_unchecked_mut(self.free.idx.into_usize()).get_mut().assume_init_mut().generation;
-            *generation = generation.checked_add(&K::Gen::one()).unwrap();
-            // increment generation to invalidate previous indexes
+            let checked_add_maybe = generation.checked_add(&K::Gen::one());
+            if let Some(checked_add) = checked_add_maybe {
+                *generation  = checked_add;
+                let free = &mut *self.map.free.get();
+                free.push(self.free);
+            }
         }
     }
 }
@@ -399,10 +398,18 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
         let slot = page.get_slot_mut(key_data.idx)?;
         if slot.generation != key_data.generation { return None; }
         let retrieved =slot.item.get_mut().take()?;
-        slot.generation = slot.generation.checked_add(&K::Gen::one()).unwrap();
         self.num_elements.set(self.num_elements.get() - 1);
-        self.free.get_mut().push(FreeSpace{idx: key_data.idx, page: key_data.page});
-        Some(ManuallyDrop::into_inner(retrieved))
+        
+        match slot.generation.checked_add(&K::Gen::one()) {
+            Some(generation) => {
+                slot.generation = generation;
+                self.free.get_mut().push(FreeSpace{idx: key_data.idx, page: key_data.page});
+                Some(ManuallyDrop::into_inner(retrieved))
+            }
+            None => {
+                 Some(ManuallyDrop::into_inner(retrieved))
+            }
+        }
     }
     #[inline]
     pub fn insert_with_key(&self, func: impl FnOnce(K) -> T) -> (K, &T){
@@ -464,13 +471,13 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
                 let mut last = pages.last_mut().unwrap_unchecked();
 
-                if last.get_free_index().is_none() {
+                if !last.has_free_index() {
                     add_new_page(pages);
                     last = pages.last_mut().unwrap_unchecked();
                 }
 
                 let inserted_index =
-                    last.insert_slot_unchecked( Slot {
+                    last.insert_slot( Slot {
                         item: UnsafeCell::new(None),
                         generation: K::Gen::zero(),
                     });
