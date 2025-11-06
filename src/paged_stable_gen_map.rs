@@ -3,7 +3,6 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, Index, IndexMut};
-use crate::stable_gen_map::{Key, StableGenMap};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PagedKeyData{
@@ -396,8 +395,8 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
             let free_spaces = &mut *self.free.get();
 
             if let Some(free) = free_spaces.pop() {
-                let page = pages.get_mut(free.page).unwrap();
-                let the_slot = page.get_slot_mut(free.idx).unwrap();
+                let page = pages.get_mut(free.page).unwrap_unchecked();
+                let the_slot = page.get_slot_mut(free.idx).unwrap_unchecked();
                 let generation = the_slot.generation;
                 let key = K::from(PagedKeyData { idx: free.idx,page: free.page,  generation, });
 
@@ -409,10 +408,10 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                     free
                 };
                 let value = func(key)?;
-          
-          
+
+
                 free_guard.commit();
-                
+
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
 
                 let pages = &mut *self.pages.get();
@@ -453,7 +452,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                         generation: 0
                     });
 
-   
+
                 let key_data = PagedKeyData { idx: inserted_index, generation: 0, page: pages.len() - 1 };
                 let key = K::from(key_data);
                 let free_guard = FreeGuard{
@@ -466,7 +465,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 let created = func(key)?;
                 free_guard.commit();
                 let created = created;
-                
+
                 /* SAFETY: We are reassigning  here, to avoid double mut ub, since func can re-enter "try_insert_with_key"*/
                 let pages = &mut *self.pages.get();
                 let page =pages.get_unchecked_mut(key_data.page);

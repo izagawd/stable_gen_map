@@ -329,7 +329,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
 
                 the_slot.item = Some(AliasableBox::from(value));
-                let the_box = &*the_slot.item.as_ref().unwrap();
+                let the_box = &*the_slot.item.as_ref().unwrap_unchecked();
                 let ptr = the_box.deref() as *const T;
                 Ok((key,&*ptr ))
             } else {
