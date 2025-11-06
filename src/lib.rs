@@ -7,7 +7,68 @@ pub mod paged_stable_gen_map;
 mod stable_gen_map_tests {
 
 
+    use std::panic::{catch_unwind, AssertUnwindSafe};
 
+    #[test]
+    fn stable_len_tracks_insert_remove_and_clear() {
+        let map: StableMap<i32> = StableGenMap::new();
+        assert_eq!(map.len(), 0, "new map must start empty");
+
+        let (k1, _) = map.insert(Box::new(10));
+        assert_eq!(map.len(), 1, "one insert increments len to 1");
+
+        let (k2, _) = map.insert(Box::new(20));
+        assert_eq!(map.len(), 2, "two inserts increments len to 2");
+
+        // Move to a mutable binding for remove/clear.
+        let mut map = map;
+
+        // Removing a live key decrements len.
+        assert_eq!(map.remove(k1).map(|b| *b), Some(10));
+        assert_eq!(map.len(), 1, "remove must decrement len");
+
+        // Removing again (already removed) must not change len.
+        assert!(map.remove(k1).is_none());
+        assert_eq!(map.len(), 1, "removing non-existent key must not change len");
+
+        // Removing a bogus key (wrong idx/generation) must not change len.
+        let mut bogus = k2;
+        bogus.key_data.generation = bogus.key_data.generation.wrapping_add(1);
+        assert!(map.remove(bogus).is_none());
+        assert_eq!(map.len(), 1, "failed remove (generation mismatch) must not change len");
+
+        // clear() must reset len to 0.
+        map.clear();
+        assert_eq!(map.len(), 0, "clear must reset len to 0");
+    }
+
+    #[test]
+    fn stable_len_unchanged_on_try_insert_new_slot_err_and_panic() {
+        let map: StableMap<i32> = StableGenMap::new();
+        assert_eq!(map.len(), 0);
+
+        // Map is empty → try_insert_with_key goes down the "new slot" branch.
+        let res: Result<(DefaultKey, &i32), &'static str> =
+            map.try_insert_with_key(|_k| -> Result<Box<i32>, &'static str> {
+                Err("constructor failed")
+            });
+
+        assert!(res.is_err());
+        assert_eq!(map.len(), 0, "len must stay 0 after Err in new-slot branch");
+
+        // Same but with a panic inside the constructor.
+        let res_panic = catch_unwind(AssertUnwindSafe(|| {
+            let _ = map.try_insert_with_key::<()>(|_k| -> Result<Box<i32>, ()> {
+                panic!("boom in new-slot constructor");
+            });
+        }));
+        assert!(res_panic.is_err());
+        assert_eq!(map.len(), 0, "len must stay 0 after panic in new-slot branch");
+
+        // After those failures, a normal insert must still give len = 1.
+        let (_k_ok, _v_ok) = map.insert(Box::new(123));
+        assert_eq!(map.len(), 1, "successful insert after failures must bump len to 1");
+    }
     #[test]
     fn stable_iter_mut_can_modify_all_values() {
         let mut map: StableMap<i32> = StableGenMap::new();
@@ -260,7 +321,7 @@ mod stable_gen_map_tests {
     use crate::stable_gen_map::{DefaultKey, Key, KeyData, StableGenMap};
     use std::cell::Cell;
     use std::fmt::Display;
-    use std::panic::{catch_unwind, AssertUnwindSafe};
+
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
@@ -661,6 +722,69 @@ mod paged_stable_gen_map_tests {
 
         assert_eq!(*v, 10);
         assert_eq!(*paged.get(k).unwrap(), 10);
+    }
+
+
+
+    #[test]
+    fn paged_len_tracks_insert_remove_and_clear() {
+        let paged: PagedMap<i32> = PagedStableGenMap::new();
+        assert_eq!(paged.len(), 0, "new paged map must start empty");
+
+        let (k1, _) = paged.insert(10);
+        assert_eq!(paged.len(), 1, "one insert increments len to 1");
+
+        let (k2, _) = paged.insert(20);
+        assert_eq!(paged.len(), 2, "two inserts increments len to 2");
+
+        // Move into mutable binding.
+        let mut paged = paged;
+
+        // Removing a live key decrements len.
+        assert_eq!(paged.remove(k1), Some(10));
+        assert_eq!(paged.len(), 1, "remove must decrement len");
+
+        // Removing again (already removed) must not change len.
+        assert!(paged.remove(k1).is_none());
+        assert_eq!(paged.len(), 1, "removing non-existent key must not change len");
+
+        // Removing bogus generation must not change len.
+        let mut bad = k2;
+        bad.key_data.generation = bad.key_data.generation.wrapping_add(1);
+        assert!(paged.remove(bad).is_none());
+        assert_eq!(paged.len(), 1, "failed remove (generation mismatch) must not change len");
+
+        // clear() must reset len to 0.
+        paged.clear();
+        assert_eq!(paged.len(), 0, "clear must reset len to 0");
+    }
+
+    #[test]
+    fn paged_len_unchanged_on_try_insert_new_slot_err_and_panic() {
+        let paged: PagedMap<i32> = PagedStableGenMap::new();
+        assert_eq!(paged.len(), 0);
+
+        // No free slots yet → this hits the "add new slot/page" branch.
+        let res: Result<(DefaultPagedKey, &i32), &'static str> =
+            paged.try_insert_with_key(|_k| -> Result<i32, &'static str> {
+                Err("oops in paged constructor")
+            });
+
+        assert!(res.is_err());
+        assert_eq!(paged.len(), 0, "len must stay 0 after Err in new-slot branch");
+
+        // Same idea, but closure panics.
+        let res_panic = catch_unwind(AssertUnwindSafe(|| {
+            let _ = paged.try_insert_with_key::<()>(|_k| -> Result<i32, ()> {
+                panic!("boom in paged new-slot branch");
+            });
+        }));
+        assert!(res_panic.is_err());
+        assert_eq!(paged.len(), 0, "len must stay 0 after panic in new-slot branch");
+
+        // After those failures, a normal insert must bump len to 1.
+        let (_k_ok, _v_ok) = paged.insert(123);
+        assert_eq!(paged.len(), 1, "successful insert after failures must bump len to 1");
     }
 
     #[test]

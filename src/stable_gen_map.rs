@@ -1,5 +1,5 @@
 use aliasable::boxed::AliasableBox;
-use std::cell::UnsafeCell;
+use std::cell::{Cell, UnsafeCell};
 use std::collections::TryReserveError;
 use std::marker::PhantomData;
 use std::ops::{Deref, Index, IndexMut};
@@ -116,6 +116,7 @@ pub struct StableGenMap<K: Key, T: ?Sized> {
     slots: UnsafeCell<Vec<Slot<T>>>,
     free:  UnsafeCell<Vec<usize>>,
     phantom: PhantomData<fn(K)>,
+    num_elements: Cell<usize>,
 }
 
 impl<K: Key,T: ?Sized> Index<K> for StableGenMap<K,T> {
@@ -215,7 +216,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     pub fn clear(&mut self){
         self.slots.get_mut().clear();
         self.free.get_mut().clear();
-
+        self.num_elements.set(0);
     }
 
     #[inline]
@@ -223,7 +224,8 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         Self{
             slots: UnsafeCell::new(Vec::with_capacity(size)),
             free: UnsafeCell::new(Vec::new()),
-            phantom: PhantomData
+            phantom: PhantomData,
+            num_elements: Cell::new(0),
         }
     }
 
@@ -233,6 +235,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             slots: UnsafeCell::new(Vec::new()),
             free: UnsafeCell::new(Vec::new()),
             phantom: PhantomData,
+            num_elements: Cell::new(0),
         }
     }
     #[inline]
@@ -283,13 +286,19 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         let boxed = slot.item.take()?;
         slot.generation = slot.generation.wrapping_add(1);
         self.free.get_mut().push(key_data.idx);
+        self.num_elements.set(self.num_elements.get() - 1);
         Some(AliasableBox::into_unique(boxed))
     }
-
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.num_elements.get()
+    }
     #[inline]
     pub fn capacity(&self) -> usize {
         unsafe { &*self.slots.get() }.capacity()
     }
+
+
     #[inline]
     pub fn insert_with_key(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T){
         self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
@@ -329,6 +338,10 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
 
                 the_slot.item = Some(AliasableBox::from(value));
+
+                // keeping track of the number of elements
+                self.num_elements.set(self.num_elements.get() + 1);
+
                 let the_box = &*the_slot.item.as_ref().unwrap_unchecked();
                 let ptr = the_box.deref() as *const T;
                 Ok((key,&*ptr ))
@@ -357,6 +370,9 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
 
                 acquired.item = Some(AliasableBox::from(created));
+
+                // keeping track of the number of elements
+                self.num_elements.set(self.num_elements.get() + 1);
 
                 Ok((key, acquired.item.as_ref().unwrap_unchecked().deref()))
             }

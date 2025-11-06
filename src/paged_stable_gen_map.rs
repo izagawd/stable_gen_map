@@ -1,5 +1,5 @@
 use aliasable::boxed::AliasableBox;
-use std::cell::UnsafeCell;
+use std::cell::{Cell, UnsafeCell};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, Index, IndexMut};
@@ -116,6 +116,7 @@ pub struct PagedStableGenMap<K: PagedKey, T> {
     pages: UnsafeCell<Vec<Page<T>>>,
     free:  UnsafeCell<Vec<FreeSpace>>,
     phantom: PhantomData<fn(K)>,
+    num_elements: Cell<usize>,
 }
 impl<K: PagedKey,T> Index<K> for PagedStableGenMap<K,T> {
     type Output = T;
@@ -326,6 +327,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
             pages: UnsafeCell::new(Vec::new()),
             free: UnsafeCell::new(Vec::new()),
             phantom: PhantomData,
+            num_elements: Cell::new(0),
         }
     }
 
@@ -366,7 +368,14 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
     pub fn clear(&mut self) {
         self.free.get_mut().clear();
         self.pages.get_mut().clear();
+        self.num_elements.set(0);
     }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.num_elements.get()
+    }
+
 
     /* Remove only with &mut self. This is safe because the borrow checker
     prevents calling this while any &'_ T derived from &self is alive.
@@ -380,6 +389,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
         if slot.generation != key_data.generation { return None; }
         let retrieved =slot.item.get_mut().take()?;
         slot.generation = slot.generation.wrapping_add(1);
+        self.num_elements.set(self.num_elements.get() - 1);
         self.free.get_mut().push(FreeSpace{idx: key_data.idx, page: key_data.page});
         Some(ManuallyDrop::into_inner(retrieved))
     }
@@ -426,6 +436,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
 
 
                 *the_slot.item.get() = Some(ManuallyDrop::new(value));
+                self.num_elements.set(self.num_elements.get() + 1);
                 let items_ref = (&*the_slot.item.get()).as_ref().map(|x| ManuallyDrop::deref(x)).unwrap();
                 let ptr = items_ref as *const T;
                 Ok((key, &*ptr ))
@@ -474,7 +485,7 @@ impl<K: PagedKey,T> PagedStableGenMap<K,T> {
                 let the_slot =  page.get_slot(key_data.idx).unwrap_unchecked();
 
                 *the_slot.item.get() = Some(ManuallyDrop::new(created));
-
+                self.num_elements.set(self.num_elements.get() + 1);
                 Ok((key,  (&*the_slot.item.get()).as_ref().unwrap_unchecked()))
         }
 
