@@ -55,7 +55,7 @@ impl<T, K: PagedKey> Page<T, K>{
     unsafe fn insert_slot(&mut self, slot: Slot<T, K::Gen>) -> K::Idx  {
         let gotten = self.slots.get_unchecked(self.length_used);
         let index = self.length_used;
-        self.length_used = self.length_used.checked_add(1).unwrap();
+        self.length_used += 1;
          *gotten.get() = MaybeUninit::new(slot);
         K::Idx::from_usize(index)
     }
