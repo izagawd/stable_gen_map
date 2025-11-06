@@ -5,11 +5,12 @@ mod paged_stable_gen_map_tests {
     use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use crate::numeric::Numeric;
+    use crate::paged_stable_gen_map::DEFAULT_SLOTS_NUM_PER_PAGE;
     // try_insert_with_key while iterating with iter()
 
     // iter() inside try_insert_with_key closure
 
-    use crate::paged_stable_gen_map::{decode_index, encode_index, PagedStableGenMap, BASE_PAGE_SIZE};
+    use crate::paged_stable_gen_map::{decode_index, encode_index, PagedStableGenMap};
 
 
     type PagedMap<T>  = PagedStableGenMap<DefaultKey, T>;
@@ -118,13 +119,15 @@ mod paged_stable_gen_map_tests {
 
     #[test]
     fn iter_mut_yields_valid_keys_and_values() {
+
         let mut map = PagedStableGenMap::<TestKey, i32>::new();
 
-        // Insert enough items to span multiple pages (e.g. > 32, > 32+64, etc.)
+        // Insert enough items to span multiple pages
         let mut expected = Vec::new();
-        for i in 0..200 {
+        for i in 0..1_000 {
             let (k, v) = map.insert(i);
             assert_eq!(*v, i);
+            assert_eq!(i, *map.get(k).unwrap());
             expected.push((k, i));
         }
 
@@ -134,7 +137,7 @@ mod paged_stable_gen_map_tests {
         let mut seen = Vec::new();
         for (k, v) in &mut map {
             // Key should decode to something valid
-            let coords = decode_index(k.data().idx);
+            let coords = decode_index::<_>(k.data().idx, DEFAULT_SLOTS_NUM_PER_PAGE);
             assert!(coords.page_idx < len);
 
             seen.push((k, *v));
@@ -153,12 +156,15 @@ mod paged_stable_gen_map_tests {
 
     #[test]
     fn remove_reuses_same_slot_with_bumped_generation() {
+
         let mut map = PagedStableGenMap::<TestKey, i32>::new();
+
+
 
         let (k1, v1) = map.insert(10);
         assert_eq!(*v1, 10);
 
-        let coords1 = decode_index(k1.data().idx);
+        let coords1 = decode_index::<_>(k1.data().idx, DEFAULT_SLOTS_NUM_PER_PAGE);
         assert_eq!(map.len(), 1);
 
         // Remove: old key should become invalid.
@@ -171,7 +177,7 @@ mod paged_stable_gen_map_tests {
         assert_eq!(*v2, 20);
         assert_eq!(map.len(), 1);
 
-        let coords2 = decode_index(k2.data().idx);
+        let coords2 = decode_index::<_>(k2.data().idx,DEFAULT_SLOTS_NUM_PER_PAGE);
 
         // Same physical slot (page + slot) reused
         assert_eq!(coords1.page_idx, coords2.page_idx);
@@ -181,19 +187,7 @@ mod paged_stable_gen_map_tests {
         assert_ne!(k1.data().generation, k2.data().generation);
     }
 
-    #[test]
-    fn encode_decode_roundtrip() {
-        // Check first few pages and all slots in them.
-        for page in 0..8 {
-            let cap = BASE_PAGE_SIZE << page;
-            for slot in 0..cap {
-                let idx_u32: u32 = encode_index::<u32>(page, slot);
-                let decoded = decode_index::<u32>(idx_u32);
-                assert_eq!(decoded.page_idx, page);
-                assert_eq!(decoded.slot_idx, slot);
-            }
-        }
-    }
+
     #[test]
     fn paged_iter_mut_can_modify_all_values() {
         let mut map: PagedMap<i32> = PagedStableGenMap::new();

@@ -79,20 +79,20 @@ struct Slot<T, Gen>{
     item: UnsafeCell<Option<ManuallyDrop<T>>>
 }
 
-pub struct PagedStableGenMap<K: Key, T> {
+pub struct PagedStableGenMap<K: Key, T,const SLOTS_NUM_PER_PAGE: usize = DEFAULT_SLOTS_NUM_PER_PAGE> {
     pub(crate) pages: UnsafeCell<Vec<Page<T, K>>>,
     free:  UnsafeCell<Vec<K::Idx>>,
     phantom: PhantomData<fn(K)>,
     num_elements: Cell<usize>,
 }
-impl<K: Key,T> Index<K> for PagedStableGenMap<K,T> {
+impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> Index<K> for PagedStableGenMap<K,T, SLOTS_NUM_PER_PAGE> {
     type Output = T;
     fn index(&self, key: K) -> &Self::Output{
         self.get(key).unwrap()
     }
 }
 
-impl<K: Key,T> IndexMut<K> for PagedStableGenMap<K,T> {
+impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> IndexMut<K> for PagedStableGenMap<K,T, SLOTS_NUM_PER_PAGE> {
 
     fn index_mut(&mut self, key: K) -> &mut Self::Output{
         self.get_mut(key).unwrap()
@@ -101,16 +101,16 @@ impl<K: Key,T> IndexMut<K> for PagedStableGenMap<K,T> {
 
 
 
-pub struct IterMut<'a, K: Key, T> {
-    map: &'a PagedStableGenMap<K, T>,
+pub struct IterMut<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
+    map: &'a PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE>,
     page: usize,
     idx: usize,
     _marker: PhantomData<&'a mut T>,
 }
 
-impl<K: Key, T> PagedStableGenMap<K, T> {
+impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE> {
     #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<'_, K, T> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, T, SLOTS_NUM_PER_PAGE> {
         IterMut {
             map: self,
             page: 0,
@@ -120,7 +120,7 @@ impl<K: Key, T> PagedStableGenMap<K, T> {
     }
 }
 
-impl<'a, K: Key, T> Iterator for IterMut<'a, K, T> {
+impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> Iterator for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE> {
     type Item = (K, &'a mut T);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -160,7 +160,7 @@ impl<'a, K: Key, T> Iterator for IterMut<'a, K, T> {
             let value: &mut T = &mut *md;
 
             // IMPORTANT: idx is now the *encoded* global index, not slot_idx.
-            let idx = encode_index::<K::Idx>(page_idx, slot_idx);
+            let idx = encode_index::<K::Idx>(page_idx, slot_idx, SLOTS_NUM_PER_PAGE);
 
             let key_data = KeyData {
                 generation: slot.generation,
@@ -178,7 +178,7 @@ impl<'a, K: Key, T> Iterator for IterMut<'a, K, T> {
 }
 
 
-pub struct IntoIter<K: Key, T> {
+pub struct IntoIter<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
     pages: Vec<Page<T, K>>,
     page_idx: usize,
     slot_idx: usize,
@@ -186,7 +186,7 @@ pub struct IntoIter<K: Key, T> {
     _marker: PhantomData<K>,
 }
 
-impl<K: Key, T> Iterator for IntoIter<K, T> {
+impl<K: Key, T, const  SLOTS_NUM_PER_PAGE: usize> Iterator for IntoIter<K, T, SLOTS_NUM_PER_PAGE> {
     type Item = (K, T);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -221,7 +221,7 @@ impl<K: Key, T> Iterator for IntoIter<K, T> {
             let value = ManuallyDrop::into_inner(md);
 
             // Again, **encode** (page, slot) into K::Idx
-            let idx = encode_index::<K::Idx>(page_idx, idx_in_page);
+            let idx = encode_index::<K::Idx>(page_idx, idx_in_page, SLOTS_NUM_PER_PAGE);
 
             let key_data = KeyData {
                 generation: slot.generation,
@@ -237,9 +237,9 @@ impl<K: Key, T> Iterator for IntoIter<K, T> {
     }
 
 }
-impl<K: Key, T> IntoIterator for PagedStableGenMap<K, T> {
+impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator for PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE> {
     type Item = (K, T);
-    type IntoIter = IntoIter<K, T>;
+    type IntoIter = IntoIter<K, T, SLOTS_NUM_PER_PAGE>;
 
     fn into_iter(self) -> Self::IntoIter {
         let pages_vec = self.pages.into_inner();
@@ -255,9 +255,9 @@ impl<K: Key, T> IntoIterator for PagedStableGenMap<K, T> {
 }
 
 
-impl<'a, K: Key, T> IntoIterator for &'a mut PagedStableGenMap<K, T> {
+impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator for &'a mut PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE> {
     type Item = (K, &'a mut T);
-    type IntoIter = IterMut<'a, K, T>;
+    type IntoIter = IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -268,12 +268,12 @@ impl<'a, K: Key, T> IntoIterator for &'a mut PagedStableGenMap<K, T> {
 
 
 // RAII "reservation" for a single index in `free`.
-struct FreeGuard<'a, K: Key, T> {
-    map: &'a PagedStableGenMap<K, T>,
+struct FreeGuard<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
+    map: &'a PagedStableGenMap<K, T, SLOTS_NUM_PER_PAGE>,
     idx: K::Idx,
 }
 
-impl<'a, K: Key, T> FreeGuard<'a, K, T> {
+impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> FreeGuard<'a, K, T, SLOTS_NUM_PER_PAGE> {
     fn commit(self) {
         std::mem::forget(self);
     }
@@ -283,42 +283,52 @@ pub struct SplitIdx {
     pub(crate) page_idx: usize,
     pub(crate) slot_idx: usize
 }
-pub(crate) const BASE_PAGE_SIZE: usize = 32;
-/// Encode (page, slot_in_page) into a single global index.
-pub  fn encode_index<Idx: Numeric>(page: usize, slot_in_page: usize) -> Idx {
-    // Page p has BASE_PAGE_SIZE << p slots.
-    debug_assert!(slot_in_page < (BASE_PAGE_SIZE << page));
 
-    let slots_before = BASE_PAGE_SIZE * ((1usize << page) - 1);
-    Idx::from_usize(slots_before + slot_in_page)
+
+#[inline]
+pub fn encode_index<Idx: Numeric>(page_idx: usize, slot_idx: usize, slots_num_per_page: usize) -> Idx {
+
+    debug_assert!(slot_idx < slots_num_per_page);
+    let combined = (page_idx << slot_bits_from_capacity(slots_num_per_page)) | slot_idx;
+    Idx::from_usize(combined)
 }
 
-/// Decode a global index back into (page, slot_in_page).
-pub fn decode_index<Idx: Numeric>(mut idx: Idx) -> SplitIdx {
-    let mut slot = idx.into_usize();
-    let mut page = 0usize;
 
-    loop {
-        let cap = BASE_PAGE_SIZE << page; // slots in this page
-        if slot < cap {
-            // We’re inside this page.
-            return SplitIdx {
-                page_idx: page,
-                slot_idx: slot
-            }
-        }
 
-        // Skip this whole page and move to the next.
-        slot -= cap;
-        page += 1;
+pub const DEFAULT_SLOTS_NUM_PER_PAGE: usize = 32;
+
+#[inline]
+const fn slot_mask_from_capacity(cap: usize) -> usize {
+    // cap must be a power of two, so mask is cap - 1
+    cap - 1
+}
+
+#[inline]
+const fn slot_bits_from_capacity(cap: usize) -> usize {
+    // Ensure it's > 0 and a power of two.
+    assert!(cap.is_power_of_two());
+    (usize::BITS - 1 - cap.leading_zeros()) as usize
+}
+
+
+#[inline]
+pub(crate) fn decode_index<Idx: Numeric>(idx: Idx, slots_num_per_page: usize) -> SplitIdx {
+    let idx = idx.into_usize();
+
+    let slot = idx & slot_mask_from_capacity(slots_num_per_page);
+    let page = idx >> slot_bits_from_capacity(slots_num_per_page);
+    SplitIdx{
+        page_idx: page,
+        slot_idx: slot
     }
 }
-impl<'a, K: Key, T> Drop for FreeGuard<'a, K, T> {
+
+impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> Drop for FreeGuard<'a, K, T, SLOTS_NUM_PER_PAGE> {
     fn drop(&mut self) {
 
         unsafe {
             // Put the index back on the free list.
-            let as_slot_and_page = decode_index(self.idx);
+            let as_slot_and_page = decode_index::<_>(self.idx, SLOTS_NUM_PER_PAGE);
             let generation = &mut (&mut *self.map.pages.get()).get_unchecked_mut(as_slot_and_page.page_idx).slots.get_unchecked_mut(as_slot_and_page.slot_idx).get_mut().assume_init_mut().generation;
             let checked_add_maybe = generation.checked_add(&K::Gen::one());
             if let Some(checked_add) = checked_add_maybe {
@@ -330,11 +340,14 @@ impl<'a, K: Key, T> Drop for FreeGuard<'a, K, T> {
     }
 }
 
-impl<K: Key,T> PagedStableGenMap<K,T> {
+impl<K: Key,T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMap<K,T, SLOTS_NUM_PER_PAGE> {
 
 
     #[inline]
     pub const fn new() -> Self {
+        const {
+            assert!(SLOTS_NUM_PER_PAGE.is_power_of_two()); // this must be a power of 2 to allow the idx to be safetly split into page_idx and slot_idx
+        }
         Self {
             pages: UnsafeCell::new(Vec::new()),
             free: UnsafeCell::new(Vec::new()),
@@ -347,7 +360,7 @@ impl<K: Key,T> PagedStableGenMap<K,T> {
     pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
 
         let key_data = k.data();
-        let as_page_slot_idx = decode_index(key_data.idx);
+        let as_page_slot_idx = decode_index::<_>(key_data.idx, SLOTS_NUM_PER_PAGE);
         let page = self.pages.get_mut().get_mut(as_page_slot_idx.page_idx)?;
 
         let slot = page.get_slot_mut(as_page_slot_idx.slot_idx)?;
@@ -364,7 +377,7 @@ impl<K: Key,T> PagedStableGenMap<K,T> {
     pub fn get(&self, k: K) -> Option<&T> {
 
         let key_data = k.data();
-        let as_page_slot_idx = decode_index(key_data.idx);
+        let as_page_slot_idx = decode_index::<_>(key_data.idx, SLOTS_NUM_PER_PAGE);
         let page = unsafe { &*self.pages.get() }.get(as_page_slot_idx.page_idx)?;
 
         let slot = page.get_slot(as_page_slot_idx.slot_idx)?;
@@ -397,7 +410,7 @@ impl<K: Key,T> PagedStableGenMap<K,T> {
     #[inline]
     pub fn remove(&mut self, k: K) -> Option<T> {
         let key_data = k.data();
-        let as_slot_page_idx = decode_index(key_data.idx);
+        let as_slot_page_idx = decode_index::<_>(key_data.idx, SLOTS_NUM_PER_PAGE);
         let page = self.pages.get_mut().get_mut(as_slot_page_idx.page_idx)?;
 
         let slot = page.get_slot_mut(as_slot_page_idx.slot_idx)?;
@@ -428,7 +441,7 @@ impl<K: Key,T> PagedStableGenMap<K,T> {
             let free_spaces = &mut *self.free.get();
 
             if let Some(free) = free_spaces.pop() {
-                let as_slot_page_idx = decode_index(free);
+                let as_slot_page_idx = decode_index::<_>(free, SLOTS_NUM_PER_PAGE);
                 let page = pages.get_mut(as_slot_page_idx.page_idx).unwrap_unchecked();
                 let the_slot = page.get_slot_mut(as_slot_page_idx.slot_idx).unwrap_unchecked();
                 let generation = the_slot.generation;
@@ -468,7 +481,7 @@ impl<K: Key,T> PagedStableGenMap<K,T> {
 
                 let add_new_page = |pages: &mut Vec<Page<T,K>>| {
                     pages.push(
-                        Page::new(pages.last().map(|x| x.slots.len() * 2).unwrap_or(32))
+                        Page::new(SLOTS_NUM_PER_PAGE)
                     );
                 };
                 if pages.last_mut().is_none()  {
@@ -489,7 +502,7 @@ impl<K: Key,T> PagedStableGenMap<K,T> {
                     });
 
                 let page_idx =pages.len() - 1;
-                let idx = encode_index(page_idx, slot_idx);
+                let idx = encode_index(page_idx, slot_idx, SLOTS_NUM_PER_PAGE);
                 let key_data = KeyData { idx: idx, generation: K::Gen::zero() };
                 let key = K::from(key_data);
                 let free_guard = FreeGuard{
