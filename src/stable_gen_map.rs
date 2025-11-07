@@ -478,8 +478,8 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
                 // Build &T from the AliasableBox.
                 let value_ref: &T = match &slot.item {
-                    SlotVariant::Occupied(b) => &**b,
-                    SlotVariant::Vacant(_) => hint::unreachable_unchecked(),
+                    Occupied(b) => &**b,
+                    Vacant(_) => hint::unreachable_unchecked(),
                 };
 
                 Ok((key, value_ref))
@@ -492,7 +492,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 // Push an initially vacant/reserved slot.
                 slots.push(Slot {
                     generation,
-                    item: SlotVariant::Vacant(None),
+                    item: Vacant(None),
                 });
 
                 // Guard: if func fails, this brand-new slot becomes a free slot.
@@ -505,7 +505,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 let i = idx.into_usize();
                 let slot = slots.get_unchecked_mut(i);
 
-                slot.item = SlotVariant::Occupied(AliasableBox::from_unique(value_box));
+                slot.item = Occupied(AliasableBox::from_unique(value_box));
                 self.num_elements.set(self.num_elements.get() + 1);
 
                 let value_ref: &T = match &slot.item {
