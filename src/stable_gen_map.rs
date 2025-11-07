@@ -239,8 +239,8 @@ impl<T: ?Sized, K: Key> SlotVariant<T, K> where K::Idx : Zero {
         use std::mem;
 
         match mem::replace(self, SlotVariant::Vacant(None)) {
-            SlotVariant::Occupied(boxed) => Some(boxed),
-            vacant @ SlotVariant::Vacant(_) => {
+            Occupied(boxed) => Some(boxed),
+            vacant @ Vacant(_) => {
                 // Already vacant; restore the previous vacant state.
                 *self = vacant;
                 None
