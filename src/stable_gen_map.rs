@@ -13,27 +13,6 @@ struct Slot<T: ?Sized, K: Key> {
     generation: K::Gen,
     item: SlotVariant<T, K>,
 }
-impl<T: Clone, K: Key> Clone for SlotVariant<T, K> {
-    fn clone(&self) -> Self {
-        match self {
-            SlotVariant::Occupied(za_box) => {
-                SlotVariant::Occupied(AliasableBox::from_unique(Box::new( (*za_box).clone())))
-            }
-            Vacant(free) => {
-                SlotVariant::Vacant(*free)
-            }
-        }
-    }
-}
-impl<T: ?Sized, K: Key> Slot<T, K> {}
-impl<T: Clone, K: Key> Clone for Slot<T, K> {
-    fn clone(&self) -> Self {
-        Self{
-            generation: self.generation,
-            item:   self.item.clone(),
-        }
-    }
-}
 
 
 pub struct IterMut<'a, K: Key, T: ?Sized> {
@@ -221,13 +200,7 @@ impl<'a, K: Key, T: ?Sized> Drop for FreeGuard<'a, K, T> {
 }
 
 
-impl<K: Key, T: Clone> Clone for StableGenMap<K,T> {
-    fn clone(&self) -> Self {
-        unsafe {
-            unimplemented!()
-        }
-    }
-}
+
 impl<T: ?Sized, K: Key> SlotVariant<T, K> where K::Idx : Zero {
     fn is_occupied(&self) -> bool {
         matches!(self, Occupied(_))
