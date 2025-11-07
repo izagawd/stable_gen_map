@@ -15,9 +15,9 @@ mod tests{
     mod paged_stable_gen_map_tests;
 
     #[cfg(test)]
-    mod snapshop_paged_test;
+    mod paged_stable_gen_snapshot_tests;
 
     #[cfg(test)]
-    mod snapshot_stable_gen_test;
+    mod stable_gen_snapshot_tests;
 }
 
