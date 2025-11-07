@@ -214,7 +214,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
     }
 
     #[inline]
-    /// Iteration is only safe if no mutation in the map occurs while iterating, which can happen even with safe code. For example, inserting while iterating with this is UB
+    /// Iteration with this method is only safe if no mutation of the map occurs while iterating, which can happen even with safe code. For example, inserting while iterating with this is UB
     pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item=(K, &T)> {
         unsafe{(&*self.pages.get())}
             .iter()
