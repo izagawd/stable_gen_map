@@ -89,8 +89,8 @@ impl<T, K: Key> SlotVariant<T, K> {
 }
 
 struct Slot<T, K: Key> {
-    generation: K::Gen,
     item: UnsafeCell<SlotVariant<T, K>>,
+    generation: K::Gen,
 }
 
 struct Page<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> {
@@ -126,12 +126,17 @@ impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE>
             if self.length_used <= slot_idx {
                 None
             } else {
-                Some((&*self.slots.get_unchecked(slot_idx).get()).assume_init_ref())
+                Some(unsafe{ self.get_slot_unchecked(slot_idx) })
             }
         }
 
     }
+    #[inline]
+    unsafe fn get_slot_unchecked(&self, slot_idx: usize) -> &Slot<T, K> {
 
+        (&*self.slots.get_unchecked(slot_idx).get()).assume_init_ref()
+
+    }
     #[inline]
     fn get_slot_mut(&mut self, slot_num: usize) -> Option<&mut Slot<T, K>> {
         if self.length_used <= slot_num {
@@ -334,19 +339,30 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
         let pages = unsafe { &*self.pages.get() };
         let page = pages.get(split.page_idx)?;
 
-        let slot = page.get_slot(split.slot_idx)?;
-        if slot.generation != key_data.generation {
-            return None;
+        let slot;
+
+        if SLOTS_NUM_PER_PAGE == 1 {
+            debug_assert!(split.slot_idx == 0);
+
+            // Safety: Optimization. if the amount of slots per page is 1, the slot_idx will always be 0
+            // and a page that only has a maximum of one slot, will always have that one slot to be initialized, based on the
+            // insert logic
+           slot = unsafe{  page.get_slot_unchecked(0) };
+        } else{
+            slot = page.get_slot(split.slot_idx)?
         }
 
-        let variant: &SlotVariant<T, K> = unsafe { &*slot.item.get() };
-        match variant {
-            SlotVariant::Occupied(md) => {
-                // SAFETY: ManuallyDrop<T> holds a valid T, never moved.
-                let ptr = md.deref() as *const T;
-                Some(unsafe { &*ptr })
+        if slot.generation == key_data.generation {
+            match unsafe { &*slot.item.get() } {
+                SlotVariant::Occupied(md) => {
+                    // SAFETY: ManuallyDrop<T> holds a valid T, never moved.
+                    let ptr = md.deref() as *const T;
+                    Some(unsafe { &*ptr })
+                }
+                SlotVariant::Vacant(_) => None,
             }
-            SlotVariant::Vacant(_) => None,
+        } else {
+            None
         }
     }
 

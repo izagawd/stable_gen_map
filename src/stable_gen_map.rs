@@ -119,7 +119,7 @@ impl<'a, K: Key + 'a , T: ?Sized> Iterator for IterMut<'a, K, T> where K::Idx : 
 impl<'a, K: Key, T: ?Sized> IntoIterator for &'a mut StableGenMap<K, T> where K::Idx : Numeric, <K as Key>::Gen: Numeric {
     type Item = (K, &'a mut T);
     type IntoIter = IterMut<'a, K, T>;
-    
+
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -232,7 +232,7 @@ impl<'a, K: Key, T: ?Sized> Drop for FreeGuard<'a, K, T> {
             if let Some(checked_add) = checked_add_maybe {
                 *generation  = checked_add;
                 let old_head = self.map.next_free.get();
-                 slots_mut.get_unchecked_mut(self.idx.into_usize()).item = Vacant(old_head);
+                slots_mut.get_unchecked_mut(self.idx.into_usize()).item = Vacant(old_head);
                 self.map.next_free.set(Some(self.idx));
 
 
@@ -307,7 +307,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 self.iter_unsafe()
                     .map(|(k, _)| k)
             );
-             vec
+            vec
         }
     }
 
@@ -374,7 +374,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /// Tries to reserve capacity for at least `additional` more elements to be inserted before a resize occurs
     #[inline]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
-       unsafe { &mut *self.slots.get() }.try_reserve(additional)
+        unsafe { &mut *self.slots.get() }.try_reserve(additional)
     }
 
     /// Reserves capacity for at least `additional` more elements to be inserted before a resize occurs
@@ -452,15 +452,15 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         Some(AliasableBox::into_unique(boxed))
 
     }
-    
-    
+
+
     /// Returns the total amount of elements in the map
     #[inline]
     pub fn len(&self) -> usize {
         self.num_elements.get()
     }
-    
-    
+
+
     /// How much elements (Occupied or Vacant, doesn't matter), the stable_gen_map can hold before reallocating
     #[inline]
     pub fn capacity(&self) -> usize {
