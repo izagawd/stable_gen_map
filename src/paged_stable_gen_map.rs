@@ -326,13 +326,51 @@ PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
     }
 
     /// Inserts a value given by the inputted function into the map. The key where the
-    /// value will be stored is passed into the inputted function.
+    /// value will be stored is passed into the inputted function.\
+    /// # Examples
+    /// ```
+    /// # use stable_gen_map::key::DefaultKey;
+    /// use stable_gen_map::paged_stable_gen_map::PagedStableGenMap;
+    /// let mut sm = PagedStableGenMap::new();
+    /// #[derive(Eq,PartialEq, Debug)]
+    /// struct KeyHolder{
+    ///     key: DefaultKey
+    /// }
+    /// let (key, reference) = sm.insert_with_key(|k| KeyHolder{
+    ///     key: k
+    /// });
+    /// assert_eq!(sm[key], KeyHolder{key});
+    /// ```
     #[inline]
     pub fn insert_with_key(&self, func: impl FnOnce(K) -> T) -> (K, &T) {
         self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
     }
 
     /// Same as insert_with_key but allowing the closure to return a Result.
+    /// Inserts a value given by the inputted function into the map. The key where the
+    /// value will be stored is passed into the inputted function.
+    /// This is useful to store values that contain their own key.
+    /// This version allows the closure to return a `Result`, so you can propagate errors.
+    /// # Examples
+    /// ```rust
+    /// use stable_gen_map::key::DefaultKey;
+    /// use stable_gen_map::paged_stable_gen_map::PagedStableGenMap;
+    ///
+    /// #[derive(Eq, PartialEq, Debug)]
+    /// struct KeyHolder {
+    ///     key: DefaultKey,
+    /// }
+    ///
+    /// let sm = PagedStableGenMap::new();
+    ///
+    /// let (key, reference) = sm
+    ///     .try_insert_with_key::<()>(|k| Ok(KeyHolder { key: k }))
+    ///     .unwrap();
+    ///
+    /// assert_eq!(sm[key], KeyHolder { key });
+    /// // optional: also prove `reference` really points to the same element:
+    /// assert!(std::ptr::eq(reference, &sm[key]));
+    /// ```
     #[inline]
     pub fn try_insert_with_key<E>(
         &self,
@@ -444,6 +482,15 @@ PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
     }
 
     /// Simple insert. When it inserts, it returns the key and reference.
+    /// # Examples
+    /// ```rust
+    /// use stable_gen_map::key::DefaultKey;
+    /// use stable_gen_map::paged_stable_gen_map::PagedStableGenMap;
+    /// let sm = PagedStableGenMap::<DefaultKey,_>::new();
+    /// let (key, reference) = sm.insert(4);
+    /// assert_eq!(*reference, 4);
+    /// assert_eq!(*sm.get(key).unwrap(), 4);
+    ///```
     #[inline]
     pub fn insert(&self, value: T) -> (K, &T) {
         self.insert_with_key(|_| value)
