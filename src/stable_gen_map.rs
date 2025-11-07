@@ -244,7 +244,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(
-                self.unsafe_iter()
+                self.iter_unsafe()
             );
             return vec;
         }
@@ -261,7 +261,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(
-                self.unsafe_iter()
+                self.iter_unsafe()
                     .map(|(k, _)| k)
             );
              vec
@@ -275,7 +275,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(
-                self.unsafe_iter()
+                self.iter_unsafe()
                     .map(|(_, r)| r)
             );
             vec
@@ -283,7 +283,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     }
     /// Iteration is only safe if no mutation in the map occurs while iterating, which can happen even with safe code. For example, inserting while iterating with this is UB
     #[inline]
-    pub unsafe fn unsafe_iter(&self) -> impl Iterator<Item = (K, &T)> {
+    pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (K, &T)> {
         unsafe{(&*self.slots.get())}
             .iter()
             .enumerate()
