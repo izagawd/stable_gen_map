@@ -1,13 +1,13 @@
-use std::array::from_fn;
-use crate::numeric::Numeric;
 use crate::key::{Key, KeyData};
+use crate::numeric::Numeric;
 use aliasable::boxed::AliasableBox;
 use num_traits::{CheckedAdd, One, Zero};
+use std::array::from_fn;
 use std::cell::{Cell, UnsafeCell};
 use std::hint;
 use std::marker::PhantomData;
-use std::mem::{ManuallyDrop, MaybeUninit};
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::mem::MaybeUninit;
+use std::ops::{Deref, Index, IndexMut};
 
 pub const DEFAULT_SLOTS_NUM_PER_PAGE: usize = 32;
 
@@ -52,7 +52,7 @@ pub(crate) fn decode_index<Idx: Numeric>(idx: Idx, slots_num_per_page: usize) ->
 /// Occupancy + intrusive free list
 enum SlotVariant<T, K: Key> {
     /// Occupied slot with a value.
-    Occupied(ManuallyDrop<T>),
+    Occupied(T),
     /// Vacant slot; `Option<K::Idx>` is the next free index, or None for end of free list.
     Vacant(Option<K::Idx>),
 }
@@ -66,7 +66,7 @@ impl<T, K: Key> SlotVariant<T, K> {
     /// If occupied, take the value and make this slot Vacant(None).
     /// If already vacant, leave as-is and return None.
     #[inline]
-    fn take_occupied(&mut self) -> Option<ManuallyDrop<T>> {
+    fn take_occupied(&mut self) -> Option<T> {
         use std::mem;
         match mem::replace(self, SlotVariant::Vacant(None)) {
             SlotVariant::Occupied(md) => Some(md),
@@ -156,11 +156,7 @@ impl<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> Drop for Page<T, K, SLOTS_NUM_P
                     break;
                 }
                 self.length_used -= 1;
-                let slot = slot_cell.get_mut().assume_init_mut();
-                let variant = slot.item.get_mut();
-                if let SlotVariant::Occupied(ref mut md) = variant {
-                    ManuallyDrop::drop(md);
-                }
+                slot_cell.get_mut().assume_init_read(); // dropped
             }
         }
     }
@@ -232,7 +228,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
                         match  &*slot_pure.item.get() {
                             SlotVariant::Occupied(ref a) => Some(
                                 (K::from(KeyData{idx: encode_index(page_idx,slot_idx,SLOTS_NUM_PER_PAGE),generation: slot_pure.generation}),
-                                 ManuallyDrop::deref(a))),
+                                 a)),
                             _ => None
                         }
                     })
@@ -320,7 +316,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
         match variant {
             SlotVariant::Occupied(ref mut md) => {
                 // SAFETY: value is live; we never move the allocation.
-                Some(ManuallyDrop::deref_mut(md))
+                Some(md)
             }
             SlotVariant::Vacant(_) => None,
         }
@@ -398,7 +394,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
             }
         }
 
-        Some(ManuallyDrop::into_inner(md))
+        Some(md)
     }
 
     /// Inserts a value given by the inputted function into the map. The key where the
@@ -491,12 +487,12 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
                 let slot: &mut Slot<T, K> =
                     page.get_slot_mut(split.slot_idx).unwrap_unchecked();
 
-                *slot.item.get_mut() = SlotVariant::Occupied(ManuallyDrop::new(value));
+                *slot.item.get_mut() = SlotVariant::Occupied(value);
                 self.num_elements.set(self.num_elements.get() + 1);
 
                 // Build &T from ManuallyDrop.
                 let value_ref: &T = match &*slot.item.get() {
-                    SlotVariant::Occupied(md) => &**md,
+                    SlotVariant::Occupied(md) => md,
                     SlotVariant::Vacant(_) => hint::unreachable_unchecked(),
                 };
 
@@ -544,11 +540,11 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
                 let the_slot: &Slot<T, K> =
                     page.get_slot(slot_idx).unwrap_unchecked();
 
-                *the_slot.item.get() = SlotVariant::Occupied(ManuallyDrop::new(created));
+                *the_slot.item.get() = SlotVariant::Occupied(created);
                 self.num_elements.set(self.num_elements.get() + 1);
 
                 let value_ref: &T = match &*the_slot.item.get() {
-                    SlotVariant::Occupied(md) => &**md,
+                    SlotVariant::Occupied(md) => md,
                     SlotVariant::Vacant(_) => hint::unreachable_unchecked(),
                 };
 
@@ -614,7 +610,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for PagedStableGen
                     let snap = match variant {
                         SlotVariant::Occupied(md) => {
                             // grab &T from ManuallyDrop<T>
-                            Snap::Occupied(ManuallyDrop::deref(md))
+                            Snap::Occupied(md)
                         }
                         SlotVariant::Vacant(next) => Snap::Vacant(*next),
                     };
@@ -644,7 +640,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for PagedStableGen
                         Snap::Occupied(vref) => {
                             // T::clone may re-enter and mutate the original map,
                             // but we only use the snapshot, so we’re safe.
-                            SlotVariant::Occupied(ManuallyDrop::new(vref.clone()))
+                            SlotVariant::Occupied(vref.clone())
                         }
                         Snap::Vacant(next) => SlotVariant::Vacant(next),
                     };
@@ -707,7 +703,7 @@ for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
                 unsafe { &mut *slot.item.get() };
 
             let value: &mut T = match variant {
-                SlotVariant::Occupied(ref mut md) => md.deref_mut(),
+                SlotVariant::Occupied(ref mut md) => md,
                 SlotVariant::Vacant(_) => continue,
             };
 
@@ -789,7 +785,7 @@ for IntoIter<K, T, SLOTS_NUM_PER_PAGE>
                 SlotVariant::Vacant(_) => continue,
             };
 
-            let value = ManuallyDrop::into_inner(md);
+            let value = md;
 
             let idx = encode_index::<K::Idx>(page_idx, idx_in_page, SLOTS_NUM_PER_PAGE);
             let key_data = KeyData {
