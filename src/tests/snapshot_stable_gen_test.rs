@@ -86,74 +86,9 @@ mod snapshot_stablegen_tests {
         assert_eq!(snap_keys, key_set);
     }
 
-    #[test]
-    fn snapshot_iter_matches_snapshot() {
-        let map = StableGenMap::<DefaultKey, i32>::new();
 
-        for i in 0..8 {
-            map.insert(Box::new(i));
-        }
 
-        let via_snapshot = map.snapshot();
-        let via_iter: Vec<_> = map.snapshot_iter().collect();
 
-        assert_eq!(via_snapshot.len(), via_iter.len());
-        for (a, b) in via_snapshot.iter().zip(via_iter.iter()) {
-            assert_eq!(a.0, b.0);
-            assert!(std::ptr::eq::<i32>(a.1, b.1));
-        }
-    }
-
-    #[test]
-    fn snapshot_ref_only_matches_snapshot_refs() {
-        let map = StableGenMap::<DefaultKey, i32>::new();
-
-        for i in 0..10 {
-            map.insert(Box::new(i));
-        }
-
-        let pairs = map.snapshot();
-        let refs = map.snapshot_ref_only();
-        let via_iter: Vec<&i32> = map.snapshot_ref_only_iter().collect();
-
-        assert_eq!(pairs.len(), refs.len());
-        assert_eq!(refs.len(), via_iter.len());
-
-        let from_pairs: HashSet<*const i32> =
-            pairs.iter().map(|(_, v)| *v as *const i32).collect();
-        let from_refs: HashSet<*const i32> =
-            refs.iter().map(|v| *v as *const i32).collect();
-        let from_iter: HashSet<*const i32> =
-            via_iter.iter().map(|v| *v as *const i32).collect();
-
-        assert_eq!(from_pairs, from_refs);
-        assert_eq!(from_refs, from_iter);
-    }
-
-    #[test]
-    fn snapshot_key_only_matches_snapshot_keys() {
-        let map = StableGenMap::<DefaultKey, i32>::new();
-
-        let mut inserted_keys = Vec::new();
-        for i in 0..10 {
-            let (k, _) = map.insert(Box::new(i));
-            inserted_keys.push(k);
-        }
-
-        let pairs = map.snapshot();
-        let keys = map.snapshot_key_only();
-        let via_iter: Vec<_> = map.snapshot_key_only_iter().collect();
-
-        assert_eq!(pairs.len(), keys.len());
-        assert_eq!(keys.len(), via_iter.len());
-
-        let from_pairs: HashSet<_> = pairs.iter().map(|(k, _)| *k).collect();
-        let key_set: HashSet<_> = keys.iter().copied().collect();
-        let iter_set: HashSet<_> = via_iter.iter().copied().collect();
-
-        assert_eq!(from_pairs, key_set);
-        assert_eq!(key_set, iter_set);
-    }
 }
 
 
@@ -204,21 +139,4 @@ fn snapshot_ignores_future_inserts() {
     assert!(!snap_keys.contains(&k3));
 }
 
-#[test]
-fn snapshot_iter_matches_snapshot() {
-    let map = StableGenMap::<DefaultKey, i32>::new();
 
-    for i in 0..8 {
-        map.insert(Box::new(i));
-    }
-
-    let via_snapshot = map.snapshot();
-    let via_iter: Vec<_> = map.snapshot_iter().collect();
-
-    assert_eq!(via_snapshot.len(), via_iter.len());
-    for (a, b) in via_snapshot.iter().zip(via_iter.iter()) {
-        // (K, &T) pairs must match exactly in order
-        assert_eq!(a.0, b.0);
-        assert!(std::ptr::eq::<i32>(a.1, b.1));
-    }
-}

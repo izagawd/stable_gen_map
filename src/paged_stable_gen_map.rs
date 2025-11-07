@@ -271,19 +271,6 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
 
     }
 
-    /// Iterator over `K` for a snapshot of the map. Ignores future inserts.
-    /// Allocates internally via `snapshot_key_only`.
-    #[inline]
-    pub fn snapshot_key_only_iter(&self) -> <Vec<K> as IntoIterator>::IntoIter {
-        self.snapshot_key_only().into_iter()
-    }
-
-    /// Iterator over `&T` for a snapshot of the map. Ignores future inserts.
-    /// Allocates internally via `snapshot_ref_only`.
-    #[inline]
-    pub fn snapshot_ref_only_iter(&self) -> <Vec<&T> as IntoIterator>::IntoIter {
-        self.snapshot_ref_only().into_iter()
-    }
 
     /// Creates a new, empty PagedStableGenMap
     #[inline]

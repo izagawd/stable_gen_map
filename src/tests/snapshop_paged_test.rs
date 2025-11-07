@@ -105,22 +105,7 @@ const SLOTS: usize = 4;
         assert_eq!(from_pairs, from_refs);
     }
 
-    #[test]
-    fn snapshot_ref_only_iter_matches_snapshot_ref_only() {
-        let map = PagedMap::new();
 
-        for i in 0..(SLOTS * 2) as i32 {
-            map.insert(i);
-        }
-
-        let via_vec = map.snapshot_ref_only();
-        let via_iter: Vec<&i32> = map.snapshot_ref_only_iter().collect();
-
-        assert_eq!(via_vec.len(), via_iter.len());
-        for (a, b) in via_vec.iter().zip(via_iter.iter()) {
-            assert!(std::ptr::eq::<i32>(*a, *b));
-        }
-    }
 
     #[test]
     fn snapshot_ref_only_ignores_future_inserts() {
@@ -159,22 +144,7 @@ const SLOTS: usize = 4;
         assert_eq!(from_pairs, from_keys);
     }
 
-    #[test]
-    fn snapshot_key_only_iter_matches_snapshot_key_only() {
-        let map = PagedMap::new();
 
-        for i in 0..(SLOTS * 2) as i32 {
-            map.insert(i);
-        }
-
-        let via_vec = map.snapshot_key_only();
-        let via_iter: Vec<_> = map.snapshot_key_only_iter().collect();
-
-        assert_eq!(via_vec.len(), via_iter.len());
-        for (a, b) in via_vec.iter().zip(via_iter.iter()) {
-            assert_eq!(a, b);
-        }
-    }
 
     #[test]
     fn snapshot_key_only_ignores_future_inserts() {
