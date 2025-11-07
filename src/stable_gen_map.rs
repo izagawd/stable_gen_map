@@ -38,6 +38,49 @@ impl<K: Key, T: ?Sized> StableGenMap<K, T> where K::Idx : Zero {
     }
 }
 
+impl<K: Key, T: Clone> Clone for StableGenMap< K, T> {
+    fn clone(&self) -> Self {
+        unsafe {
+            enum RefOrNextFree<'a, K: Key, T: ?Sized> {
+                Ref(&'a T),
+                Next(Option<K::Idx>),
+            }
+            let num_elements = self.len();
+            let next_free = self.next_free.clone();
+            let mut slots_ref = Vec::with_capacity(num_elements);
+
+            slots_ref.extend((&*self.slots.get())
+                .iter()
+                .enumerate()
+                .map(|(slot_idx, slot)| ( slot.generation, match &slot.item {
+                    Occupied(v) => RefOrNextFree::<K, _>::Ref(v.as_ref()),
+                    Vacant(nxt_free) => RefOrNextFree::<K, _>::Next(*nxt_free),
+                }))
+            );
+            Self{
+                num_elements: Cell::new(num_elements),
+                next_free,
+                slots: UnsafeCell::new(slots_ref
+                    .into_iter()
+                    .map(|x| {
+
+                        Slot{
+
+                            generation: x.0,
+                            item: match x.1 {
+                                RefOrNextFree::Ref(the_ref) => Occupied(AliasableBox::from_unique(Box::new(the_ref.clone()))) ,
+                                RefOrNextFree::Next(next_free) => Vacant(next_free)
+                            }
+                        }
+                    })
+                    .collect()),
+                phantom: PhantomData,
+            }
+        }
+
+    }
+}
+
 impl<'a, K: Key + 'a , T: ?Sized> Iterator for IterMut<'a, K, T> where K::Idx : Numeric, K::Gen: Numeric {
     type Item = (K, &'a mut T);
 
