@@ -199,9 +199,92 @@ pub struct IterMut<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
     _marker: PhantomData<&'a mut T>,
 }
 
-impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize>
-PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
+impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
 {
+
+    /// Returns a snapshot of the map at the current moment. it ignores future inserts
+    /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
+    pub fn snapshot(&self) -> Vec<(K, &T)> {
+        unsafe{
+            let mut vec = Vec::with_capacity(self.len());
+            vec.extend(self.unsafe_iter());
+            vec
+        }
+    }
+
+    /// Iteration is only safe if no mutation in the map occurs while iterating, which can happen even with safe code. For example, inserting while iterating with this is UB
+    pub unsafe fn unsafe_iter(&self) -> impl Iterator<Item=(K, &T)> {
+        unsafe{(&*self.pages.get())}
+            .iter()
+            .enumerate()
+            .map(|(page_idx, page)| {
+                page.slots
+                    .iter()
+                    .enumerate()
+                    .filter_map(move |(slot_idx, slot)| unsafe {
+                        if slot_idx  >= page.length_used {
+                            return None;
+                        }
+                        let slot_pure = unsafe {(&*slot.get()).assume_init_ref()};
+                        match  (&*slot_pure.item.get()) {
+                            SlotVariant::Occupied(ref a) => Some(
+                                (K::from(KeyData{idx: encode_index(page_idx,slot_idx,SLOTS_NUM_PER_PAGE),generation: slot_pure.generation}),
+                                 ManuallyDrop::deref(a))),
+                            _ => None
+                        }
+                    })
+            })
+            .flatten()
+    }
+    /// Returns a snapshot of the map at the current moment. it ignores future inserts
+    /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
+    pub fn snapshot_iter(&self) -> <Vec<(K, &T)> as IntoIterator>::IntoIter {
+        self.snapshot().into_iter()
+    }
+
+    /// Returns a snapshot of the current value references only (no keys).
+    /// Future inserts are ignored. Allocates a single `Vec<&T>`.
+    pub fn snapshot_ref_only(&self) -> Vec<&T> {
+        unsafe{
+            let mut vec = Vec::with_capacity(self.len());
+            vec.extend(
+                self
+                    .unsafe_iter()
+                    .map(|x| x.1)
+            );
+            vec
+        }
+    }
+
+    /// Returns a snapshot of the current keys only (no references).
+    /// Future inserts are ignored. Allocates a single `Vec<K>`.
+    pub fn snapshot_key_only(&self) -> Vec<K> {
+        unsafe{
+            let mut vec = Vec::with_capacity(self.len());
+            vec.extend(
+                self
+                    .unsafe_iter()
+                    .map(|x| x.0)
+            );
+            vec
+        }
+
+    }
+
+    /// Iterator over `K` for a snapshot of the map. Ignores future inserts.
+    /// Allocates internally via `snapshot_key_only`.
+    #[inline]
+    pub fn snapshot_key_only_iter(&self) -> <Vec<K> as IntoIterator>::IntoIter {
+        self.snapshot_key_only().into_iter()
+    }
+
+    /// Iterator over `&T` for a snapshot of the map. Ignores future inserts.
+    /// Allocates internally via `snapshot_ref_only`.
+    #[inline]
+    pub fn snapshot_ref_only_iter(&self) -> <Vec<&T> as IntoIterator>::IntoIter {
+        self.snapshot_ref_only().into_iter()
+    }
+
     /// Creates a new, empty PagedStableGenMap
     #[inline]
     pub const fn new() -> Self {
