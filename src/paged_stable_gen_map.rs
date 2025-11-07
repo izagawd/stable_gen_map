@@ -25,8 +25,8 @@ const fn slot_bits_from_capacity(cap: usize) -> usize {
 }
 
 pub struct SplitIdx {
-    pub(crate) page_idx: usize,
-    pub(crate) slot_idx: usize,
+    pub page_idx: usize,
+    pub slot_idx: usize,
 }
 
 /// compresses the index of a page and the index of a slot into one, which is stored in keys
@@ -38,7 +38,7 @@ pub fn encode_index<Idx: Numeric>(page_idx: usize, slot_idx: usize, slots_num_pe
 }
 
 #[inline]
-pub(crate) fn decode_index<Idx: Numeric>(idx: Idx, slots_num_per_page: usize) -> SplitIdx {
+pub fn decode_index<Idx: Numeric>(idx: Idx, slots_num_per_page: usize) -> SplitIdx {
     let idx = idx.into_usize();
 
     let slot = idx & slot_mask_from_capacity(slots_num_per_page);
