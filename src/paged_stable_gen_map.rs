@@ -289,6 +289,9 @@ PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
     }
 
     /// Removes an element by key, returning its owned value.
+    /// Removes only with &mut self. This is safe because the borrow checker
+    /// prevents calling this while any &'_ T derived from &self is alive.
+    /// A use case will be in, for example, freeing memory after the end of a frame in a video game
     #[inline]
     pub fn remove(&mut self, k: K) -> Option<T> {
         let key_data = k.data();
