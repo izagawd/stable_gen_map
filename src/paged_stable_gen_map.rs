@@ -195,7 +195,7 @@ for PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
 pub struct IterMut<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
     map: &'a PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>,
     page: usize,
-    idx: usize,
+    slot_idx: usize,
     _marker: PhantomData<&'a mut T>,
 }
 
@@ -297,7 +297,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
         IterMut {
             map: self,
             page: 0,
-            idx: 0,
+            slot_idx: 0,
             _marker: PhantomData,
         }
     }
@@ -589,14 +589,14 @@ for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
             let page_idx = self.page;
             let page = &pages[page_idx];
 
-            if self.idx >= page.length_used {
+            if self.slot_idx >= page.length_used {
                 self.page += 1;
-                self.idx = 0;
+                self.slot_idx = 0;
                 continue;
             }
 
-            let slot_idx = self.idx;
-            self.idx += 1;
+            let slot_idx = self.slot_idx;
+            self.slot_idx += 1;
 
             let slot = match page.get_slot(slot_idx) {
                 Some(s) => s,
