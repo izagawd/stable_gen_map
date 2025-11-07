@@ -25,8 +25,8 @@ const fn slot_bits_from_capacity(cap: usize) -> usize {
 }
 
 pub struct SplitIdx {
-    pub page_idx: usize,
-    pub slot_idx: usize,
+    pub(crate) page_idx: usize,
+    pub(crate) slot_idx: usize,
 }
 
 /// compresses the index of a page and the index of a slot into one, which is stored in keys
