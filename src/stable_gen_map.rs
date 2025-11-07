@@ -381,7 +381,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     }
     
     
-    /// How much space remaining the stable_gen_map can hold before reallocating
+    /// How much elements (Occupied or Vacant, doesn't matter), the stable_gen_map can hold before reallocating
     #[inline]
     pub fn capacity(&self) -> usize {
         unsafe { &*self.slots.get() }.capacity()
