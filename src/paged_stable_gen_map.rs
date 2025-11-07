@@ -204,6 +204,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
 
     /// Returns a snapshot of the map at the current moment. it ignores future inserts
     /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
+    /// #[inline]
     pub fn snapshot(&self) -> Vec<(K, &T)> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
@@ -212,6 +213,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
         }
     }
 
+    #[inline]
     /// Iteration is only safe if no mutation in the map occurs while iterating, which can happen even with safe code. For example, inserting while iterating with this is UB
     pub unsafe fn unsafe_iter(&self) -> impl Iterator<Item=(K, &T)> {
         unsafe{(&*self.pages.get())}
@@ -238,12 +240,14 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
     }
     /// Returns a snapshot of the map at the current moment. it ignores future inserts
     /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
+    #[inline]
     pub fn snapshot_iter(&self) -> <Vec<(K, &T)> as IntoIterator>::IntoIter {
         self.snapshot().into_iter()
     }
 
     /// Returns a snapshot of the current value references only (no keys).
     /// Future inserts are ignored. Allocates a single `Vec<&T>`.
+    #[inline]
     pub fn snapshot_ref_only(&self) -> Vec<&T> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
@@ -258,6 +262,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
 
     /// Returns a snapshot of the current keys only (no references).
     /// Future inserts are ignored. Allocates a single `Vec<K>`.
+    #[inline]
     pub fn snapshot_key_only(&self) -> Vec<K> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
