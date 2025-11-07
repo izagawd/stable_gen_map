@@ -70,45 +70,48 @@ fn clone_with_holes_preserves_logical_state() {
     assert_eq!(c.get(k4), Some(&4));
 }
 
-struct Reentrant<'a> {
-    map: &'a StableGenMap<DefaultKey, Reentrant<'a>>,
+// Thread-local pointer to "the map being cloned".
+// Reentrant::clone will use this to insert into the map.
+thread_local! {
+        static GLOBAL_MAP_PTR: Cell<*const StableGenMap<DefaultKey, Reentrant>> =
+            Cell::new(std::ptr::null());
+    }
+
+#[derive(Debug)]
+struct Reentrant {
     val: i32,
-    cloned_inserted: Cell<bool>,
 }
 
-impl Clone for Reentrant<'static> {
+impl Clone for Reentrant {
     fn clone(&self) -> Self {
-        // On clone, insert a new element into the original map.
-        let _ = self.map.insert(Box::new(Reentrant {
-            map: self.map,
-            val: self.val + 1000,
-            cloned_inserted: Cell::new(false),
-        }));
-        self.cloned_inserted.set(true);
+        // On clone, insert a new element into the original map (if any).
+        GLOBAL_MAP_PTR.with(|cell| {
+            let ptr = cell.get();
+             {
+                unsafe {
+                    let map: &StableGenMap<DefaultKey, Reentrant> = &*ptr;
+                    let _ = map.insert(Box::new(Reentrant {
+                        val: self.val + 1000,
+                    }));
+                }
+            }
+        });
 
-        Reentrant {
-            map: self.map,
-            val: self.val,
-            cloned_inserted: Cell::new(false),
-        }
+        Reentrant { val: self.val }
     }
 }
 
-#[cfg_attr(miri, ignore)] // we make miri ignore the test, because its complaining about leaks. Might need to look back at this later
-#[test]
-fn clone_does_not_see_reentrant_inserts_from_t_clone() {
-    let m:&'static StableGenMap<DefaultKey, Reentrant<'static>> =  Box::leak(Box::new(StableGenMap::new()));
+type MapReentrant = StableGenMap<DefaultKey, Reentrant>;
 
-    let (k1, _) = m.insert(Box::new(Reentrant {
-        map: &m,
-        val: 1,
-        cloned_inserted: Cell::new(false),
-    }));
-    let (k2, _) = m.insert(Box::new(Reentrant {
-        map: &m,
-        val: 2,
-        cloned_inserted: Cell::new(false),
-    }));
+#[test]
+fn stable_clone_handles_reentrant_t_clone() {
+    let m: MapReentrant = StableGenMap::new();
+
+    // Let Reentrant::clone know which map to mutate.
+    GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
+
+    let (k1, _) = m.insert(Box::new(Reentrant { val: 1 }));
+    let (k2, _) = m.insert(Box::new(Reentrant { val: 2 }));
 
     // Before clone: 2 entries
     assert_eq!(m.len(), 2);
@@ -116,10 +119,13 @@ fn clone_does_not_see_reentrant_inserts_from_t_clone() {
     // clone() will cause each Reentrant::clone to insert extra entries into *m*
     let c = m.clone();
 
-    // original map now has at least as many entries as before, probably 4
+    // Stop re-entrancy after cloning, so later code doesn't accidentally hit it.
+    GLOBAL_MAP_PTR.with(|cell| cell.set(std::ptr::null()));
+
+    // Original map now has at least as many entries as before (probably more).
     assert!(m.len() >= 2);
 
-    // cloned map must reflect state at clone start -> still 2 logical elements
+    // Cloned map must reflect the state at clone start → 2 logical elements.
     assert_eq!(c.len(), 2);
 
     // k1, k2 must exist in cloned map with original vals
@@ -128,15 +134,15 @@ fn clone_does_not_see_reentrant_inserts_from_t_clone() {
     assert_eq!(v1.val, 1);
     assert_eq!(v2.val, 2);
 
-    // cloned map should have exactly 2 keys: k1 and k2
+    // cloned keys set should be exactly {k1, k2}
     let cloned_keys: HashSet<_> = {
-        // if you already have snapshot_key_only(), use that here.
-        // Otherwise, approximate via snapshot of pairs:
-        c.snapshot()
-            .into_iter()
-            .map(|(k, _)| k)
-            .collect()
+        // if you already have snapshot_key_only(), use that:
+        // c.snapshot_key_only().into_iter().collect()
+        //
+        // otherwise, approximate via snapshot of pairs:
+        c.snapshot().into_iter().map(|(k, _)| k).collect()
     };
+
     assert_eq!(cloned_keys.len(), 2);
     assert!(cloned_keys.contains(&k1));
     assert!(cloned_keys.contains(&k2));

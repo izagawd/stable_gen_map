@@ -1,3 +1,4 @@
+use std::array::from_fn;
 use crate::numeric::Numeric;
 use crate::key::{Key, KeyData};
 use aliasable::boxed::AliasableBox;
@@ -92,12 +93,12 @@ struct Slot<T, K: Key> {
     item: UnsafeCell<SlotVariant<T, K>>,
 }
 
-struct Page<T, K: Key> {
-    slots: AliasableBox<[UnsafeCell<MaybeUninit<Slot<T, K>>>]>,
+struct Page<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> {
+    slots: AliasableBox<[UnsafeCell<MaybeUninit<Slot<T, K>>>; SLOTS_NUM_PER_PAGE]>,
     length_used: usize,
 }
 
-impl<T, K: Key> Page<T, K> {
+impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE> {
     #[inline]
     unsafe fn insert_slot(&mut self, slot: Slot<T, K>) -> usize {
         let gotten = self.slots.get_unchecked(self.length_used);
@@ -108,12 +109,12 @@ impl<T, K: Key> Page<T, K> {
     }
 
     #[inline]
-    unsafe fn new(size: usize) -> Self {
+    unsafe fn new() -> Self {
         Self {
             slots: AliasableBox::from_unique(
-                (0..size)
-                    .map(|_| UnsafeCell::new(MaybeUninit::uninit()))
-                    .collect(),
+                Box::new(
+                    from_fn(|_|  UnsafeCell::new(MaybeUninit::uninit()))
+                )
             ),
             length_used: 0,
         }
@@ -146,7 +147,7 @@ impl<T, K: Key> Page<T, K> {
     }
 }
 
-impl<T, K: Key> Drop for Page<T, K> {
+impl<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> Drop for Page<T, K, SLOTS_NUM_PER_PAGE> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -167,7 +168,7 @@ impl<T, K: Key> Drop for Page<T, K> {
 
 /// Paged Stable Gen Map with intrusive free list.
 pub struct PagedStableGenMapAbstract<K: Key, T, const SLOTS_NUM_PER_PAGE: usize = DEFAULT_SLOTS_NUM_PER_PAGE> {
-    pub(crate) pages: UnsafeCell<Vec<Page<T, K>>>,
+    pub(crate) pages: UnsafeCell<Vec<Page<T, K, SLOTS_NUM_PER_PAGE>>>,
     next_free: Cell<Option<K::Idx>>, // head of free-list
     phantom: PhantomData<fn(K)>,
     num_elements: Cell<usize>,
@@ -216,7 +217,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
     #[inline]
     /// Iteration with this method is only safe if no mutation of the map occurs while iterating, which can happen even with safe code. For example, inserting while iterating with this is UB
     pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item=(K, &T)> {
-        unsafe{(&*self.pages.get())}
+        (&*self.pages.get())
             .iter()
             .enumerate()
             .map(|(page_idx, page)| {
@@ -228,7 +229,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
                             return None;
                         }
                         let slot_pure = unsafe {(&*slot.get()).assume_init_ref()};
-                        match  (&*slot_pure.item.get()) {
+                        match  &*slot_pure.item.get() {
                             SlotVariant::Occupied(ref a) => Some(
                                 (K::from(KeyData{idx: encode_index(page_idx,slot_idx,SLOTS_NUM_PER_PAGE),generation: slot_pure.generation}),
                                  ManuallyDrop::deref(a))),
@@ -502,8 +503,8 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
                 Ok((key, value_ref))
             } else {
                 // Case 2: no free slot; append into pages.
-                let add_new_page = |pages: &mut Vec<Page<T, K>>| {
-                    pages.push(Page::new(SLOTS_NUM_PER_PAGE));
+                let add_new_page = |pages: &mut Vec<Page<T, K, SLOTS_NUM_PER_PAGE>>| {
+                    pages.push(Page::new());
                 };
 
                 if pages.last_mut().is_none() {
@@ -572,6 +573,104 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
     }
 }
 
+impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
+{
+    fn clone(&self) -> Self {
+        unsafe {
+            // Snapshot payload for each slot:
+            // either a &T (for occupied) or the next_free index (for vacant).
+            enum Snap<'a, K: Key, T> {
+                Occupied(&'a T),
+                Vacant(Option<K::Idx>),
+            }
+
+            let num_elements = self.len();
+            let next_free = self.next_free.get();
+            let pages_ref: &Vec<Page<T, K, SLOTS_NUM_PER_PAGE>> = &*self.pages.get();
+
+            // 1) SNAPSHOT PHASE: read pages/slots once, no T::clone yet.
+            //
+            //    We gather, for each page:
+            //      - its slot capacity
+            //      - a Vec of (generation, Snap) for slots [0..length_used)
+            //
+            //    After this, we never touch self.pages / self.next_free again.
+            let mut pages_snapshot: Vec< Vec<(K::Gen, Snap<'_, K, T>)>> =
+                Vec::with_capacity(pages_ref.len());
+
+            for page in pages_ref.iter() {
+
+                let used = page.length_used;
+
+                let mut slots_snap = Vec::with_capacity(used);
+                for slot_idx in 0..used {
+                    let slot: &Slot<T, K> = page
+                        .get_slot(slot_idx)
+                        .unwrap_unchecked();
+
+                    let gen = slot.generation;
+                    let variant: &SlotVariant<T, K> = &*slot.item.get();
+
+                    let snap = match variant {
+                        SlotVariant::Occupied(md) => {
+                            // grab &T from ManuallyDrop<T>
+                            Snap::Occupied(ManuallyDrop::deref(md))
+                        }
+                        SlotVariant::Vacant(next) => Snap::Vacant(*next),
+                    };
+
+                    slots_snap.push((gen, snap));
+                }
+
+                pages_snapshot.push(slots_snap);
+            }
+
+            // 2) REBUILD PHASE: build a fresh Vec<Page<..>> from the snapshot.
+            //
+            //    Now we *do* call T::clone, so user code can re-enter and
+            //    mutate the ORIGINAL map via &self.insert(...). That’s fine:
+            //    we never touch self.pages again, and we’re cloning from
+            //    &T references which remain valid because inserts only
+            //    use free slots / append and never overwrite existing Ts.
+            let mut new_pages: Vec<Page<T, K, SLOTS_NUM_PER_PAGE>> =
+                Vec::with_capacity(pages_snapshot.len());
+
+            for slots_snap in pages_snapshot {
+                // Recreate page with same capacity
+                let mut new_page: Page<T, K, SLOTS_NUM_PER_PAGE> = Page::new();
+
+                for (gen, snap) in slots_snap {
+                    let item = match snap {
+                        Snap::Occupied(vref) => {
+                            // T::clone may re-enter and mutate the original map,
+                            // but we only use the snapshot, so we’re safe.
+                            SlotVariant::Occupied(ManuallyDrop::new(vref.clone()))
+                        }
+                        Snap::Vacant(next) => SlotVariant::Vacant(next),
+                    };
+
+                    let slot = Slot {
+                        generation: gen,
+                        item: UnsafeCell::new(item),
+                    };
+
+                    // writes Slot into the next uninit slot and bumps length_used
+                    let _idx = new_page.insert_slot(slot);
+                }
+
+                new_pages.push(new_page);
+            }
+
+            Self {
+                pages: UnsafeCell::new(new_pages),
+                next_free: Cell::new(next_free),
+                phantom: PhantomData,
+                num_elements: Cell::new(num_elements),
+            }
+        }
+    }
+}
+
 // Mutable iterator over paged map
 impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> Iterator
 for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
@@ -580,7 +679,7 @@ for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let pages: &Vec<Page<T, K>> = unsafe { &*self.map.pages.get() };
+            let pages: &Vec<Page<T, K, SLOTS_NUM_PER_PAGE>> = unsafe { &*self.map.pages.get() };
 
             if self.page_idx >= pages.len() {
                 return None;
@@ -646,7 +745,7 @@ for &'a mut PagedStableGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
 
 // Owning iterator (consumes map)
 pub struct IntoIter<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
-    pages: Vec<Page<T, K>>,
+    pages: Vec<Page<T, K, SLOTS_NUM_PER_PAGE>>,
     page_idx: usize,
     slot_idx: usize,
     len: usize,
