@@ -47,6 +47,143 @@ fn paged_clone_basic_contents_equal_but_independent() {
     assert_eq!(c.get(k4), None);
 }
 
+#[cfg(test)]
+mod clone_efficiently_paged_tests {
+    use super::*;
+    use crate::key::{DefaultKey, Key};
+    use crate::paged_stable_gen_map::{PagedStableGenMap, DEFAULT_SLOTS_NUM_PER_PAGE};
+
+    type PagedMap<T> = PagedStableGenMap<DefaultKey, T>;
+
+    #[test]
+    fn paged_clone_efficiently_empty_map() {
+        let mut map: PagedMap<String> = PagedStableGenMap::new();
+
+        let clone = map.clone_efficiently_mut();
+
+        assert_eq!(map.len(), 0);
+        assert_eq!(clone.len(), 0);
+        assert!(map.snapshot().is_empty());
+        assert!(clone.snapshot().is_empty());
+    }
+
+    #[test]
+    fn paged_clone_efficiently_copies_all_live_entries_and_not_aliasing() {
+        let mut map: PagedMap<String> = PagedStableGenMap::new();
+
+        // Insert enough elements to cross at least one page boundary.
+        // DEFAULT_SLOTS_NUM_PER_PAGE = 32, so this gives multiple pages.
+        let mut keys = Vec::new();
+        for i in 0..(DEFAULT_SLOTS_NUM_PER_PAGE + 5) {
+            let (k, _) = map.insert(format!("val-{i}"));
+            keys.push(k);
+        }
+
+        // Remove a few to create holes in various pages.
+        let removed_key_1 = keys[3];
+        let removed_key_2 = keys[DEFAULT_SLOTS_NUM_PER_PAGE]; // in a later page
+        assert_eq!(map.remove(removed_key_1).as_deref(), Some("val-3"));
+        assert_eq!(
+            map.remove(removed_key_2).as_deref(),
+            Some(format!("val-{}", DEFAULT_SLOTS_NUM_PER_PAGE).as_str())
+        );
+
+        let len_before = map.len();
+
+        // Take some reference pointers in the original map.
+        let k_keep_1 = keys[0];
+        let k_keep_2 = keys[DEFAULT_SLOTS_NUM_PER_PAGE - 1];
+
+        let p1 = map.get(k_keep_1).unwrap() as *const String;
+        let p2 = map.get(k_keep_2).unwrap() as *const String;
+
+        let mut clone = map.clone_efficiently_mut();
+
+        assert_eq!(clone.len(), len_before);
+        assert_eq!(clone.len(), map.len());
+
+        // Every live (k, v) pair from the original must appear with same value in clone.
+        for (k, v) in map.snapshot() {
+            assert_eq!(
+                clone.get(k),
+                Some(v),
+                "clone_efficiently must copy all live entries"
+            );
+        }
+
+        // Freed keys must still be invalid in the clone.
+        assert!(clone.get(removed_key_1).is_none());
+        assert!(clone.get(removed_key_2).is_none());
+
+        // Deep clone: different allocations.
+        let c1 = clone.get(k_keep_1).unwrap() as *const String;
+        let c2 = clone.get(k_keep_2).unwrap() as *const String;
+        assert_ne!(p1, c1);
+        assert_ne!(p2, c2);
+
+        // Mutate original; clone stays the same.
+        *map.get_mut(k_keep_1).unwrap() = "mutated".to_owned();
+        assert_eq!(map.get(k_keep_1).unwrap(), "mutated");
+        assert_eq!(clone.get(k_keep_1).unwrap(), &format!("val-0"));
+    }
+
+    #[test]
+    fn paged_clone_efficiently_preserves_free_list_structure_but_independent() {
+        let mut map: PagedMap<i32> = PagedStableGenMap::new();
+
+        let (k1, _) = map.insert(10);
+        let (k2, _) = map.insert(20); // will be freed
+        let (k3, _) = map.insert(30);
+
+        assert_eq!(map.len(), 3);
+
+        let kd_old = k2.data();
+
+        let removed = map.remove(k2).unwrap();
+        assert_eq!(removed, 20);
+        let len_before = map.len();
+        assert_eq!(len_before, 2);
+
+        let mut clone = map.clone_efficiently_mut();
+        assert_eq!(clone.len(), len_before);
+
+        // k2 should be invalid in both.
+        assert!(map.get(k2).is_none());
+        assert!(clone.get(k2).is_none());
+
+        // Both maps should still see k1 and k3.
+        assert_eq!(map.get(k1), Some(&10));
+        assert_eq!(map.get(k3), Some(&30));
+        assert_eq!(clone.get(k1), Some(&10));
+        assert_eq!(clone.get(k3), Some(&30));
+
+        // Insert in each: both should reuse the same encoded idx as k2 used,
+        // but with generation bumped.
+        let (new_k_orig, _) = map.insert(99);
+        let (new_k_clone, _) = clone.insert(99);
+
+        let kd_orig = new_k_orig.data();
+        let kd_clone = new_k_clone.data();
+
+        // Same physical slot reused.
+        assert_eq!(kd_orig.idx, kd_clone.idx);
+        assert_eq!(kd_orig.idx, kd_old.idx);
+
+        // Generations must be strictly greater than old generation.
+        assert!(kd_orig.generation > kd_old.generation);
+        assert!(kd_clone.generation > kd_old.generation);
+
+        // Maps are independent: removing from one does not affect the other.
+        assert_eq!(map.len(), len_before + 1);
+        assert_eq!(clone.len(), len_before + 1);
+
+        let _ = map.remove(new_k_orig);
+        assert_eq!(map.len(), len_before);
+        assert_eq!(clone.len(), len_before + 1);
+    }
+}
+
+
 #[test]
 fn paged_clone_preserves_all_keys_and_values() {
     let m: Map = Map::new();

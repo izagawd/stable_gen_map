@@ -98,6 +98,43 @@ struct Page<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> {
     length_used: usize,
 }
 
+impl<T: Clone, K: Key, const SLOTS_NUM_PER_PAGE: usize>  Page<T, K,SLOTS_NUM_PER_PAGE> {
+    #[inline]
+    unsafe fn clone(&self) -> Self {
+
+            Self{
+                slots: AliasableBox::from_unique(Box::new(
+                    from_fn(|index|{
+                        if self.length_used <= index {
+                            UnsafeCell::new(MaybeUninit::uninit())
+                        } else {
+                            let assumed_init = (&*self.slots.as_ref().deref()[index].get()).assume_init_ref();
+                            UnsafeCell::new(
+                                MaybeUninit::new(
+                                    Slot{
+                                        generation: assumed_init.generation,
+                                        item: UnsafeCell::new((&*assumed_init.item.get()).clone())
+                                    }
+                                )
+
+                            )
+                        }
+                    }))
+                ),
+                length_used: self.length_used,
+            }
+
+    }
+}
+impl<T: Clone, K: Key> SlotVariant<T, K> {
+    #[inline]
+    unsafe fn clone(&self) -> Self{
+        match self {
+            Self::Occupied(item) => Self::Occupied(item.clone()),
+            Self::Vacant(vacant) => Self::Vacant(vacant.clone()),
+        }
+    }
+}
 impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE> {
     #[inline]
     unsafe fn insert_slot(&mut self, slot: Slot<T, K>) -> usize {
@@ -329,6 +366,25 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
             }
             SlotVariant::Vacant(_) => None,
         }
+    }
+    /// A more efficient Clone operation than the Clone::clone implementation, but if a `Clone` implementation of `T` mutates the map, UB occurs
+    #[inline]
+    pub unsafe fn clone_efficiently(&self) -> Self where T: Clone {
+        Self{
+            num_elements: self.num_elements.clone(),
+            phantom: PhantomData,
+            next_free: self.next_free.clone(),
+            pages: UnsafeCell::new((&*self.pages.get()).iter().map(|x| x.clone()).collect()),
+        }
+    }
+    /// a more efficient Clone operation than the Clone::clone implementation. since done with a mutable reference, a `Clone` implementation of `T` cannot mutate the map without unsafe code
+    /// so `clone_efficiently_mut` is safe
+    #[inline]
+    pub fn clone_efficiently_mut(&mut self) -> Self where T: Clone {
+        unsafe {
+            self.clone_efficiently()
+        }
+
     }
 
     /// Gets a shared reference to an element

@@ -13,8 +13,29 @@ struct Slot<T: ?Sized, K: Key> {
     generation: K::Gen,
     item: SlotVariant<T, K>,
 }
+impl<T: Clone, K: Key> SlotVariant<T, K> {
+    #[inline]
+    unsafe fn clone(&self) -> Self {
 
-
+            match self{
+                Occupied(v) => {
+                    Occupied(AliasableBox::from_unique(Box::new(v.as_ref().clone())))
+                } Vacant(vacant) => {
+                    Vacant(vacant.clone())
+                }
+            }
+        
+    }
+}
+impl<T: Clone, K: Key>  Slot<T, K> {
+    #[inline]
+    unsafe fn clone(&self) -> Self {
+        Self{
+            generation: self.generation,
+            item: self.item.clone(),
+        }
+    }
+}
 pub struct IterMut<'a, K: Key, T: ?Sized> {
     ptr: *mut Slot<T,K>,
     len: usize,
@@ -361,6 +382,30 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         }
     }
 
+    /// a more efficient Clone operation than the Clone::clone implementation. Since done with a mutable reference, a `Clone` implementation of `T` cannot mutate the map without unsafe code,
+    /// so `clone_efficiently_mut` is safe
+    #[inline]
+    pub fn clone_efficiently_mut(&mut self) -> Self where T: Clone {
+        unsafe {
+            Self{
+                num_elements: self.num_elements.clone(),
+                phantom: PhantomData,
+                next_free: self.next_free.clone(),
+                slots: UnsafeCell::new(self.slots.get_mut().iter_mut().map(|x| x.clone()).collect()),
+            }
+        }
+    }
+    /// A more efficient Clone operation than the Clone::clone implementation, but if a `Clone` implementation of `T` mutates the map, UB occurs
+    #[inline]
+    pub unsafe  fn clone_efficiently(&self) -> Self where T: Clone {
+        Self{
+            num_elements: self.num_elements.clone(),
+            phantom: PhantomData,
+            next_free: self.next_free.clone(),
+            slots: UnsafeCell::new((&*self.slots.get()).iter().map(|x| x.clone()).collect()),
+        }
+    }
+    
     /// Creates a new StableGenMap, with no elements
     #[inline]
     pub const fn new() -> Self {
