@@ -122,11 +122,14 @@ impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE>
 
     #[inline]
     fn get_slot(&self, slot_idx: usize) -> Option<&Slot<T, K>> {
-        if self.length_used <= slot_idx {
-            None
-        } else {
-            self.slots.get(slot_idx).map(|x| unsafe { (&*x.get()).assume_init_ref() })
+        unsafe {
+            if self.length_used <= slot_idx {
+                None
+            } else {
+                Some((&*self.slots.get_unchecked(slot_idx).get()).assume_init_ref())
+            }
         }
+
     }
 
     #[inline]
@@ -246,6 +249,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> PagedStableGenMapAbstract<K, T,
     /// Future inserts are ignored. Allocates a single `Vec<&T>`.
     #[inline]
     pub fn snapshot_ref_only(&self) -> Vec<&T> {
+
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(
@@ -604,7 +608,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for PagedStableGen
                         .get_slot(slot_idx)
                         .unwrap_unchecked();
 
-                    let gen = slot.generation;
+                    let generation = slot.generation;
                     let variant: &SlotVariant<T, K> = &*slot.item.get();
 
                     let snap = match variant {
@@ -615,7 +619,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for PagedStableGen
                         SlotVariant::Vacant(next) => Snap::Vacant(*next),
                     };
 
-                    slots_snap.push((gen, snap));
+                    slots_snap.push((generation, snap));
                 }
 
                 pages_snapshot.push(slots_snap);
@@ -635,7 +639,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for PagedStableGen
                 // Recreate page with same capacity
                 let mut new_page: Page<T, K, SLOTS_NUM_PER_PAGE> = Page::new();
 
-                for (gen, snap) in slots_snap {
+                for (generation, snap) in slots_snap {
                     let item = match snap {
                         Snap::Occupied(vref) => {
                             // T::clone may re-enter and mutate the original map,
@@ -646,7 +650,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for PagedStableGen
                     };
 
                     let slot = Slot {
-                        generation: gen,
+                        generation: generation,
                         item: UnsafeCell::new(item),
                     };
 
