@@ -7,7 +7,12 @@ pub mod stable_paged_gen_map;
 
 #[cfg(test)]
 mod tests{
-    
+    #[cfg(test)]
+    mod stable_deref_gen_retain_tests;
+
+    #[cfg(test)]
+    mod stable_paged_gen_retain_tests;
+
     #[cfg(test)]
     mod stable_paged_gen_clone_tests;
     #[cfg(test)]

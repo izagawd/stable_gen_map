@@ -244,6 +244,12 @@ pub struct IterMut<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
     slot_idx: usize,
     _marker: PhantomData<&'a mut T>,
 }
+struct RemoveArgumentsPaged<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
+    slot: &'a mut Slot<T, K>,
+    key: K,
+    num_elements: &'a Cell<usize>,
+    next_free: &'a Cell<Option<K::Idx>>,
+}
 
 impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>
 {
@@ -472,13 +478,98 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
 
         debug_assert_eq!(self.len(), 0);
     }
+    /// Retains only elements for which `f(key, &mut value)` returns true.
+    ///
+    /// Elements for which `f` returns false are removed as if by `remove`,
+    /// updating `num_elements`, bumping generations, and linking into
+    /// the intrusive free list (or retiring slot on overflow).
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(K, &mut T) -> bool,
+    {
+        unsafe {
+            let pages: &mut Vec<Page<T, K, SLOTS_NUM_PER_PAGE>> = &mut self.pages.get_mut();
 
+            for (page_idx, page) in pages.iter_mut().enumerate() {
+                let length_used = page.length_used;
+
+                for slot_idx in 0..length_used {
+                    let slot = page.get_slot_unchecked_mut(slot_idx);
+
+                    // Get mutable access to SlotVariant<T, K>.
+                    let variant: &mut SlotVariant<T, K> = slot.item.get_mut();
+
+                    if let SlotVariant::Occupied(ref mut value) = variant {
+                        // Build key for this slot.
+                        let idx = encode_index::<K::Idx>(page_idx, slot_idx, SLOTS_NUM_PER_PAGE);
+                        let key_data = KeyData {
+                            idx,
+                            generation: slot.generation,
+                        };
+                        let key = K::from(key_data);
+
+                        if !f(key, value) {
+                            // Use shared removal logic (no generation check, we know this is current).
+                            Self::remove_split_data::<false>(RemoveArgumentsPaged {
+                                slot,
+                                key,
+                                num_elements: &self.num_elements,
+                                next_free: &self.next_free,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
     /// Gets the number of elements in the map
     #[inline]
     pub fn len(&self) -> usize {
         self.num_elements.get()
     }
 
+
+    /// This to allow code repetition without the borrow checker getting in the way
+    unsafe fn remove_split_data<const DO_GENERATION_CHECK: bool>(
+        mut args: RemoveArgumentsPaged<K, T, SLOTS_NUM_PER_PAGE>,
+    ) -> Option<T> {
+
+
+        let slot = &mut args.slot;
+        let num_elements = args.num_elements;
+        let next_free = args.next_free;
+        let key_data = args.key.data();
+
+        if DO_GENERATION_CHECK && slot.generation != key_data.generation {
+            return None;
+        }
+
+
+        let variant: &mut SlotVariant<T, K> = slot.item.get_mut();
+        let value = match variant.take_occupied() {
+            Some(v) => v,
+            None => return None,
+        };
+
+
+        num_elements.set(num_elements.get() - 1);
+
+
+        match slot.generation.checked_add(&K::Gen::one()) {
+            Some(new_gen) => {
+                slot.generation = new_gen;
+                let old_head = next_free.get();
+                *slot.item.get_mut() = SlotVariant::Vacant(old_head);
+                next_free.set(Some(key_data.idx));
+            }
+            None => {
+
+                *slot.item.get_mut() = SlotVariant::Vacant(None);
+            }
+        }
+
+        Some(value)
+    }
     /// Removes an element by key, returning its owned value.
     /// Removes only with &mut self. This is safe because the borrow checker
     /// prevents calling this while any &'_ T derived from &self is alive.
@@ -492,28 +583,15 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         let page = pages.get_mut(split.page_idx)?;
 
         let slot = page.get_slot_mut(split.slot_idx)?;
-        if slot.generation != key_data.generation {
-            return None;
+        unsafe {
+            Self::remove_split_data::<true>(RemoveArgumentsPaged {
+                slot,
+                key: k,
+                num_elements: &self.num_elements,
+                next_free: &self.next_free,
+            })
         }
 
-        let variant = slot.item.get_mut();
-        let md = variant.take_occupied()?;
-        self.num_elements.set(self.num_elements.get() - 1);
-
-        match slot.generation.checked_add(&K::Gen::one()) {
-            Some(new_gen) => {
-                slot.generation = new_gen;
-                let old_head = self.next_free.get();
-                *slot.item.get_mut() = SlotVariant::Vacant(old_head);
-                self.next_free.set(Some(key_data.idx));
-            }
-            None => {
-                // retire slot, keep it vacant and not in free list
-                *slot.item.get_mut() = SlotVariant::Vacant(None);
-            }
-        }
-
-        Some(md)
     }
 
     /// Inserts a value given by the inputted function into the map. The key where the

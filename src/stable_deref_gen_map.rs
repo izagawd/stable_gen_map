@@ -373,6 +373,12 @@ impl<Derefable, K: Key> SlotVariant<Derefable, K> where K::Idx : Zero {
         }
     }
 }
+struct RemoveArguments<'a, K: Key, Derefable>{
+    slot: &'a mut Slot<Derefable, K>,
+    num_elements: &'a Cell<usize>,
+    next_free: &'a Cell<Option<K::Idx>>,
+    key: K
+}
 impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
 
 
@@ -552,33 +558,87 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
         }
     }
 
-    /// Removes an element of the supplied key from the map, and returns its owned value.
-    /// Removes only with &mut self. This is safe because the borrow checker
-    /// prevents calling this while any &'_ T derived from &self is alive.
-    /// A use case will be in, for example, freeing memory after the end of a frame in a video game 
-    #[inline]
-    pub fn remove(&mut self, k: K) -> Option<Derefable> {
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        Derefable: DerefMut,
+        F: FnMut(K, &mut Derefable::Target) -> bool,
+    {
+        unsafe {
+            let slots: &mut Vec<Slot<Derefable, K>> = self.slots.get_mut();
+
+            for (idx_usize, slot) in slots.iter_mut().enumerate() {
+                // Only care about occupied slots.
+                if let SlotVariant::Occupied(ref mut smart_ptr) = slot.item {
+                    // Build the key for this slot.
+                    let idx = K::Idx::from_usize(idx_usize);
+                    let key_data = KeyData {
+                        idx,
+                        generation: slot.generation,
+                    };
+                    let key = K::from(key_data);
+
+                    // Get &mut Target from the smart pointer.
+                    let value: &mut Derefable::Target = smart_ptr.deref_mut();
+
+                    // Decide whether to keep it.
+                    if !f(key, value) {
+                        Self::remove_split_data::<false>(RemoveArguments{
+                            slot,
+                            key,
+                            num_elements: &self.num_elements,
+                            next_free: &self.next_free,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+
+    /// Splitting the logic into fields so borrow checker doesn't complain
+    unsafe fn remove_split_data<const DO_GENERATION_CHECK: bool>(remove_arguments: RemoveArguments<K,Derefable>) -> Option<Derefable>{
+        let slot = remove_arguments.slot;
+        let k = remove_arguments.key;
+        let num_elements = remove_arguments.num_elements;
+        let next_free = remove_arguments.next_free;
         let key_data = k.data();
-        let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?;
-        if slot.generation != key_data.generation { return None; }
+
+        if DO_GENERATION_CHECK {
+            if slot.generation != key_data.generation { return None; }
+        }
 
         let smart_ptr = slot.item.take_occupied()?;
-        self.num_elements.set(self.num_elements.get() - 1);
+        num_elements.set(num_elements.get() - 1);
         match slot.generation.checked_add(&K::Gen::one()) {
             Some(generation) => {
                 slot.generation = generation;
 
                 // 3. Link this vacant slot into the intrusive free list.
                 //    head = Some(idx); slot.next_free = old_head.
-                let old_head = self.next_free.get();
+                let old_head =  next_free.get();
                 slot.item = SlotVariant::Vacant(old_head);
-                self.next_free.set(Some(key_data.idx));
+                next_free.set(Some(key_data.idx));
             }
             None => {
 
             }
         }
         Some(smart_ptr)
+    }
+    /// Removes an element of the supplied key from the map, and returns its owned value.
+    /// Removes only with &mut self. This is safe because the borrow checker
+    /// prevents calling this while any &'_ T derived from &self is alive.
+    /// A use case will be in, for example, freeing memory after the end of a frame in a video game 
+    #[inline]
+    pub fn remove(&mut self, k: K) -> Option<Derefable> {
+        unsafe {
+            Self::remove_split_data::<true>(RemoveArguments{
+                slot: self.slots.get_mut().get_mut(k.data().idx.into_usize())?,
+                key: k,
+                num_elements: &self.num_elements,
+                next_free: &self.next_free,
+            })    
+        }
 
     }
 
