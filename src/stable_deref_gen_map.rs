@@ -114,7 +114,7 @@ pub struct IterMut<'a, K: Key, Derefable: DerefGenMapPromise + 'a> {
     _marker: PhantomData<&'a mut Derefable::Target>,
     _key_marker: PhantomData<K>,
 }
-pub type BoxStableDerefGenMap<K, T: ?Sized> = StableDerefGenMap<K, Box<T>>;
+pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
 impl<K: Key, Derefable: DerefGenMapPromise> StableDerefGenMap<K, Derefable> where K::Idx : Zero {
     /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
     #[inline]
