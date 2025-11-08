@@ -1,94 +1,142 @@
-# Stable Generational Map
+# stable_gen_map
 
-This Rust library provides a structure, `StableGenMap`, which provides a safe way to insert elements with a `&` reference, rather than a `&mut` reference, in a single threaded environment.
+A single-threaded, generational map that lets you:
 
-Requiring `&` instead of `&mut` for inserts avoids an exclusive borrow, lowering the incidence of aliasing conflicts enforced by the borrow checker, which may enable more design patterns.
+- **insert with `&self` instead of `&mut self`,**
+- keep `&T` **stable across internal resizes,**
+- and use **generational keys** to avoid use-after-free bugs.
 
-`get` and `remove` are O(1). Insert is O(1) unless there is a resize.
+It’s designed for patterns like *graphs, self-referential structures, and arenas* where you want to keep `&T` references around while still inserting new elements. Great for patterns that rely on shared mutability on a single thread.
 
-It is possible to remove elements with this structure if access to a `&mut` reference is available, which is generally done at events in code such as, for instance, the end of a frame in a videogame.
+> **Important:** This crate is intentionally single-threaded. The map types are not `Sync`, and are meant to be used from a single thread only.
 
-# Example
+---
 
-### Basic Insert
+## Core types
+
+- `StableGenMap<K, T>`  
+  A stable generational map storing `T` inline. This is generally what you would want
+
+- `StablePagedGenMap<K, T, const SLOTS_NUM_PER_PAGE: usize>`  
+  Same semantics as `StableGenMap`, but uses multiple slots in a page for better
+  cache locality when you have lots of elements, at the exchange of a slower 'get'
+
+- `StableDerefGenMap<K, Derefable>`  
+  A stable generational map where each element is a **smart pointer** that
+  implements `StableDeref` (via `stable_deref_trait`) and the internal
+  `DerefGenMapPromise`. You get stable references to `Deref::Target`,
+  even if the underlying `Vec` reallocates.  
+  This is the “advanced” variant for `Box<T>`, `Rc<T>`, `Arc<T>`, `&T`, or
+  custom smart pointers.
+
+- `BoxStableDerefGenMap<K, T>`  
+  Type alias for `StableDerefGenMap<K, Box<T>>`.  
+  This is the most ergonomic “owning” deref-based map: the map owns `T` via
+  `Box<T>`, you still insert with `&self`, and you get stable `&T`/`&mut T`
+  references. Best used if your element needs to be boxed anyways.
+  
+
+Keys implement the `Key` trait; you can use the provided `DefaultKey` or define your own (e.g. with smaller index / generation types).
+
+---
+
+## What you get
+
+- `insert(&self, value: T) -> (K, &T)`
+- `insert_with_key(&self, f: impl FnOnce(K) -> T) -> (K, &T)`
+- `try_insert_with_key(&self, f: impl FnOnce(K) -> Result<T, E>) -> Result<(K, &T), E>`
+
+All of these only need `&self`, not `&mut self`.
+
+- `get(&self, key: K) -> Option<&T>`
+- `get_mut(&mut self, key: K) -> Option<&mut T>`
+- `remove(&mut self, key: K) -> Option<T>`
+- `len(&self) -> usize`
+- `clear(&mut self)`
+
+**Complexity**
+
+- `get` / `get_mut` / `remove` are O(1).
+- `insert` is O(1) amortized (O(1) unless a resize happens).
+
+**Lifetime / safety model**
+
+- You can hold `&T` from the map and still call `insert` (which only needs `&self`).
+- `remove` and `clear` need `&mut self`, so you can’t free elements while there are outstanding borrows – enforced by the borrow-checker.
+- Generational keys (`Key::Gen`) mean stale keys simply return `None` instead of aliasing newly inserted elements.
+
+---
+
+## Basic example (using `StableGenMap`)
+
+This shows the main selling point: **insert with `&self`** and indirect references via keys.
 
 ```rust
-struct Human{
-    name: String,
-    age: Cell<u8>,
-    friend: Cell<Option<DefaultKey>> // custom keys can be made,
-}
+use std::cell::{Cell, RefCell};
 
-let map = StableGenMap::<DefaultKey /* custom keys can be made */,Human>::new();
+use stable_gen_map::key::DefaultKey;
+use stable_gen_map::stable_paged_gen_map::StableGenMap;
 
-// insert requires &, not &mut
-let (drake_key, drake_reference) = map.insert(Box::new(Human{
-    age: Cell::new(20),
-    name: String::from("Drake"),
-    friend: Cell::new(None),
-}));
-
-```
-
-
-### Indirect Cyclic References via Keys, Struct storing its own key
-
-```rust
-// Now, we want to store reference of the key in self.
-
-struct Human{
-    name: String,
-    age: Cell<u8>,
-    friend: Cell<Option<DefaultKey>> // custom keys can be made,
-}
-
-struct HumanWithKey{
-    human: Human,
+#[derive(Debug)]
+struct Entity {
     key: DefaultKey,
+    name: String,
+    parent: Cell<Option<DefaultKey>>,
+    children: RefCell<Vec<DefaultKey>>,
 }
 
-impl HumanWithKey{
-    fn make_new_friend(&self, map: &StableGenMap<DefaultKey,HumanWithKey>){
-        // insert requires &, not &mut
-        let (key, reference) =  map.insert_with(|key| Box::new( HumanWithKey{
-            human: Human{
-                age: Cell::new(21),
-                name: String::from("John"),
-                friend: Cell::new(Some(self.key))
-            },
-            key,
-        }));
-        self.human.friend.set(Some(key));
+impl Entity {
+    /// Add a child *from this entity* using only `&self` and `&StableGenMap`.
+    /// Returns both the child's key and a stable `&Entity` reference.
+    fn add_child<'m>(
+        &self,
+        map: &'m StableGenMap<DefaultKey, Entity>,
+        child_name: &str,
+    ) -> (DefaultKey, &'m Entity) {
+        let parent_key = self.key;
+
+        // Insert a new entity into the same map. We only have `&StableGenMap` here.
+        let (child_key, child_ref) = map.insert_with_key(|k| Entity {
+            key: k,
+            name: child_name.to_string(),
+            parent: Cell::new(Some(parent_key)),
+            children: RefCell::new(Vec::new()),
+        });
+
+        // Record the relationship using interior mutability inside the value.
+        self.children.borrow_mut().push(child_key);
+
+        (child_key, child_ref)
     }
 }
 
+fn main() {
+    let map: StableGenMap<DefaultKey, Entity> = StableGenMap::new();
 
-let map = StableGenMap::<DefaultKey, HumanWithKey>::new();
+    // Create the root entity. We get an `&Entity`, not `&mut Entity`.
+    let (root_key, root) = map.insert_with_key(|k| Entity {
+        key: k,
+        name: "root".into(),
+        parent: Cell::new(None),
+        children: RefCell::new(Vec::new()),
+    });
 
-// Again, requires &, not &mut
-let (damian_key, damian_reference) = map.insert_with(|key| Box::new(HumanWithKey{
-    human: Human{
-        name: String::from("Damian"),
-        age: Cell::new(40),
-        friend: Cell::new(None)
-    },
-    key,
-}));
+    // Root spawns a child using only `&self` + `&StableGenMap`.
+    let (child_key, child) = root.add_child(&map, "child");
 
-damian_reference.make_new_friend(&map);
+    // That child spawns a grandchild, again only `&self` + `&StableGenMap`.
+    let (grandchild_key, grandchild) = child.add_child(&map, "grandchild");
 
-let damian_friend_key = damian_reference.human.friend.get().unwrap();
-assert_eq!(damian_key, map[damian_friend_key].human.friend.get().unwrap());
+    // Everything stays wired up via generational keys.
+    assert_eq!(root.children.borrow().as_slice(), &[child_key]);
+    assert_eq!(child.parent.get(), Some(root_key));
+    assert_eq!(child.children.borrow().as_slice(), &[grandchild_key]);
+    assert_eq!(grandchild.parent.get(), Some(child_key));
+
+    // And the references we got from `add_child` are the same as `get(...)`.
+    assert!(std::ptr::eq(child, map.get(child_key).unwrap()));
+    assert!(std::ptr::eq(grandchild, map.get(grandchild_key).unwrap()));
+}
 ```
-
-# License
-
-This rust crate uses the MIT license
-
-
-
-
-
-
 
 
