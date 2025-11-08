@@ -7,6 +7,9 @@ license = "MIT"
 keywords = ["stablegenmap", "stable_gen_map", "allocator", "arena", "reference"]
 categories = ["memory-management", "data-structures"]
 license-file = "LICENSE"
+repository = "https://github.com/izagawd/stable_gen_map"
+readme = "README.md"
+
 
 
 [dependencies]

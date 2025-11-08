@@ -49,7 +49,7 @@ pub fn decode_index<Idx: Numeric>(idx: Idx, slots_num_per_page: usize) -> SplitI
     }
 }
 
-pub type StableGenMap<K: Key, T> = StablePagedGenMapAbstract<K, T, 1>;
+pub type StableGenMap<K: Key, T> = StablePagedGenMap<K, T, 1>;
 
 /// Occupancy + intrusive free list
 enum SlotVariant<T, K: Key> {
@@ -210,17 +210,17 @@ impl<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> Drop for Page<T, K, SLOTS_NUM_P
 }
 
 /// Paged Stable Gen Map with intrusive free list.
-pub struct StablePagedGenMapAbstract<K: Key, T, const SLOTS_NUM_PER_PAGE: usize = DEFAULT_SLOTS_NUM_PER_PAGE> {
+pub struct StablePagedGenMap<K: Key, T, const SLOTS_NUM_PER_PAGE: usize = DEFAULT_SLOTS_NUM_PER_PAGE> {
     pub(crate) pages: UnsafeCell<Vec<Page<T, K, SLOTS_NUM_PER_PAGE>>>,
     next_free: Cell<Option<K::Idx>>, // head of free-list
     phantom: PhantomData<fn(K)>,
     num_elements: Cell<usize>,
 }
 
-pub type StablePagedGenMap<K, T> = StablePagedGenMapAbstract<K, T, DEFAULT_SLOTS_NUM_PER_PAGE>;
+pub type DefaultStablePagedGenMap<K, T> = StablePagedGenMap<K, T, DEFAULT_SLOTS_NUM_PER_PAGE>;
 
 impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> Index<K>
-for StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
+for StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>
 {
     type Output = T;
     fn index(&self, key: K) -> &Self::Output {
@@ -229,7 +229,7 @@ for StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
 }
 
 impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IndexMut<K>
-for StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
+for StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>
 {
     fn index_mut(&mut self, key: K) -> &mut Self::Output {
         self.get_mut(key).unwrap()
@@ -237,13 +237,13 @@ for StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
 }
 
 pub struct IterMut<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
-    map: &'a StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>,
+    map: &'a StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>,
     page_idx: usize,
     slot_idx: usize,
     _marker: PhantomData<&'a mut T>,
 }
 
-impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
+impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>
 {
 
     /// Returns a snapshot of the map at the current moment. it ignores future inserts
@@ -480,8 +480,8 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMapAbstract<K, T,
     /// # Examples
     /// ```
     /// # use stable_gen_map::key::DefaultKey;
-    /// use stable_gen_map::stable_paged_gen_map::{ StablePagedGenMap};
-    /// let mut sm = StablePagedGenMap::new();
+    /// use stable_gen_map::stable_paged_gen_map::{ DefaultStablePagedGenMap};
+    /// let mut sm = DefaultStablePagedGenMap::new();
     /// #[derive(Eq,PartialEq, Debug)]
     /// struct KeyHolder{
     ///     key: DefaultKey
@@ -504,14 +504,14 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMapAbstract<K, T,
     /// # Examples
     /// ```rust
     /// use stable_gen_map::key::DefaultKey;
-    /// use stable_gen_map::stable_paged_gen_map::StablePagedGenMap;
+    /// use stable_gen_map::stable_paged_gen_map::DefaultStablePagedGenMap;
     ///
     /// #[derive(Eq, PartialEq, Debug)]
     /// struct KeyHolder {
     ///     key: DefaultKey,
     /// }
     ///
-    /// let sm = StablePagedGenMap::new();
+    /// let sm = DefaultStablePagedGenMap::new();
     ///
     /// let (key, reference) = sm
     ///     .try_insert_with_key::<()>(|k| Ok(KeyHolder { key: k }))
@@ -635,8 +635,8 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMapAbstract<K, T,
     /// # Examples
     /// ```rust
     /// use stable_gen_map::key::DefaultKey;
-    /// use stable_gen_map::stable_paged_gen_map::StablePagedGenMap;
-    /// let sm = StablePagedGenMap::<DefaultKey,_>::new();
+    /// use stable_gen_map::stable_paged_gen_map::DefaultStablePagedGenMap;
+    /// let sm = DefaultStablePagedGenMap::<DefaultKey,_>::new();
     /// let (key, reference) = sm.insert(4);
     /// assert_eq!(*reference, 4);
     /// assert_eq!(*sm.get(key).unwrap(), 4);
@@ -647,7 +647,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMapAbstract<K, T,
     }
 }
 
-impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
+impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>
 {
     fn clone(&self) -> Self {
         unsafe {
@@ -806,7 +806,7 @@ for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
 
 // into_iter for &mut map uses IterMut
 impl<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator
-for &'a mut StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
+for &'a mut StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>
 {
     type Item = (K, &'a mut T);
     type IntoIter = IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>;
@@ -882,7 +882,7 @@ for IntoIter<K, T, SLOTS_NUM_PER_PAGE>
 }
 
 impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> IntoIterator
-for StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
+for StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>
 {
     type Item = (K, T);
     type IntoIter = IntoIter<K, T, SLOTS_NUM_PER_PAGE>;
@@ -902,7 +902,7 @@ for StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>
 
 // RAII "reservation" for a single index in the intrusive free list.
 struct FreeGuard<'a, K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
-    map: &'a StablePagedGenMapAbstract<K, T, SLOTS_NUM_PER_PAGE>,
+    map: &'a StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>,
     idx: K::Idx,
 }
 

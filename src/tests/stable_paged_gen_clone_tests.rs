@@ -1,9 +1,9 @@
 use crate::key::{DefaultKey, Key};
-use crate::stable_paged_gen_map::StablePagedGenMapAbstract;
+use crate::stable_paged_gen_map::StablePagedGenMap;
 use std::collections::{HashMap, HashSet};
 
 const SLOTS: usize = 4;
-type Map = StablePagedGenMapAbstract<DefaultKey, i32, SLOTS>;
+type Map = StablePagedGenMap<DefaultKey, i32, SLOTS>;
 
 #[test]
 fn paged_clone_empty() {
@@ -52,13 +52,13 @@ mod clone_efficiently_paged_tests {
     use super::*;
     use crate::key::{DefaultKey, Key};
 
-    use crate::stable_paged_gen_map::{StablePagedGenMap, DEFAULT_SLOTS_NUM_PER_PAGE};
+    use crate::stable_paged_gen_map::{DefaultStablePagedGenMap, DEFAULT_SLOTS_NUM_PER_PAGE};
 
-    type PagedMap<T> = StablePagedGenMap<DefaultKey, T>;
+    type PagedMap<T> = DefaultStablePagedGenMap<DefaultKey, T>;
 
     #[test]
     fn paged_clone_efficiently_empty_map() {
-        let mut map: PagedMap<String> = StablePagedGenMap::new();
+        let mut map: PagedMap<String> = DefaultStablePagedGenMap::new();
 
         let clone = map.clone_efficiently_mut();
 
@@ -70,7 +70,7 @@ mod clone_efficiently_paged_tests {
 
     #[test]
     fn paged_clone_efficiently_copies_all_live_entries_and_not_aliasing() {
-        let mut map: PagedMap<String> = StablePagedGenMap::new();
+        let mut map: PagedMap<String> = DefaultStablePagedGenMap::new();
 
         // Insert enough elements to cross at least one page boundary.
         // DEFAULT_SLOTS_NUM_PER_PAGE = 32, so this gives multiple pages.
@@ -130,7 +130,7 @@ mod clone_efficiently_paged_tests {
 
     #[test]
     fn paged_clone_efficiently_preserves_free_list_structure_but_independent() {
-        let mut map: PagedMap<i32> = StablePagedGenMap::new();
+        let mut map: PagedMap<i32> = DefaultStablePagedGenMap::new();
 
         let (k1, _) = map.insert(10);
         let (k2, _) = map.insert(20); // will be freed
@@ -295,7 +295,7 @@ fn paged_clone_into_iter_matches_snapshot() {
 
 // We use a thread-local pointer so Reentrant::clone can find the map.
 thread_local! {
-        static GLOBAL_MAP_PTR: std::cell::Cell<*const StablePagedGenMapAbstract<DefaultKey, Reentrant, SLOTS>> =
+        static GLOBAL_MAP_PTR: std::cell::Cell<*const StablePagedGenMap<DefaultKey, Reentrant, SLOTS>> =
             std::cell::Cell::new(std::ptr::null());
     }
 
@@ -320,12 +320,12 @@ impl Clone for Reentrant {
     }
 }
 
-type MapReentrant = StablePagedGenMapAbstract<DefaultKey, Reentrant, SLOTS>;
+type MapReentrant = StablePagedGenMap<DefaultKey, Reentrant, SLOTS>;
 
 
 #[test]
 fn paged_clone_handles_reentrant_t_clone() {
-    let m: MapReentrant = StablePagedGenMapAbstract::new();
+    let m: MapReentrant = StablePagedGenMap::new();
 
     // allow Reentrant::clone to find this map
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
