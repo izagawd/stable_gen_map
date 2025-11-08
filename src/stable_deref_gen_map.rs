@@ -2,7 +2,7 @@ use crate::stable_deref_gen_map::SlotVariant::{Occupied, Vacant};
 use crate::key::{Key, KeyData};
 use crate::numeric::Numeric;
 use num_traits::{CheckedAdd, One, Zero};
-use stable_deref_trait::StableDeref;
+use stable_deref_trait::{ StableDeref};
 use std::cell::{Cell, UnsafeCell};
 use std::cmp::PartialEq;
 use std::collections::TryReserveError;
@@ -31,7 +31,7 @@ pub enum SmartPtrKind{
     Shared
 }
 
-pub unsafe trait SmartPtrCloneable: StableDeref + Clone{
+pub unsafe trait SmartPtrCloneable: DerefGenMapPromise + Clone{
 
     /// BE VERY CAREFUL WHEN SELECTING THE SMART POINTER KIND TO AVOID POSSIBLE UNDEFINED BEHAVIOR
     const KIND : SmartPtrKind;
@@ -74,7 +74,7 @@ struct Slot<Derefable, K: Key> {
     generation: K::Gen,
     item: SlotVariant<Derefable, K>,
 }
-impl<Derefable: StableDeref + Clone, K: Key> SlotVariant<Derefable, K> {
+impl<Derefable: DerefGenMapPromise + Clone, K: Key> SlotVariant<Derefable, K> {
     #[inline]
     unsafe fn clone(&self) -> Self {
 
@@ -88,7 +88,17 @@ impl<Derefable: StableDeref + Clone, K: Key> SlotVariant<Derefable, K> {
         
     }
 }
-impl<Derefable: StableDeref + Clone, K: Key>  Slot<Derefable, K> {
+/// NOTE: IMPLEMENTING THIS TRAIT IS A PROMISE THAT THE `Deref` IMPLEMENTATION (also `DerefMut` implementation if it has that too) DOES NOT MUTATE ANY `SHARED` STABLE GEN MAPS (eg with `insert`) <br>
+/// IF THIS PROMISE IS VIOLATED, THERE MAY BE UNDEFINED BEHAVIOR
+pub unsafe trait DerefGenMapPromise: StableDeref {
+
+}
+
+unsafe impl<T: ?Sized> DerefGenMapPromise for Box<T>{}
+unsafe impl<T: ?Sized> DerefGenMapPromise for Rc<T>{}
+unsafe impl<T: ?Sized> DerefGenMapPromise for Arc<T>{}
+unsafe impl<'a,T: ?Sized> DerefGenMapPromise for &'a T{}
+impl<Derefable: DerefGenMapPromise + Clone, K: Key>  Slot<Derefable, K> {
     #[inline]
     unsafe fn clone(&self) -> Self {
         Self{
@@ -97,7 +107,7 @@ impl<Derefable: StableDeref + Clone, K: Key>  Slot<Derefable, K> {
         }
     }
 }
-pub struct IterMut<'a, K: Key, Derefable: StableDeref + 'a> {
+pub struct IterMut<'a, K: Key, Derefable: DerefGenMapPromise + 'a> {
     ptr: *mut Slot<Derefable,K>,
     len: usize,
     idx: usize,
@@ -105,7 +115,7 @@ pub struct IterMut<'a, K: Key, Derefable: StableDeref + 'a> {
     _key_marker: PhantomData<K>,
 }
 pub type BoxStableDerefGenMap<K: Key, T: ?Sized> = StableDerefGenMap<K, Box<T>>;
-impl<K: Key, Derefable: StableDeref> StableDerefGenMap<K, Derefable> where K::Idx : Zero {
+impl<K: Key, Derefable: DerefGenMapPromise> StableDerefGenMap<K, Derefable> where K::Idx : Zero {
     /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, Derefable> {
@@ -123,7 +133,7 @@ impl<K: Key, Derefable: StableDeref> StableDerefGenMap<K, Derefable> where K::Id
 
 /// I am aware that types like `Rc<T>` can still clone even if T does not `Clone`, but `Specialization` is not stabilized yet, so this is the only safe way I can think of.
 /// This implementation still has a lot of room to grow, and I do not mind crit
-impl<K: Key, Derefable: StableDeref + SmartPtrCloneable> Clone for StableDerefGenMap< K, Derefable>  {
+impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone for StableDerefGenMap< K, Derefable>  {
     fn clone(&self) -> Self {
 
         unsafe {
@@ -172,7 +182,7 @@ impl<K: Key, Derefable: StableDeref + SmartPtrCloneable> Clone for StableDerefGe
     }
 }
 
-impl<'a, K: Key + 'a , Derefable: StableDeref + DerefMut> Iterator for IterMut<'a, K, Derefable> where K::Idx : Numeric, K::Gen: Numeric {
+impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for IterMut<'a, K, Derefable> where K::Idx : Numeric, K::Gen: Numeric {
     type Item = (K, &'a mut Derefable::Target);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -207,7 +217,7 @@ impl<'a, K: Key + 'a , Derefable: StableDeref + DerefMut> Iterator for IterMut<'
     }
 }
 
-impl<'a, K: Key, Derefable: StableDeref + DerefMut> IntoIterator for &'a mut StableDerefGenMap<K, Derefable> where K::Idx : Numeric, <K as Key>::Gen: Numeric {
+impl<'a, K: Key, Derefable: DerefGenMapPromise + DerefMut> IntoIterator for &'a mut StableDerefGenMap<K, Derefable> where K::Idx : Numeric, <K as Key>::Gen: Numeric {
     type Item = (K, &'a mut Derefable::Target);
     type IntoIter = IterMut<'a, K, Derefable>;
 
@@ -222,20 +232,20 @@ impl<'a, K: Key, Derefable: StableDeref + DerefMut> IntoIterator for &'a mut Sta
 
 
 
-pub struct StableDerefGenMap<K: Key, Derefable: StableDeref> {
+pub struct StableDerefGenMap<K: Key, Derefable: DerefGenMapPromise> {
     slots: UnsafeCell<Vec<Slot<Derefable, K>>>,
     phantom: PhantomData<fn(K)>,
     next_free: Cell<Option<K::Idx>>,
     num_elements: Cell<usize>,
 }
 
-impl<K: Key, Derefable: StableDeref> Index<K> for StableDerefGenMap<K,Derefable> {
+impl<K: Key, Derefable: DerefGenMapPromise> Index<K> for StableDerefGenMap<K,Derefable> {
     type Output = Derefable::Target;
     fn index(&self, key: K) -> &Self::Output{
         self.get(key).unwrap()
     }
 }
-impl<K: Key,Derefable: StableDeref + DerefMut> IndexMut<K> for StableDerefGenMap<K,Derefable> {
+impl<K: Key,Derefable: DerefGenMapPromise + DerefMut> IndexMut<K> for StableDerefGenMap<K,Derefable> {
 
     fn index_mut(&mut self, key: K) -> &mut Self::Output{
         self.get_mut(key).unwrap()
@@ -253,7 +263,7 @@ pub struct IntoIter<K: Key, Derefable> {
     _marker: PhantomData<K>,
 }
 
-impl<K: Key, Derefable: StableDeref> Iterator for IntoIter<K, Derefable> where <K as Key>::Idx : Numeric{
+impl<K: Key, Derefable: DerefGenMapPromise> Iterator for IntoIter<K, Derefable> where <K as Key>::Idx : Numeric{
     type Item = (K, Derefable);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -284,7 +294,7 @@ impl<K: Key, Derefable: StableDeref> Iterator for IntoIter<K, Derefable> where <
     }
 }
 
-impl<K: Key, Derefable: StableDeref> IntoIterator for StableDerefGenMap<K, Derefable> where <K as Key>::Idx: Numeric{
+impl<K: Key, Derefable: DerefGenMapPromise> IntoIterator for StableDerefGenMap<K, Derefable> where <K as Key>::Idx: Numeric{
     type Item = (K, Derefable);
     type IntoIter = IntoIter<K, Derefable>;
 
@@ -300,18 +310,18 @@ impl<K: Key, Derefable: StableDeref> IntoIterator for StableDerefGenMap<K, Deref
 }
 
 // RAII "reservation" for a single index in `free`.
-struct FreeGuard<'a, K: Key, Derefable: StableDeref> {
+struct FreeGuard<'a, K: Key, Derefable: DerefGenMapPromise> {
     map: &'a StableDerefGenMap<K, Derefable>,
     idx: K::Idx,
 }
 
-impl<'a, K: Key, Derefable: StableDeref> FreeGuard<'a, K, Derefable> {
+impl<'a, K: Key, Derefable: DerefGenMapPromise> FreeGuard<'a, K, Derefable> {
     fn commit(self) {
         std::mem::forget(self);
     }
 }
 
-impl<'a, K: Key, Derefable: StableDeref> Drop for FreeGuard<'a, K, Derefable> {
+impl<'a, K: Key, Derefable: DerefGenMapPromise> Drop for FreeGuard<'a, K, Derefable> {
     fn drop(&mut self) {
 
         unsafe {
@@ -365,7 +375,7 @@ impl<Derefable, K: Key> SlotVariant<Derefable, K> where K::Idx : Zero {
         }
     }
 }
-impl<K: Key,Derefable: StableDeref> StableDerefGenMap<K,Derefable> {
+impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
 
 
 
