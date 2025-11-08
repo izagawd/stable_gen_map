@@ -17,7 +17,7 @@ It’s designed for patterns like *graphs, self-referential structures, and aren
 - `StableGenMap<K, T>`  
   A stable generational map storing `T` inline. This is generally what you would want
 
-- `StablePagedGenMap<K, T, const SLOTS_NUM_PER_PAGE: usize = DEFAULT_SLOTS_NUM_PER_PAGE>`  
+- `StablePagedGenMap<K, T, const SLOTS_NUM_PER_PAGE: usize>`  
   Same semantics as `StableGenMap`, but uses multiple slots in a page for better
   cache locality when you have lots of elements, at the exchange of a slower 'get'
 
@@ -138,4 +138,5 @@ fn main() {
     assert!(std::ptr::eq(grandchild, map.get(grandchild_key).unwrap()));
 }
 ```
+
 
