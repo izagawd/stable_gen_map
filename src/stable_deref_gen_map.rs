@@ -114,7 +114,7 @@ pub struct IterMut<'a, K: Key, Derefable: DerefGenMapPromise + 'a> {
     _marker: PhantomData<&'a mut Derefable::Target>,
     _key_marker: PhantomData<K>,
 }
-pub type BoxStableDerefGenMap<K: Key, T: ?Sized> = StableDerefGenMap<K, Box<T>>;
+pub type BoxStableDerefGenMap<K, T: ?Sized> = StableDerefGenMap<K, Box<T>>;
 impl<K: Key, Derefable: DerefGenMapPromise> StableDerefGenMap<K, Derefable> where K::Idx : Zero {
     /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
     #[inline]
@@ -153,7 +153,7 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone for Stable
             slots_ref.extend((&*self.slots.get())
                 .iter()
                 .enumerate()
-                .map(|(slot_idx, slot)| ( slot.generation, match &slot.item {
+                .map(|(_slot_idx, slot)| ( slot.generation, match &slot.item {
                     Occupied(v) => RefOrNextFree::<K, _>::Ref(v.deref()),
                     Vacant(nxt_free) => RefOrNextFree::<K, _>::Next(*nxt_free),
                 }))
@@ -346,9 +346,7 @@ impl<'a, K: Key, Derefable: DerefGenMapPromise> Drop for FreeGuard<'a, K, Derefa
 
 
 impl<Derefable, K: Key> SlotVariant<Derefable, K> where K::Idx : Zero {
-    fn is_occupied(&self) -> bool {
-        matches!(self, Occupied(_))
-    }
+
     /// If occupied, take the value and make this slot Vacant(None).
     /// If already vacant, leave as-is and return None.
     #[inline]

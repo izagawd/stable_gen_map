@@ -6,7 +6,7 @@ use std::cell::{Cell, UnsafeCell};
 use std::hint;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use std::ops::{Deref, Index, IndexMut};
+use std::ops::{Index, IndexMut};
 
 pub const DEFAULT_SLOTS_NUM_PER_PAGE: usize = 32;
 
@@ -48,7 +48,7 @@ pub fn decode_index<Idx: Numeric>(idx: Idx, slots_num_per_page: usize) -> SplitI
     }
 }
 
-pub type StableGenMap<K: Key, T> = StablePagedGenMap<K, T, 1>;
+pub type StableGenMap<K, T> = StablePagedGenMap<K, T, 1>;
 
 /// Occupancy + intrusive free list
 enum SlotVariant<T, K: Key> {
@@ -59,10 +59,6 @@ enum SlotVariant<T, K: Key> {
 }
 
 impl<T, K: Key> SlotVariant<T, K> {
-    #[inline]
-    fn is_occupied(&self) -> bool {
-        matches!(self, SlotVariant::Occupied(_))
-    }
 
     /// If occupied, take the value and make this slot Vacant(None).
     /// If already vacant, leave as-is and return None.
@@ -109,7 +105,7 @@ impl<T: Clone, K: Key, const SLOTS_NUM_PER_PAGE: usize>  Page<T, K,SLOTS_NUM_PER
                         if self.length_used <= index {
                             UnsafeCell::new(MaybeUninit::uninit())
                         } else {
-                            let assumed_init = (&*self.slots.as_ref().deref()[index].get()).assume_init_ref();
+                            let assumed_init = (&*self.slots.as_ref()[index].get()).assume_init_ref();
                             UnsafeCell::new(
                                 MaybeUninit::new(
                                     Slot{
@@ -163,7 +159,7 @@ impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE>
             if self.length_used <= slot_idx {
                 None
             } else {
-                Some(unsafe{ self.get_slot_unchecked(slot_idx) })
+                Some(self.get_slot_unchecked(slot_idx) )
             }
         }
 
@@ -277,7 +273,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                         if slot_idx  >= page.length_used {
                             return None;
                         }
-                        let slot_pure = unsafe {(&*slot.get()).assume_init_ref()};
+                        let slot_pure = (&*slot.get()).assume_init_ref();
                         match  &*slot_pure.item.get() {
                             SlotVariant::Occupied(ref a) => Some(
                                 (K::from(KeyData{idx: encode_index(page_idx,slot_idx,SLOTS_NUM_PER_PAGE),generation: slot_pure.generation}),
@@ -434,7 +430,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             match unsafe { &*slot.item.get() } {
                 SlotVariant::Occupied(md) => {
                     // SAFETY: ManuallyDrop<T> holds a valid T, never moved.
-                    let ptr = md.deref() as *const T;
+                    let ptr = md as *const T;
                     Some(unsafe { &*ptr })
                 }
                 SlotVariant::Vacant(_) => None,
@@ -867,7 +863,6 @@ pub struct IntoIter<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> {
     pages: Vec<Page<T, K, SLOTS_NUM_PER_PAGE>>,
     page_idx: usize,
     slot_idx: usize,
-    len: usize,
     _marker: PhantomData<K>,
 }
 
@@ -936,7 +931,6 @@ for StablePagedGenMap<K, T, SLOTS_NUM_PER_PAGE>
     fn into_iter(self) -> Self::IntoIter {
         let pages_vec = self.pages.into_inner();
         IntoIter {
-            len: self.num_elements.get(),
             pages: pages_vec,
             page_idx: 0,
             slot_idx: 0,
