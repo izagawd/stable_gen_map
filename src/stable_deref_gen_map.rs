@@ -2,7 +2,6 @@ use crate::stable_deref_gen_map::SlotVariant::{Occupied, Vacant};
 use crate::key::{Key, KeyData};
 use crate::numeric::Numeric;
 use num_traits::{CheckedAdd, One, Zero};
-use stable_deref_trait::{ StableDeref};
 use std::cell::{Cell, UnsafeCell};
 use std::cmp::PartialEq;
 use std::collections::TryReserveError;
@@ -89,8 +88,9 @@ impl<Derefable: DerefGenMapPromise + Clone, K: Key> SlotVariant<Derefable, K> {
     }
 }
 /// NOTE: IMPLEMENTING THIS TRAIT IS A PROMISE THAT THE `Deref` IMPLEMENTATION (also `DerefMut` implementation if it has that too) DOES NOT MUTATE ANY `SHARED` STABLE GEN MAPS (eg with `insert`) <br>
-/// IF THIS PROMISE IS VIOLATED, THERE MAY BE UNDEFINED BEHAVIOR
-pub unsafe trait DerefGenMapPromise: StableDeref {
+/// IT IS ALSO A PROMISE THAT THE DEREF OF THE SMART POINTER IS STABLE, MEANING THE POINTER IT DEREFS TO DOES NOT CHANGE<br>
+/// IF THESE PROMISES ARE VIOLATED, THERE MAY BE UNDEFINED BEHAVIOR
+pub unsafe trait DerefGenMapPromise: Deref {
 
 }
 
