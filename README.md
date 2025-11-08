@@ -6,7 +6,7 @@ A single-threaded, generational map that lets you:
 - keep `&T` **stable across internal resizes,**
 - and use **generational keys** to avoid use-after-free bugs.
 
-It’s designed for patterns like *graphs, self-referential structures, and arenas* where you want to keep `&T` references around while still inserting new elements.
+It’s designed for patterns like *graphs, self-referential structures, and arenas* where you want to keep `&T` references around while still inserting new elements. Great for patterns that rely on shared mutability on a single thread.
 
 > **Important:** This crate is intentionally single-threaded. The map types are not `Sync`, and are meant to be used from a single thread only.
 
@@ -138,3 +138,4 @@ fn main() {
     assert!(std::ptr::eq(grandchild, map.get(grandchild_key).unwrap()));
 }
 ```
+
