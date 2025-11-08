@@ -445,9 +445,14 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
     /// Removes all elements from the map
     #[inline]
     pub fn clear(&mut self){
-        self.slots.get_mut().clear();
-        self.next_free.set(None);
-        self.num_elements.set(0);
+        unsafe{
+            let slots_len = self.slots.get_mut().len();
+            for idx in 0..slots_len {
+                let generation = self.slots.get_mut().get_unchecked_mut(idx).generation;
+                let key = K::from(KeyData{generation: generation, idx: K::Idx::from_usize(idx) });
+                self.remove(key);
+            };
+        }
     }
 
     /// Creates a new StableGenMap, with an initial capacity. 

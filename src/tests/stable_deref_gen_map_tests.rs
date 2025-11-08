@@ -521,6 +521,106 @@ use std::sync::atomic::{AtomicUsize, Ordering};
         assert_eq!(DROPS.load(Ordering::SeqCst), 3);
     }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::key::DefaultKey;
+    use crate::stable_deref_gen_map::BoxStableDerefGenMap;
+    use std::collections::HashSet;
+
+    /// After clear(), the map must not reuse any key that existed before.
+    #[test]
+    fn clear_does_not_reuse_keys_for_live_entries() {
+        let mut map: BoxStableDerefGenMap<DefaultKey, i32> = BoxStableDerefGenMap::new();
+
+        const N: usize = 128;
+
+        // Insert N elements and record their keys.
+        let mut old_keys = HashSet::new();
+        for i in 0..N {
+            let (k, r) = map.insert(Box::new(i as i32));
+            assert_eq!(*r, i as i32);
+            assert!(old_keys.insert(k), "duplicate key during initial inserts");
+        }
+
+        assert_eq!(map.len(), N);
+
+        // Clear the map.
+        map.clear();
+        assert_eq!(map.len(), 0);
+
+        // All old keys must be invalid now.
+        for &k in &old_keys {
+            assert!(
+                map.get(k).is_none(),
+                "old key {k:?} should be invalid after clear()"
+            );
+        }
+
+        // Insert another N elements and collect new keys.
+        let mut new_keys = HashSet::new();
+        for i in 0..N {
+            let (k, r) = map.insert(Box::new(10_000 + i as i32));
+            assert_eq!(*r, 10_000 + i as i32);
+            assert!(new_keys.insert(k), "duplicate key during second inserts");
+        }
+
+        // The sets of keys before and after clear() must be disjoint.
+        assert!(
+            old_keys.is_disjoint(&new_keys),
+            "clear() reused at least one previously-issued key"
+        );
+    }
+
+    /// Even with removes and reinserts before clear(), no key should be reused after clear().
+    #[test]
+    fn clear_does_not_reuse_any_previous_key_even_after_prior_removes() {
+        let mut map: BoxStableDerefGenMap<DefaultKey, i32> = BoxStableDerefGenMap::new();
+        const N: usize = 128;
+
+        let mut all_keys_before_clear = HashSet::new();
+
+        // Insert N, record keys.
+        let mut keys = Vec::new();
+        for i in 0..N {
+            let (k, _) = map.insert(Box::new(i as i32));
+            keys.push(k);
+            all_keys_before_clear.insert(k);
+        }
+
+        // Remove every second key.
+        for (idx, &k) in keys.iter().enumerate() {
+            if idx % 2 == 0 {
+                let removed = map.remove(k);
+                assert!(removed.is_some(), "expected key {k:?} to be removable");
+            }
+        }
+
+        // Insert some more; this will reuse free slots and bump generations.
+        for i in 0..N {
+            let (k, _) = map.insert(Box::new(1_000 + i as i32));
+            all_keys_before_clear.insert(k);
+        }
+
+        // Now clear:
+        map.clear();
+        assert_eq!(map.len(), 0);
+
+        // Insert a new batch after clear.
+        let mut new_keys = HashSet::new();
+        for i in 0..N {
+            let (k, _) = map.insert(Box::new(10_000 + i as i32));
+            new_keys.insert(k);
+        }
+
+        // No key that ever existed before clear() may be reused.
+        assert!(
+            all_keys_before_clear.is_disjoint(&new_keys),
+            "A key that existed before clear() was reused afterward"
+        );
+    }
+}
+
 
     #[test]
     fn nested_try_insert_with_key_uses_distinct_slots() {
