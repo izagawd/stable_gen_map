@@ -1,7 +1,10 @@
 mod paged_stable_gen_map_tests {
+    
+    
     use crate::key::DefaultKey;
     use crate::key::{Key, KeyData};
     use std::cell::Cell;
+    use std::collections::HashSet;
     use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use crate::numeric::Numeric;
@@ -11,7 +14,126 @@ mod paged_stable_gen_map_tests {
     // iter() inside try_insert_with_key closure
 
 
+    /// After clear(), the map must not reuse any key that existed before.
+    #[test]
+    fn clear_does_not_reuse_keys_default_paged() {
+        let mut map: DefaultStablePagedGenMap<DefaultKey, i32> =
+            DefaultStablePagedGenMap::new();
 
+        const N: usize = 256;
+
+        // First batch of inserts: collect all keys.
+        let mut old_keys = HashSet::new();
+        for i in 0..N {
+            let (k, r) = map.insert(i as i32);
+            assert_eq!(*r, i as i32);
+            assert!(old_keys.insert(k), "duplicate key during initial inserts");
+        }
+
+        assert_eq!(map.len(), N);
+
+        // Clear the map.
+        map.clear();
+        assert_eq!(map.len(), 0);
+
+        // All old keys must be invalid now.
+        for &k in &old_keys {
+            assert!(
+                map.get(k).is_none(),
+                "old key {k:?} should be invalid after clear()"
+            );
+        }
+
+        // Second batch of inserts: collect new keys.
+        let mut new_keys = HashSet::new();
+        for i in 0..N {
+            let (k, r) = map.insert(10_000 + i as i32);
+            assert_eq!(*r, 10_000 + i as i32);
+            assert!(new_keys.insert(k), "duplicate key during second inserts");
+        }
+
+        // The sets of keys before and after clear() must be disjoint.
+        assert!(
+            old_keys.is_disjoint(&new_keys),
+            "clear() reused at least one previously-issued key"
+        );
+    }
+
+    /// Even with removes and reinserts before clear(), no key should be reused after clear().
+    #[test]
+    fn clear_does_not_reuse_any_previous_key_even_after_prior_removes() {
+        let mut map: DefaultStablePagedGenMap<DefaultKey, i32> =
+            DefaultStablePagedGenMap::new();
+        const N: usize = 256;
+
+        let mut all_keys_before_clear = HashSet::new();
+        let mut keys = Vec::new();
+
+        // Insert N, record keys.
+        for i in 0..N {
+            let (k, _) = map.insert(i as i32);
+            all_keys_before_clear.insert(k);
+            keys.push(k);
+        }
+
+        // Remove every second key (exercise the free list first).
+        for (idx, &k) in keys.iter().enumerate() {
+            if idx % 2 == 0 {
+                let removed = map.remove(k);
+                assert!(removed.is_some(), "expected key {k:?} to be removable");
+            }
+        }
+
+        // Insert some more; this will reuse free slots and bump generations.
+        for i in 0..N {
+            let (k, _) = map.insert(1_000 + i as i32);
+            all_keys_before_clear.insert(k);
+        }
+
+        // Now clear:
+        map.clear();
+        assert_eq!(map.len(), 0);
+
+        // Insert a new batch after clear.
+        let mut new_keys = HashSet::new();
+        for i in 0..N {
+            let (k, _) = map.insert(20_000 + i as i32);
+            new_keys.insert(k);
+        }
+
+        // No key that ever existed before clear() may be reused.
+        assert!(
+            all_keys_before_clear.is_disjoint(&new_keys),
+            "A key that existed before clear() was reused afterward"
+        );
+    }
+
+    /// Sanity: clear should keep page allocation (we don't call Vec::clear on pages).
+    #[test]
+    fn clear_preserves_pages_capacity() {
+        let mut map: DefaultStablePagedGenMap<DefaultKey, i32> =
+            DefaultStablePagedGenMap::new();
+
+        // Force multiple pages.
+        for i in 0..(DEFAULT_SLOTS_NUM_PER_PAGE * 3) {
+            let _ = map.insert(i as i32);
+        }
+
+        let before_pages = map.pages.get_mut().len();
+        assert!(
+            before_pages >= 3,
+            "expected multiple pages to be allocated"
+        );
+
+        map.clear();
+        assert_eq!(map.len(), 0);
+
+        let after_pages = map.pages.get_mut().len();
+        assert_eq!(
+            before_pages, after_pages,
+            "clear() should not drop pages; it should only free slots"
+        );
+    }
 
     type PagedMap<T>  = DefaultStablePagedGenMap<DefaultKey, T>;
 

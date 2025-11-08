@@ -95,7 +95,7 @@ struct Slot<T, K: Key> {
     generation: K::Gen,
 }
 
-struct Page<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> {
+pub(crate) struct Page<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> {
     slots: AliasableBox<[UnsafeCell<MaybeUninit<Slot<T, K>>>; SLOTS_NUM_PER_PAGE]>,
     length_used: usize,
 }
@@ -449,9 +449,34 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
     /// Empties the map, removing all elements
     #[inline]
     pub fn clear(&mut self) {
-        self.next_free.set(None);
-        self.pages.get_mut().clear();
-        self.num_elements.set(0);
+        // Number of pages cannot change during `clear` because we never insert.
+        let pages_len = self.pages.get_mut().len();
+
+        for page_idx in 0..pages_len {
+
+            let length_used = unsafe {
+                let pages = self.pages.get_mut();
+                pages.get_unchecked(page_idx).length_used
+            };
+
+            for slot_idx in 0..length_used {
+
+                let generation = unsafe {
+                    let pages = self.pages.get_mut();
+                    pages.get_unchecked(page_idx)
+                        .get_slot_unchecked(slot_idx)
+                        .generation
+                };
+
+
+                let idx = encode_index::<K::Idx>(page_idx, slot_idx, SLOTS_NUM_PER_PAGE);
+                let key = K::from(KeyData { idx, generation });
+
+                let _ = self.remove(key);
+            }
+        }
+
+        debug_assert_eq!(self.len(), 0);
     }
 
     /// Gets the number of elements in the map

@@ -453,6 +453,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
                 self.remove(key);
             };
         }
+        debug_assert_eq!(self.len(), 0);
     }
 
     /// Creates a new StableGenMap, with an initial capacity. 
