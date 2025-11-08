@@ -177,13 +177,21 @@ impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE>
 
     }
     #[inline]
+    unsafe fn get_slot_unchecked_mut(&mut self, slot_num: usize) -> &mut Slot<T, K> {
+
+        self.slots
+            .get_unchecked_mut(slot_num)
+            .get_mut()
+            .assume_init_mut()
+
+    }
+
+    #[inline]
     fn get_slot_mut(&mut self, slot_num: usize) -> Option<&mut Slot<T, K>> {
         if self.length_used <= slot_num {
             None
         } else {
-            self.slots
-                .get_mut(slot_num)
-                .map(|x| unsafe { x.get_mut().assume_init_mut() })
+            Some(unsafe { self.get_slot_unchecked_mut(slot_num) })
         }
     }
 
@@ -347,28 +355,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         }
     }
 
-    /// Gets a unique reference to an element
-    #[inline]
-    pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
-        let key_data = k.data();
-        let split = decode_index::<K::Idx>(key_data.idx, SLOTS_NUM_PER_PAGE);
-        let pages = self.pages.get_mut();
-        let page = pages.get_mut(split.page_idx)?;
 
-        let slot = page.get_slot_mut(split.slot_idx)?;
-        if slot.generation != key_data.generation {
-            return None;
-        }
-
-        let variant: &mut SlotVariant<T, K> = unsafe { &mut *slot.item.get() };
-        match variant {
-            SlotVariant::Occupied(ref mut md) => {
-                // SAFETY: value is live; we never move the allocation.
-                Some(md)
-            }
-            SlotVariant::Vacant(_) => None,
-        }
-    }
     /// A more efficient Clone operation than the Clone::clone implementation, but if the `Clone` implementation of `T` mutates the map, UB occurs
     #[inline]
     pub unsafe fn clone_efficiently(&self) -> Self where T: Clone {
@@ -388,7 +375,42 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         }
 
     }
+    /// Gets a unique reference to an element
+    #[inline]
+    pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
+        let key_data = k.data();
+        let split = decode_index::<K::Idx>(key_data.idx, SLOTS_NUM_PER_PAGE);
+        let pages = self.pages.get_mut();
+        let page = pages.get_mut(split.page_idx)?;
 
+        let slot;
+
+
+        if SLOTS_NUM_PER_PAGE == 1 {
+            debug_assert!(split.slot_idx == 0);
+
+            // Safety: Optimization. if the amount of slots per page is 1, the slot_idx will always be 0
+            // and a page that only has a maximum of one slot, will always have that one slot to be initialized, based on the
+            // insert logic
+            slot = unsafe{  page.get_slot_unchecked_mut(0) };
+        } else{
+            slot = page.get_slot_mut(split.slot_idx)?
+        }
+
+
+        if slot.generation != key_data.generation {
+            return None;
+        }
+
+        let variant: &mut SlotVariant<T, K> = slot.item.get_mut();
+        match variant {
+            SlotVariant::Occupied(ref mut md) => {
+                // SAFETY: value is live; we never move the allocation.
+                Some(md)
+            }
+            SlotVariant::Vacant(_) => None,
+        }
+    }
     /// Gets a shared reference to an element
     #[inline]
     pub fn get(&self, k: K) -> Option<&T> {
