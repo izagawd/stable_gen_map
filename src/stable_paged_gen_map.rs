@@ -250,7 +250,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
 
     /// Returns a snapshot of the map at the current moment. it ignores future inserts
     /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
-    /// #[inline]
+    #[inline]
     pub fn snapshot(&self) -> Vec<(K, &T)> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
