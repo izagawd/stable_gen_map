@@ -24,7 +24,7 @@ Great for patterns that rely on shared mutability on a single thread.
 
 - `StableDerefGenMap<K, Derefable>`  
   A stable generational map where each element is a **smart pointer** that
-  implements `StableDeref` (via `stable_deref_trait`) and the internal
+  implements 
   `DerefGenMapPromise`. You get stable references to `Deref::Target`,
   even if the underlying `Vec` reallocates.  
   This is the “advanced” variant for `Box<T>`, `Rc<T>`, `Arc<T>`, `&T`, or
