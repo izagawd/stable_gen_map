@@ -1,6 +1,5 @@
 use crate::key::{Key, KeyData};
 use crate::numeric::Numeric;
-use aliasable::boxed::AliasableBox;
 use num_traits::{CheckedAdd, One, Zero};
 use std::array::from_fn;
 use std::cell::{Cell, UnsafeCell};
@@ -96,7 +95,7 @@ struct Slot<T, K: Key> {
 }
 
 pub(crate) struct Page<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> {
-    slots: AliasableBox<[UnsafeCell<MaybeUninit<Slot<T, K>>>; SLOTS_NUM_PER_PAGE]>,
+    slots: Box<[UnsafeCell<MaybeUninit<Slot<T, K>>>; SLOTS_NUM_PER_PAGE]>,
     length_used: usize,
 }
 
@@ -105,7 +104,7 @@ impl<T: Clone, K: Key, const SLOTS_NUM_PER_PAGE: usize>  Page<T, K,SLOTS_NUM_PER
     unsafe fn clone(&self) -> Self {
 
             Self{
-                slots: AliasableBox::from_unique(Box::new(
+                slots: Box::new(
                     from_fn(|index|{
                         if self.length_used <= index {
                             UnsafeCell::new(MaybeUninit::uninit())
@@ -121,7 +120,7 @@ impl<T: Clone, K: Key, const SLOTS_NUM_PER_PAGE: usize>  Page<T, K,SLOTS_NUM_PER
 
                             )
                         }
-                    }))
+                    })
                 ),
                 length_used: self.length_used,
             }
@@ -150,11 +149,10 @@ impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE>
     #[inline]
     unsafe fn new() -> Self {
         Self {
-            slots: AliasableBox::from_unique(
-                Box::new(
+            slots: Box::new(
                     from_fn(|_|  UnsafeCell::new(MaybeUninit::uninit()))
                 )
-            ),
+            ,
             length_used: 0,
         }
     }

@@ -3,15 +3,13 @@ name = "stable_gen_map"
 version = "0.1.0"
 edition = "2018"
 authors = ["Izagawd <theizaboss@gmail.com>"]
-license = "MIT"
 keywords = ["stablegenmap", "stable_gen_map", "allocator", "arena", "reference"]
 categories = ["memory-management", "data-structures"]
 license-file = "LICENSE"
 repository = "https://github.com/izagawd/stable_gen_map"
 readme = "README.md"
 description = "This crate provides Single-threaded generational maps with insert(&self), stable references across growth, and smart-pointer support (Box/Rc/Arc/&T)"
-
+homepage = "https://github.com/izagawd/stable_gen_map"
 
 [dependencies]
-aliasable = "0.1.3"
 num-traits = "0.2.19"
