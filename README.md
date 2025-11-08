@@ -66,6 +66,37 @@ All of these only need `&self`, not `&mut self`.
 - `remove` and `clear` need `&mut self`, so you can’t free elements while there are outstanding borrows – enforced by the borrow-checker.
 - Generational keys (`Key::Gen`) mean stale keys simply return `None` instead of aliasing newly inserted elements.
 
+## Comparison to other data structures
+
+`StableGenMap` lives in the same space as generational arenas / slot maps, but it’s aimed at a slightly different pattern: **inserting with `&self` while keeping existing `&T` references alive**, in a single-threaded setting where you still sometimes remove elements at well-defined points (e.g. end of a videogame frame).
+
+
+Rough comparison:
+
+| Crate                             | Insert API                              |             Removals                           |    Main focus            |
+|----------------------------------|------------------------------------------|----------------------------|-------------------------------|
+| `stable_gen_map::StableGenMap`   | `fn insert(&self, T) -> (K, &T)`         | Yes (But with &mut this time) | Stable `&T` across growth, single-threaded      |
+| `slotmap::SlotMap`               | `fn insert(&mut self, V) -> K`           | Yes (with &mut)            | General-purpose generational map                |
+| `generational_arena::Arena`      | `fn insert(&mut self, T) -> Index`       | Yes (with &mut)            | Simple arena with deletion                      |
+| `slab::Slab`                     | `fn insert(&mut self, T) -> usize`       | Yes (with &mut)            | Reusable indices, pre-allocated storage         |
+| `sharded_slab::Slab`             | `fn insert(&self, T) -> Option<usize>`   | Yes (with &)      | Concurrent slab for multi-threaded use |
+
+### When to use `stable_gen_map`
+
+Use `stable_gen_map`  when:
+
+- You want to **insert using only a shared reference** (`&self`), not `&mut self`.
+- You need to **hold on to `&T` from the map while also inserting new elements** into the same map.
+- You like **generational keys**.
+- You’re in a **single-threaded** or **scoped-thread** world.
+- You still want to **remove elements at specific points** in your logic, such as:
+  - at the end of a videogame frame,
+  - at the end of a simulation tick,
+  - during a periodic “cleanup” or GC-like pass.
+
+If you don’t specifically need those properties, you could take a look at `slotmap`, `slab`, `sharded-slab`, or `generational-arena`
+
+
 ---
 
 ## Basic example (using `StableGenMap`)
