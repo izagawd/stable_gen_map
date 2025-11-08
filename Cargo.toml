@@ -1,12 +1,12 @@
 [package]
 name = "stable_gen_map"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 rust-version = "1.79.0"
 authors = ["Izagawd <theizaboss@gmail.com>"]
 keywords = ["stablegenmap", "stable_gen_map", "allocator", "arena", "reference"]
 categories = ["memory-management", "data-structures"]
-license-file = "LICENSE"
+license = "MIT"
 repository = "https://github.com/izagawd/stable_gen_map"
 readme = "README.md"
 description = "This crate provides Single-threaded generational maps with insert(&self), stable references across growth, and smart-pointer support (Box/Rc/Arc/&T)"
