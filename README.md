@@ -85,6 +85,7 @@ Rough comparison:
 Use `stable_gen_map`  when:
 
 - You want to **insert using only a shared reference** (`&self`), not `&mut self`.
+- You want to use patterns that do not rely heavily on ECS
 - You need to **hold on to `&T` from the map while also inserting new elements** into the same map.
 - You like **generational keys**.
 - You’re in a **single-threaded** or **scoped-thread** world.
@@ -119,6 +120,7 @@ struct Entity {
 impl Entity {
     /// Add a child *from this entity* using only `&self` and `&StableGenMap`.
     /// Returns both the child's key and a stable `&Entity` reference.
+ 
     fn add_child<'m>(
         &self,
         map: &'m StableGenMap<DefaultKey, Entity>,
@@ -126,7 +128,7 @@ impl Entity {
     ) -> (DefaultKey, &'m Entity) {
         let parent_key = self.key;
 
-        // Insert a new entity into the same map. We only have `&StableGenMap` here.
+
         let (child_key, child_ref) = map.insert_with_key(|k| Entity {
             key: k,
             name: child_name.to_string(),
@@ -134,9 +136,25 @@ impl Entity {
             children: RefCell::new(Vec::new()),
         });
 
+        
+        
         // Record the relationship using interior mutability inside the value.
+        // no need to reget the parent
         self.children.borrow_mut().push(child_key);
 
+        /// Had `insert` of the map required &mut  it won't have been possible for
+        /// the entity itself to spawn the child,
+        /// and it would not enable us to use the parent reference we had earlier
+        /// ```
+        /// let parent_ref = world.get(parent_key);
+        /// parent_ref.do_something();
+        /// let child_key = world.insert(Entity::new());
+        /// // can't use the old parent_ref, i need to "reget" it.
+        /// let parent_ref = world.get(parent_key);
+        /// parent_ref.children.push(child)
+        /// ```
+        /// but since it doesn't need &mut, there is no need to call `get` multiple times,
+        /// as the borrow checker still lets us use previous references`
         (child_key, child_ref)
     }
 }
@@ -156,6 +174,7 @@ fn main() {
     let (child_key, child) = root.add_child(&map, "child");
 
     // That child spawns a grandchild, again only `&self` + `&StableGenMap`.
+  
     let (grandchild_key, grandchild) = child.add_child(&map, "grandchild");
 
     // Everything stays wired up via generational keys.

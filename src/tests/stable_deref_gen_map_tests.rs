@@ -620,7 +620,30 @@ mod tests {
         );
     }
 }
+#[test]
+fn get_by_index_only_round_trips_index_and_key() {
+    let map = BoxStableDerefGenMap::<DefaultKey, _>::new();
 
+    let (k, _) = map.insert(Box::new(123));
+    let idx = k.data().idx;
+
+    let (k2, v) = map.get_by_index_only(idx).expect("slot should be occupied");
+    assert_eq!(k2, k);
+    assert_eq!(*v, 123);
+}
+
+#[test]
+fn get_by_index_only_returns_none_for_vacant_slot() {
+    let mut map = BoxStableDerefGenMap::<DefaultKey, _>::new();
+
+    let (k, _reff) = map.insert(Box::new(5));
+    let idx = k.data().idx;
+
+    // Remove so the slot becomes vacant.
+    let _ = map.remove(k);
+
+    assert!(map.get_by_index_only(idx).is_none());
+}
 
     #[test]
     fn nested_try_insert_with_key_uses_distinct_slots() {

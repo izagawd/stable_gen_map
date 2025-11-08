@@ -411,6 +411,54 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             SlotVariant::Vacant(_) => None,
         }
     }
+
+    /// gets by index, ignores generational count
+    #[inline]
+    pub fn get_by_index_only(&self, idx: K::Idx) -> Option<(K, &T)> {
+        let split = decode_index::<K::Idx>(idx, SLOTS_NUM_PER_PAGE);
+        let pages = unsafe { &*self.pages.get() };
+        let page = pages.get(split.page_idx)?;
+
+        let slot = if SLOTS_NUM_PER_PAGE == 1 {
+            // Safety: Optimization. if the amount of slots per page is 1, the slot_idx will always be 0
+            // and a page that only has a maximum of one slot, will always have that one slot to be initialized, based on the
+            // insert logic
+            debug_assert!(split.slot_idx == 0);
+            unsafe { page.get_slot_unchecked(0) }
+        } else {
+            page.get_slot(split.slot_idx)?
+        };
+
+        match unsafe { &*slot.item.get() } {
+            SlotVariant::Occupied(ref md) => Some((K::from(KeyData{idx,generation: slot.generation}) ,md)),
+            SlotVariant::Vacant(_) => None,
+        }
+    }
+
+    /// gets by index, ignores generational count
+    #[inline]
+    pub fn get_by_index_only_mut(&mut self, idx: K::Idx) -> Option<(K, &mut T)> {
+        let split = decode_index::<K::Idx>(idx, SLOTS_NUM_PER_PAGE);
+        let pages = self.pages.get_mut();
+        let page = pages.get_mut(split.page_idx)?;
+
+        let slot = if SLOTS_NUM_PER_PAGE == 1 {
+            // Safety: Optimization. if the amount of slots per page is 1, the slot_idx will always be 0
+            // and a page that only has a maximum of one slot, will always have that one slot to be initialized, based on the
+            // insert logic
+            debug_assert!(split.slot_idx == 0);
+            unsafe { page.get_slot_unchecked_mut(0) }
+        } else {
+            page.get_slot_mut(split.slot_idx)?
+        };
+
+        let variant: &mut SlotVariant<T, K> = slot.item.get_mut();
+        match variant {
+            SlotVariant::Occupied(ref mut md) => Some((K::from(KeyData{idx,generation: slot.generation}) ,md)),
+            SlotVariant::Vacant(_) => None,
+        }
+    }
+
     /// Gets a shared reference to an element
     #[inline]
     pub fn get(&self, k: K) -> Option<&T> {

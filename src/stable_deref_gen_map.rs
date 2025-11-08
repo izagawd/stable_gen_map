@@ -252,6 +252,7 @@ impl<K: Key,Derefable: DerefGenMapPromise + DerefMut> IndexMut<K> for StableDere
     }
 }
 
+
 enum SlotVariant<Derefable, K: Key>{
     Occupied(Derefable),
     Vacant(Option<K::Idx>),
@@ -416,6 +417,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
         }
     }
 
+
     /// Iterator over `&T` for a snapshot of the map. Ignores future inserts.
     /// Allocates internally via `snapshot_ref_only`.
     #[inline]
@@ -517,6 +519,34 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
     pub fn reserve(&self, additional: usize){
         unsafe { &mut *self.slots.get() }.reserve(additional);
     }
+
+
+    /// gets by index, ignores generational count
+    #[inline]
+    pub fn get_by_index_only(&self, idx: K::Idx) -> Option<(K,&Derefable::Target)> {
+        let slot = unsafe { &*self.slots.get() }.get(idx.into_usize())?;
+        match &slot.item {
+            Occupied(item) => {
+                unsafe { Some((K::from(KeyData{generation: slot.generation, idx}),  &*(item.deref() as *const Derefable::Target))) }
+            },
+            Vacant(_) => {
+                None
+            }
+        }
+    }
+    /// gets by index, ignores generational count
+    #[inline]
+    pub fn get_by_index_only_mut(&mut self, idx: K::Idx) -> Option<(K,&mut Derefable::Target)> where Derefable: DerefMut {
+        let slot = self.slots.get_mut().get_mut(idx.into_usize())?;
+
+        match &mut slot.item {
+            Occupied(ref mut item) => {
+                // SAFETY: value is live; we never move the Box's allocation.
+                Some((K::from(KeyData{generation: slot.generation, idx}),  item.deref_mut()))
+            }
+            _ => None
+        }
+    }
     /// Shared access to a value by key (no guard, plain &T).
     #[inline]
     pub fn get(&self, k: K) -> Option<&Derefable::Target> {
@@ -537,6 +567,8 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
             None
         }
     }
+
+
 
     /// Gets a unique reference to a value when supplied a key
     #[inline]
@@ -637,7 +669,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
                 key: k,
                 num_elements: &self.num_elements,
                 next_free: &self.next_free,
-            })    
+            })
         }
 
     }

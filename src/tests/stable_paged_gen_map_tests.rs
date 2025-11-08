@@ -1,6 +1,6 @@
 mod paged_stable_gen_map_tests {
-    
-    
+
+
     use crate::key::DefaultKey;
     use crate::key::{Key, KeyData};
     use std::cell::Cell;
@@ -156,6 +156,32 @@ mod paged_stable_gen_map_tests {
 
         assert_eq!(kd.idx, 0, "first live insert after error should reuse page 0, idx 0");
         assert_eq!(*v_ok, 123);
+    }
+
+    #[test]
+    fn paged_get_by_index_only_round_trips_index_and_key() {
+        let map = DefaultStablePagedGenMap::<DefaultKey,_>::new();
+
+        let (k, _) = map.insert(777);
+        let idx = k.data().idx;
+
+        let (k2, v) = map
+            .get_by_index_only(idx)
+            .expect("slot should be occupied");
+        assert_eq!(k2, k);
+        assert_eq!(*v, 777);
+    }
+
+    #[test]
+    fn paged_get_by_index_only_returns_none_for_vacant_slot() {
+        let mut map = DefaultStablePagedGenMap::<DefaultKey,_>::new();
+
+        let (k, _) = map.insert(42);
+        let idx = k.data().idx;
+
+        let _ = map.remove(k);
+
+        assert!(map.get_by_index_only(idx).is_none());
     }
 
     // New-slot branch + panic: (page=0, idx=0) must be reusable.
