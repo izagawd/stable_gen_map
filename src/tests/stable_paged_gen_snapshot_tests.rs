@@ -1,10 +1,11 @@
 use crate::key::DefaultKey;
-use crate::paged_stable_gen_map::PagedStableGenMapAbstract;
+
 use std::collections::HashSet;
+use crate::stable_paged_gen_map::StablePagedGenMapAbstract;
 
 const SLOTS: usize = 4;
 
-    type PagedMap = PagedStableGenMapAbstract<DefaultKey, i32, SLOTS>;
+    type PagedMap = StablePagedGenMapAbstract<DefaultKey, i32, SLOTS>;
 
     #[test]
     fn paged_snapshot_on_empty_map_is_empty() {

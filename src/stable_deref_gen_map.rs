@@ -1,25 +1,86 @@
+use crate::stable_deref_gen_map::SlotVariant::{Occupied, Vacant};
 use crate::key::{Key, KeyData};
 use crate::numeric::Numeric;
-use crate::stable_gen_map::SlotVariant::{Occupied, Vacant};
-use aliasable::boxed::AliasableBox;
 use num_traits::{CheckedAdd, One, Zero};
+use stable_deref_trait::StableDeref;
 use std::cell::{Cell, UnsafeCell};
+use std::cmp::PartialEq;
 use std::collections::TryReserveError;
 use std::hint;
 use std::marker::PhantomData;
-use std::ops::{Index, IndexMut};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::rc::Rc;
+use std::sync::Arc;
 
-struct Slot<T: ?Sized, K: Key> {
-    generation: K::Gen,
-    item: SlotVariant<T, K>,
+/// NOTE: SELECTING THE WRONG SMART POINTER KIND FOR A SMART POINTER MAY LEAD TO UNDEFINED BEHAVIOUR.<br><br>
+/// EACH SMART POINTER KIND IS DOCUMENTED WITH GUIDELINES TO FOLLOW.<br><br> NOT FOLLOWING THEM MEANS YOU HAVE SELECTED THE WRONG SMART POINTER KIND,
+/// WHICH, AS I SAID, MAY LEAD TO UNDEFINED BEHAVIOUR
+#[derive(Clone,Copy,PartialEq,Eq)]
+pub enum SmartPtrKind{
+
+    /// Meaning the smart pointer owns the type. When the smart pointer is destroyed, so as the type its pointing to. eg `Box`
+    Owned,
+
+    /// Meaning the smart pointer is borrowing a reference to the type, or has shared ownership to the type its pointing to.<br>
+    /// eg `Rc` `Arc` `Ref`.<br><br>
+    /// if the smart pointers is of kind `Shared` and its `Clone` implementation calls the type it is pointing to's `Clone` implementation, you should not be implementing
+    /// `SmartPtrCloneable` for the smart pointer at all.<br> If not, there would be a possibility of Undefined Behavior.
+    /// <br><br>
+    /// If your smart pointer is of kind `Shared` and implements `Clone`, the `Clone` implementation must NOT mutate any shared `Stable Gen Map` (eg with `insert`)
+    /// If not, there would be a possibility of Undefined Behavior
+    Shared
 }
-impl<T: Clone, K: Key> SlotVariant<T, K> {
+
+pub unsafe trait SmartPtrCloneable: StableDeref + Clone{
+
+    /// BE VERY CAREFUL WHEN SELECTING THE SMART POINTER KIND TO AVOID POSSIBLE UNDEFINED BEHAVIOR
+    const KIND : SmartPtrKind;
+
+
+    /// NOTE: THIS METHOD MUST BE IMPLEMENTED BY SMART POINTERS WITH KIND `Owned`. IF THE SMART POINTER KIND IS `Shared`, SIMPLY RETURN `None`.
+    /// IF THESE GUIDELINES ARE NOT FOLLOWED, THERE COULD BE BUGS, UNEXPECTED BEHAVIOUR, AND MAYBE UNDEFINED BEHAVIOUR
+    ///<br><br>
+    /// The implementation of this method should have very similar logic to the smart pointer's `Clone::clone` implementation to ensure consistency.
+    /// If still in doubt, you can look at how we implemented `SmartPtrCloneable` for `Box`
+    unsafe fn clone_from_reference(reference: &Self::Target) -> Option<Self>;
+}
+
+unsafe impl<T: Clone> SmartPtrCloneable for Box<T>{
+    const KIND : SmartPtrKind = SmartPtrKind::Owned;
+    unsafe fn clone_from_reference(reference: &T) -> Option<Self>{
+        Some(Box::new(reference.clone())) // this is essentially what Box::clone does, assuming `reference` is what it `Derefs` to
+    }
+}
+unsafe impl<'a,T: Clone> SmartPtrCloneable for &'a T{
+    const KIND : SmartPtrKind = SmartPtrKind::Shared;
+    unsafe fn clone_from_reference(_: &T) -> Option<Self>{
+        None
+    }
+}
+unsafe impl<T: Clone> SmartPtrCloneable for Rc<T>{
+    const KIND : SmartPtrKind = SmartPtrKind::Shared;
+    unsafe fn clone_from_reference(_: &T) -> Option<Self>{
+        None
+    }
+}
+unsafe impl<T: Clone> SmartPtrCloneable for Arc<T>{
+    const KIND : SmartPtrKind = SmartPtrKind::Shared;
+    unsafe fn clone_from_reference(_: &T) -> Option<Self>{
+        None
+    }
+}
+
+struct Slot<Derefable, K: Key> {
+    generation: K::Gen,
+    item: SlotVariant<Derefable, K>,
+}
+impl<Derefable: StableDeref + Clone, K: Key> SlotVariant<Derefable, K> {
     #[inline]
     unsafe fn clone(&self) -> Self {
 
             match self{
                 Occupied(v) => {
-                    Occupied(AliasableBox::from_unique(Box::new(v.as_ref().clone())))
+                    Occupied(v.clone())
                 } Vacant(vacant) => {
                     Vacant(vacant.clone())
                 }
@@ -27,7 +88,7 @@ impl<T: Clone, K: Key> SlotVariant<T, K> {
         
     }
 }
-impl<T: Clone, K: Key>  Slot<T, K> {
+impl<Derefable: StableDeref + Clone, K: Key>  Slot<Derefable, K> {
     #[inline]
     unsafe fn clone(&self) -> Self {
         Self{
@@ -36,18 +97,18 @@ impl<T: Clone, K: Key>  Slot<T, K> {
         }
     }
 }
-pub struct IterMut<'a, K: Key, T: ?Sized> {
-    ptr: *mut Slot<T,K>,
+pub struct IterMut<'a, K: Key, Derefable: StableDeref + 'a> {
+    ptr: *mut Slot<Derefable,K>,
     len: usize,
     idx: usize,
-    _marker: PhantomData<&'a mut T>,
+    _marker: PhantomData<&'a mut Derefable::Target>,
     _key_marker: PhantomData<K>,
 }
-
-impl<K: Key, T: ?Sized> StableGenMap<K, T> where K::Idx : Zero {
+pub type BoxStableDerefGenMap<K: Key, T: ?Sized> = StableDerefGenMap<K, Box<T>>;
+impl<K: Key, Derefable: StableDeref> StableDerefGenMap<K, Derefable> where K::Idx : Zero {
     /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
     #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<'_, K, T> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, Derefable> {
         let slots = self.slots.get_mut(); // &mut Vec<Slot<T>>
         IterMut {
             ptr: slots.as_mut_ptr(),
@@ -59,9 +120,18 @@ impl<K: Key, T: ?Sized> StableGenMap<K, T> where K::Idx : Zero {
     }
 }
 
-impl<K: Key, T: Clone> Clone for StableGenMap< K, T> {
+
+/// I am aware that types like `Rc<T>` can still clone even if T does not `Clone`, but `Specialization` is not stabilized yet, so this is the only safe way I can think of.
+/// This implementation still has a lot of room to grow, and I do not mind crit
+impl<K: Key, Derefable: StableDeref + SmartPtrCloneable> Clone for StableDerefGenMap< K, Derefable>  {
     fn clone(&self) -> Self {
+
         unsafe {
+            if <Derefable as SmartPtrCloneable>::KIND == SmartPtrKind::Shared{
+                // if the smart pointer kind was correctly selected as `Shared`, as per the documentation of `Shared`, This should not cause
+                // any undefined behavior and is a faster path
+                return self.clone_efficiently()
+            }
             enum RefOrNextFree<'a, K: Key, T: ?Sized> {
                 Ref(&'a T),
                 Next(Option<K::Idx>),
@@ -74,7 +144,7 @@ impl<K: Key, T: Clone> Clone for StableGenMap< K, T> {
                 .iter()
                 .enumerate()
                 .map(|(slot_idx, slot)| ( slot.generation, match &slot.item {
-                    Occupied(v) => RefOrNextFree::<K, _>::Ref(v.as_ref()),
+                    Occupied(v) => RefOrNextFree::<K, _>::Ref(v.deref()),
                     Vacant(nxt_free) => RefOrNextFree::<K, _>::Next(*nxt_free),
                 }))
             );
@@ -89,7 +159,7 @@ impl<K: Key, T: Clone> Clone for StableGenMap< K, T> {
 
                             generation: x.0,
                             item: match x.1 {
-                                RefOrNextFree::Ref(the_ref) => Occupied(AliasableBox::from_unique(Box::new(the_ref.clone()))) ,
+                                RefOrNextFree::Ref(the_ref) => Occupied(Derefable::clone_from_reference(the_ref).unwrap()) ,
                                 RefOrNextFree::Next(next_free) => Vacant(next_free)
                             }
                         }
@@ -102,17 +172,17 @@ impl<K: Key, T: Clone> Clone for StableGenMap< K, T> {
     }
 }
 
-impl<'a, K: Key + 'a , T: ?Sized> Iterator for IterMut<'a, K, T> where K::Idx : Numeric, K::Gen: Numeric {
-    type Item = (K, &'a mut T);
+impl<'a, K: Key + 'a , Derefable: StableDeref + DerefMut> Iterator for IterMut<'a, K, Derefable> where K::Idx : Numeric, K::Gen: Numeric {
+    type Item = (K, &'a mut Derefable::Target);
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.idx < self.len {
             let idx = self.idx;
             self.idx += 1;
 
-            let slot: &mut Slot<T, K> = unsafe { &mut *self.ptr.add(idx) };
+            let slot: &mut Slot<Derefable, K> = unsafe { &mut *self.ptr.add(idx) };
 
-            let boxed = match &mut slot.item {
+            let smart_ptr = match &mut slot.item {
                 SlotVariant::Occupied(b) => b,
                 _ => continue,
             };
@@ -123,7 +193,7 @@ impl<'a, K: Key + 'a , T: ?Sized> Iterator for IterMut<'a, K, T> where K::Idx : 
             };
             let key = K::from(key_data);
 
-            let value: &mut T = boxed.as_mut();
+            let value: &mut Derefable::Target = smart_ptr.deref_mut();
 
             return Some((key, value));
         }
@@ -137,9 +207,9 @@ impl<'a, K: Key + 'a , T: ?Sized> Iterator for IterMut<'a, K, T> where K::Idx : 
     }
 }
 
-impl<'a, K: Key, T: ?Sized> IntoIterator for &'a mut StableGenMap<K, T> where K::Idx : Numeric, <K as Key>::Gen: Numeric {
-    type Item = (K, &'a mut T);
-    type IntoIter = IterMut<'a, K, T>;
+impl<'a, K: Key, Derefable: StableDeref + DerefMut> IntoIterator for &'a mut StableDerefGenMap<K, Derefable> where K::Idx : Numeric, <K as Key>::Gen: Numeric {
+    type Item = (K, &'a mut Derefable::Target);
+    type IntoIter = IterMut<'a, K, Derefable>;
 
 
     #[inline]
@@ -152,39 +222,39 @@ impl<'a, K: Key, T: ?Sized> IntoIterator for &'a mut StableGenMap<K, T> where K:
 
 
 
-pub struct StableGenMap<K: Key, T: ?Sized> {
-    slots: UnsafeCell<Vec<Slot<T, K>>>,
+pub struct StableDerefGenMap<K: Key, Derefable: StableDeref> {
+    slots: UnsafeCell<Vec<Slot<Derefable, K>>>,
     phantom: PhantomData<fn(K)>,
     next_free: Cell<Option<K::Idx>>,
     num_elements: Cell<usize>,
 }
 
-impl<K: Key,T: ?Sized> Index<K> for StableGenMap<K,T> {
-    type Output = T;
+impl<K: Key, Derefable: StableDeref> Index<K> for StableDerefGenMap<K,Derefable> {
+    type Output = Derefable::Target;
     fn index(&self, key: K) -> &Self::Output{
         self.get(key).unwrap()
     }
 }
-impl<K: Key,T: ?Sized> IndexMut<K> for StableGenMap<K,T> {
+impl<K: Key,Derefable: StableDeref + DerefMut> IndexMut<K> for StableDerefGenMap<K,Derefable> {
 
     fn index_mut(&mut self, key: K) -> &mut Self::Output{
         self.get_mut(key).unwrap()
     }
 }
 
-enum SlotVariant<T: ?Sized, K: Key>{
-    Occupied(AliasableBox<T>),
+enum SlotVariant<Derefable, K: Key>{
+    Occupied(Derefable),
     Vacant(Option<K::Idx>),
 }
 
-pub struct IntoIter<K: Key, T: ?Sized> {
-    slots: std::vec::IntoIter<Slot<T, K>>,
+pub struct IntoIter<K: Key, Derefable> {
+    slots: std::vec::IntoIter<Slot<Derefable, K>>,
     idx: usize,
     _marker: PhantomData<K>,
 }
 
-impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> where <K as Key>::Idx : Numeric{
-    type Item = (K, Box<T>);
+impl<K: Key, Derefable: StableDeref> Iterator for IntoIter<K, Derefable> where <K as Key>::Idx : Numeric{
+    type Item = (K, Derefable);
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(slot) = self.slots.next() {
@@ -202,8 +272,8 @@ impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> where <K as Key>::Idx : Nume
             };
             let key = K::from(key_data);
 
-            let boxed = AliasableBox::into_unique(alias);
-            return Some((key, boxed));
+       
+            return Some((key, alias));
         }
         None
     }
@@ -214,9 +284,9 @@ impl<K: Key, T: ?Sized> Iterator for IntoIter<K, T> where <K as Key>::Idx : Nume
     }
 }
 
-impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> where <K as Key>::Idx: Numeric{
-    type Item = (K, Box<T>);
-    type IntoIter = IntoIter<K, T>;
+impl<K: Key, Derefable: StableDeref> IntoIterator for StableDerefGenMap<K, Derefable> where <K as Key>::Idx: Numeric{
+    type Item = (K, Derefable);
+    type IntoIter = IntoIter<K, Derefable>;
 
     /// Converts the map into an iterator that owns all elements. This operation consumes the map
     fn into_iter(self) -> Self::IntoIter {
@@ -230,18 +300,18 @@ impl<K: Key, T: ?Sized> IntoIterator for StableGenMap<K, T> where <K as Key>::Id
 }
 
 // RAII "reservation" for a single index in `free`.
-struct FreeGuard<'a, K: Key, T: ?Sized> {
-    map: &'a StableGenMap<K, T>,
+struct FreeGuard<'a, K: Key, Derefable: StableDeref> {
+    map: &'a StableDerefGenMap<K, Derefable>,
     idx: K::Idx,
 }
 
-impl<'a, K: Key, T: ?Sized> FreeGuard<'a, K, T> {
+impl<'a, K: Key, Derefable: StableDeref> FreeGuard<'a, K, Derefable> {
     fn commit(self) {
         std::mem::forget(self);
     }
 }
 
-impl<'a, K: Key, T: ?Sized> Drop for FreeGuard<'a, K, T> {
+impl<'a, K: Key, Derefable: StableDeref> Drop for FreeGuard<'a, K, Derefable> {
     fn drop(&mut self) {
 
         unsafe {
@@ -265,18 +335,18 @@ impl<'a, K: Key, T: ?Sized> Drop for FreeGuard<'a, K, T> {
 
 
 
-impl<T: ?Sized, K: Key> SlotVariant<T, K> where K::Idx : Zero {
+impl<Derefable, K: Key> SlotVariant<Derefable, K> where K::Idx : Zero {
     fn is_occupied(&self) -> bool {
         matches!(self, Occupied(_))
     }
     /// If occupied, take the value and make this slot Vacant(None).
     /// If already vacant, leave as-is and return None.
     #[inline]
-    fn take_occupied(&mut self) -> Option<AliasableBox<T>> {
+    fn take_occupied(&mut self) -> Option<Derefable> {
         use std::mem;
 
         match mem::replace(self, SlotVariant::Vacant(None)) {
-            Occupied(boxed) => Some(boxed),
+            Occupied(smart_ptr) => Some(smart_ptr),
             vacant @ Vacant(_) => {
                 // Already vacant; restore the previous vacant state.
                 *self = vacant;
@@ -295,7 +365,7 @@ impl<T: ?Sized, K: Key> SlotVariant<T, K> where K::Idx : Zero {
         }
     }
 }
-impl<K: Key,T: ?Sized> StableGenMap<K,T> {
+impl<K: Key,Derefable: StableDeref> StableDerefGenMap<K,Derefable> {
 
 
 
@@ -304,7 +374,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /// Returns a snapshot of the map at the current moment. it ignores future inserts
     /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
     #[inline]
-    pub fn snapshot(&self) -> Vec<(K, &T)> {
+    pub fn snapshot(&self) -> Vec<(K, &Derefable::Target)> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(
@@ -335,7 +405,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /// Iterator over `&T` for a snapshot of the map. Ignores future inserts.
     /// Allocates internally via `snapshot_ref_only`.
     #[inline]
-    pub fn snapshot_ref_only(&self) -> Vec<&T> {
+    pub fn snapshot_ref_only(&self) -> Vec<&Derefable::Target> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(
@@ -347,7 +417,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     }
     /// Iteration with this method is only safe if no mutation of the map occurs while iterating, which can happen even with safe code. For example, inserting while iterating with this is UB
     #[inline]
-    pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (K, &T)> {
+    pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (K, &Derefable::Target)> {
         (&*self.slots.get())
             .iter()
             .enumerate()
@@ -355,7 +425,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 match x.item {
                     Occupied(ref a) => Some(
                         (K::from(KeyData{idx: K::Idx::from_usize(idx),generation: x.generation}),
-                         a.as_ref())),
+                         a.deref())),
                     _ => None
                 }
             })
@@ -382,10 +452,10 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
         }
     }
 
-    /// a more efficient Clone operation than the Clone::clone implementation. Since done with a mutable reference, a `Clone` implementation of `T` cannot mutate the map without unsafe code,
+    /// a more efficient Clone operation than the Clone::clone implementation. Since done with a mutable reference, the `Clone` implementation of `Derefable` cannot mutate the map without unsafe code,
     /// so `clone_efficiently_mut` is safe
     #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self where T: Clone {
+    pub fn clone_efficiently_mut(&mut self) -> Self where Derefable: Clone {
         unsafe {
             Self{
                 num_elements: self.num_elements.clone(),
@@ -395,9 +465,9 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             }
         }
     }
-    /// A more efficient Clone operation than the Clone::clone implementation, but if a `Clone` implementation of `T` mutates the map, UB occurs
+    /// A more efficient Clone operation than the Clone::clone implementation, but if the `Clone` implementation of `Derefable` mutates the map, UB occurs
     #[inline]
-    pub unsafe  fn clone_efficiently(&self) -> Self where T: Clone {
+    pub unsafe  fn clone_efficiently(&self) -> Self where Derefable: Clone {
         Self{
             num_elements: self.num_elements.clone(),
             phantom: PhantomData,
@@ -429,14 +499,14 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     }
     /// Shared access to a value by key (no guard, plain &T).
     #[inline]
-    pub fn get(&self, k: K) -> Option<&T> {
+    pub fn get(&self, k: K) -> Option<&Derefable::Target> {
 
         let key_data = k.data();
         let slot = unsafe { &*self.slots.get() }.get(key_data.idx.into_usize())?;
         if  slot.generation == key_data.generation {
             match &slot.item {
                 Occupied(item) => {
-                    unsafe { Some(&*(item.as_ref() as *const T)) }
+                    unsafe { Some(&*(item.deref() as *const Derefable::Target)) }
                 },
                 SlotVariant::Vacant(_) => {
                     None
@@ -450,7 +520,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
     /// Gets a unique reference to a value when supplied a key
     #[inline]
-    pub fn get_mut(&mut self, k: K) -> Option<&mut T> {
+    pub fn get_mut(&mut self, k: K) -> Option<&mut Derefable::Target> where Derefable: DerefMut {
 
         let key_data = k.data();
         let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?;
@@ -458,7 +528,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
             match &mut slot.item {
                 Occupied(ref mut item) => {
                     // SAFETY: value is live; we never move the Box's allocation.
-                    Some(item.as_mut())
+                    Some(item.deref_mut())
                 }
                 _ => None
             }
@@ -473,12 +543,12 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /// prevents calling this while any &'_ T derived from &self is alive.
     /// A use case will be in, for example, freeing memory after the end of a frame in a video game 
     #[inline]
-    pub fn remove(&mut self, k: K) -> Option<Box<T>> {
+    pub fn remove(&mut self, k: K) -> Option<Derefable> {
         let key_data = k.data();
         let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?;
         if slot.generation != key_data.generation { return None; }
 
-        let boxed = slot.item.take_occupied()?;
+        let smart_ptr = slot.item.take_occupied()?;
         self.num_elements.set(self.num_elements.get() - 1);
         match slot.generation.checked_add(&K::Gen::one()) {
             Some(generation) => {
@@ -494,7 +564,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
 
             }
         }
-        Some(AliasableBox::into_unique(boxed))
+        Some(smart_ptr)
 
     }
 
@@ -506,7 +576,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     }
 
 
-    /// How much elements (Occupied or Vacant, doesn't matter), the stable_gen_map can hold before reallocating
+    /// How much elements (Occupied or Vacant, doesn't matter), the deref_stable_gen_map can hold before reallocating
     #[inline]
     pub fn capacity(&self) -> usize {
         unsafe { &*self.slots.get() }.capacity()
@@ -517,9 +587,9 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /// This is useful to store values that contain their own key.
     /// # Examples
     /// ```
-    /// # use stable_gen_map::key::DefaultKey;
-    /// use stable_gen_map::stable_gen_map::StableGenMap;
-    /// let mut sm = StableGenMap::new();
+    /// # use stable_gen_map::key::DefaultKey;///
+    /// use stable_gen_map::stable_deref_gen_map::StableDerefGenMap;
+    /// let mut sm = StableDerefGenMap::new();
     /// #[derive(Eq,PartialEq, Debug)]
     /// struct KeyHolder{
     ///     key: DefaultKey
@@ -530,7 +600,7 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /// assert_eq!(sm[key], KeyHolder{key});
     /// ```
     #[inline]
-    pub fn insert_with_key(&self, func: impl FnOnce(K) -> Box<T>) -> (K, &T){
+    pub fn insert_with_key(&self, func: impl FnOnce(K) -> Derefable) -> (K, &Derefable::Target){
         self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
     }
 
@@ -543,14 +613,14 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /// # Examples
     /// ```rust
     /// use stable_gen_map::key::DefaultKey;
-    /// use stable_gen_map::stable_gen_map::StableGenMap;
+    /// use stable_gen_map::stable_deref_gen_map::StableDerefGenMap;
     ///
     /// #[derive(Eq, PartialEq, Debug)]
     /// struct KeyHolder {
     ///     key: DefaultKey,
     /// }
     ///
-    /// let sm = StableGenMap::new();
+    /// let sm = StableDerefGenMap::new();
     ///
     /// let (key, reference) = sm
     ///     .try_insert_with_key::<()>(|k| Ok(Box::new(KeyHolder { key: k })))
@@ -563,8 +633,8 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     #[inline]
     pub fn try_insert_with_key<E>(
         &self,
-        func: impl FnOnce(K) -> Result<Box<T>, E>,
-    ) -> Result<(K, &T), E> {
+        func: impl FnOnce(K) -> Result<Derefable, E>,
+    ) -> Result<(K, &Derefable::Target), E> {
         unsafe {
             let slots = &mut *self.slots.get();
 
@@ -598,11 +668,11 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 let slot = slots.get_unchecked_mut(i);
 
                 // Store value as occupied.
-                slot.item = SlotVariant::Occupied(AliasableBox::from_unique(value_box));
+                slot.item = Occupied(value_box);
                 self.num_elements.set(self.num_elements.get() + 1);
 
                 // Build &T from the AliasableBox.
-                let value_ref: &T = match &slot.item {
+                let value_ref: &Derefable::Target = match &slot.item {
                     Occupied(b) => &**b,
                     Vacant(_) => hint::unreachable_unchecked(),
                 };
@@ -630,10 +700,10 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
                 let i = idx.into_usize();
                 let slot = slots.get_unchecked_mut(i);
 
-                slot.item = Occupied(AliasableBox::from_unique(value_box));
+                slot.item = Occupied(value_box);
                 self.num_elements.set(self.num_elements.get() + 1);
 
-                let value_ref: &T = match &slot.item {
+                let value_ref: &Derefable::Target = match &slot.item {
                     Occupied(b) => &**b,
                     Vacant(_) => hint::unreachable_unchecked(),
                 };
@@ -647,14 +717,14 @@ impl<K: Key,T: ?Sized> StableGenMap<K,T> {
     /// # Examples
     /// ```rust
     /// use stable_gen_map::key::DefaultKey;
-    /// use stable_gen_map::stable_gen_map::StableGenMap;
-    /// let sm = StableGenMap::<DefaultKey,_>::new();
+    /// use stable_gen_map::stable_deref_gen_map::StableDerefGenMap;
+    /// let sm = StableDerefGenMap::<DefaultKey,_>::new();
     /// let (key, reference) = sm.insert(Box::new(4));
     /// assert_eq!(*reference, 4);
     /// assert_eq!(*sm.get(key).unwrap(), 4);
     ///```
     #[inline]
-    pub fn insert(&self, value: Box<T>) -> (K, &T) {
+    pub fn insert(&self, value: Derefable) -> (K, &Derefable::Target) {
         self.insert_with_key(|_| value)
     }
 
