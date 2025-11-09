@@ -578,6 +578,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
 
 
     /// This to allow code repetition without the borrow checker getting in the way
+    #[inline]
     unsafe fn remove_split_data<const DO_GENERATION_CHECK: bool>(
         mut args: RemoveArgumentsPaged<K, T, SLOTS_NUM_PER_PAGE>,
     ) -> Option<T> {
