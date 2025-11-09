@@ -583,7 +583,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
     ) -> Option<T> {
 
 
-        let slot = &mut args.slot;
+        let slot = args.slot;
         let num_elements = args.num_elements;
         let next_free = args.next_free;
         let key_data = args.key.data();
