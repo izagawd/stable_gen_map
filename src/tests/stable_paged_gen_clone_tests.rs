@@ -374,6 +374,8 @@ fn paged_clone_handles_reentrant_t_clone_two() {
 
     let (k3, _) = m.insert(Reentrant { val: 1 });
     let (k4, _) = m.insert(Reentrant { val: 2 });
+
+    // making two slots initialized  but free (THIS IS VERY IMPORTANT)
     m.remove(k3);
     m.remove(k4);
     assert_eq!(m.len(), 2);

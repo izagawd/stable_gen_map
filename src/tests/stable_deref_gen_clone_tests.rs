@@ -322,9 +322,14 @@ fn stable_clone_handles_reentrant_t_clone_two() {
 
     let (k3, _) = m.insert(Box::new(Reentrant { val: 1 }));
     let (k4, _) = m.insert(Box::new(Reentrant { val: 2 }));
+    
+    // making two slots initialized  but free (THIS IS VERY IMPORTANT)
     m.remove(k3);
     m.remove(k4);
-    // Before clone: 2 entries
+    
+    
+    
+    
     // Before clone: 2 entries
     assert_eq!(m.len(), 2);
 
