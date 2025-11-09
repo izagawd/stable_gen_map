@@ -364,16 +364,18 @@ fn paged_clone_handles_reentrant_t_clone() {
 #[test]
 fn paged_clone_handles_reentrant_t_clone2() {
     let mut m: MapReentrant = StablePagedGenMap::new();
-    let (k1, _) = m.insert(Reentrant { val: 1 });
-    let (k2, _) = m.insert(Reentrant { val: 2 });
-    m.remove(k2);
-    m.remove(k1);
+
     // allow Reentrant::clone to find this map
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
 
     let (k1, _) = m.insert(Reentrant { val: 1 });
     let (k2, _) = m.insert(Reentrant { val: 2 });
 
+
+    let (k3, _) = m.insert(Reentrant { val: 1 });
+    let (k4, _) = m.insert(Reentrant { val: 2 });
+    m.remove(k3);
+    m.remove(k4);
     assert_eq!(m.len(), 2);
 
     let c = m.clone();

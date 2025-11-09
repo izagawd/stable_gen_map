@@ -708,8 +708,8 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             if let Some(idx) = self.next_free.get() {
                 let split = decode_index::<K::Idx>(idx, SLOTS_NUM_PER_PAGE);
                 let page = pages.get_unchecked_mut(split.page_idx);
-                let slot: &mut Slot<T, K> =
-                    page.get_slot_mut(split.slot_idx).unwrap_unchecked();
+                let slot =
+                    &mut *page.get_slot_unsafe_cell_unchecked(split.slot_idx).get();
 
                 // Pop this slot from the free list.
                 let next = slot.item.next_free_unchecked();
@@ -735,10 +735,10 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
 
                 // Re-borrow pages because func(key) may have re-entered and
                 // caused pages to grow, etc.
-                let pages = &mut *self.pages.get();
-                let page = pages.get_unchecked_mut(split.page_idx);
-                let slot: &mut Slot<T, K> =
-                    page.get_slot_mut(split.slot_idx).unwrap_unchecked();
+                let pages = &*self.pages.get();
+                let page = pages.get_unchecked(split.page_idx);
+                let slot =
+                    &mut *page.get_slot_unsafe_cell_unchecked(split.slot_idx).get();
 
                 slot.item = SlotVariant::Occupied(value);
                 self.num_elements.set(self.num_elements.get() + 1);
