@@ -19,7 +19,7 @@ Great for patterns that rely on shared mutability on a single thread, and remove
   A stable generational map storing `T` inline. This is generally what you would want
 
 - `StablePagedGenMap<K, T, const SLOTS_NUM_PER_PAGE: usize>`  
-  Same semantics as `StableGenMap`, but uses multiple slots in a page. Use this variant when you want to pre-allocate pages of slots so that inserting new elements usually doesn’t need a heap allocation, even when no slots have been freed by remove yet.
+  Same semantics as `StableGenMap`, but uses multiple slots in a page. Use this variant when you want to pre-allocate slots so that inserting new elements usually doesn’t need a heap allocation, even when no slots have been freed by ```remove``` yet.
 
 - `StableDerefGenMap<K, Derefable>`  
   A stable generational map where each element is a **smart pointer** that
@@ -33,7 +33,7 @@ Great for patterns that rely on shared mutability on a single thread, and remove
   Type alias for `StableDerefGenMap<K, Box<T>>`.  
   This is the most ergonomic “owning” deref-based map: the map owns `T` via
   `Box<T>`, you still insert with `&self`, and you get stable `&T`/`&mut T`
-  references. Best used if your element needs to be boxed anyways.
+  references. Preferred over ```StableGenMap```  if your element needs to be boxed anyways.
   
 
 Keys implement the `Key` trait; you can use the provided `DefaultKey` or define your own (e.g. with smaller index / generation types).
