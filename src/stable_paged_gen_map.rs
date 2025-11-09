@@ -435,7 +435,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             page.get_slot(split.slot_idx)?
         };
 
-        match unsafe { &slot.item } {
+        match &slot.item  {
             SlotVariant::Occupied(ref md) => Some((K::from(KeyData{idx,generation: slot.generation}) ,md)),
             SlotVariant::Vacant(_) => None,
         }
@@ -487,7 +487,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         }
 
         if slot.generation == key_data.generation {
-            match unsafe { &slot.item } {
+            match  &slot.item {
                 SlotVariant::Occupied(md) => {
                     // SAFETY: ManuallyDrop<T> holds a valid T, never moved.
                     let ptr = md as *const T;
@@ -585,8 +585,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
 
     /// This to allow code repetition without the borrow checker getting in the way
     #[inline]
-    unsafe fn remove_split_data<const DO_GENERATION_CHECK: bool>(
-        mut args: RemoveArgumentsPaged<K, T, SLOTS_NUM_PER_PAGE>,
+    unsafe fn remove_split_data<const DO_GENERATION_CHECK: bool>(args: RemoveArgumentsPaged<K, T, SLOTS_NUM_PER_PAGE>,
     ) -> Option<T> {
 
 
@@ -793,7 +792,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                 let page = pages.get_unchecked(page_idx);
                 let the_slot =
                     page.get_slot_unsafe_cell_unchecked(slot_idx);
-                let the_slot =(&mut *the_slot.get());
+                let the_slot = &mut *the_slot.get();
                 the_slot.item = SlotVariant::Occupied(created);
                 self.num_elements.set(self.num_elements.get() + 1);
 
@@ -842,7 +841,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for StablePagedGen
             //
             //    We gather, for each page:
             //      - its slot capacity
-            //      - a Vec of (generation, Snap) for slots [0..length_used)
+            //      - a Vec of (generation, Snap) for slots 0..length_used
             //
             //    After this, we never touch self.pages / self.next_free again.
             let mut pages_snapshot: Vec< Vec<(K::Gen, Snap<'_, K, T>)>> =
@@ -900,8 +899,8 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for StablePagedGen
                     };
 
                     let slot = Slot {
-                        generation: generation,
-                        item: item,
+                        generation,
+                        item,
                     };
 
                     // writes Slot into the next uninit slot and bumps length_used
@@ -953,8 +952,7 @@ for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
             };
 
             // Get &mut SlotVariant<T, K> from &Slot<T, K> via UnsafeCell.
-            let variant: &mut SlotVariant<T, K> =
-                unsafe { &mut slot.item};
+            let variant: &mut SlotVariant<T, K> = &mut slot.item;
 
             let value: &mut T = match variant {
                 SlotVariant::Occupied(ref mut md) => md,
