@@ -490,8 +490,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             match  &slot.item {
                 SlotVariant::Occupied(md) => {
                     // SAFETY: ManuallyDrop<T> holds a valid T, never moved.
-                    let ptr = md as *const T;
-                    Some(unsafe { &*ptr })
+                    Some(md)
                 }
                 SlotVariant::Vacant(_) => None,
             }
