@@ -49,7 +49,7 @@ fn paged_clone_basic_contents_equal_but_independent() {
 
 #[cfg(test)]
 mod clone_efficiently_paged_tests {
-    use super::*;
+
     use crate::key::{DefaultKey, Key};
 
     use crate::stable_paged_gen_map::{DefaultStablePagedGenMap, DEFAULT_SLOTS_NUM_PER_PAGE};
@@ -330,7 +330,7 @@ fn paged_clone_handles_reentrant_t_clone() {
     let m: MapReentrant = StablePagedGenMap::new();
 
     // allow Reentrant::clone to find this map
-    GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
+    GLOBAL_MAP_PTR.set(&m as *const _);
 
     let (k1, _) = m.insert(Reentrant { val: 1 });
     let (k2, _) = m.insert(Reentrant { val: 2 });
@@ -340,7 +340,7 @@ fn paged_clone_handles_reentrant_t_clone() {
     let c = m.clone();
 
     // stop re-entrancy for the rest of the test
-    GLOBAL_MAP_PTR.with(|cell| cell.set(std::ptr::null()));
+    GLOBAL_MAP_PTR.set(std::ptr::null());
 
 
     // original map may have more elements because of re-entrant inserts
