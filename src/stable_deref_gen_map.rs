@@ -628,6 +628,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
 
 
     /// Splitting the logic into fields so borrow checker doesn't complain
+    #[inline]
     unsafe fn remove_split_data<const DO_GENERATION_CHECK: bool>(remove_arguments: RemoveArguments<K,Derefable>) -> Option<Derefable>{
         let slot = remove_arguments.slot;
         let k = remove_arguments.key;
