@@ -589,8 +589,10 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         let next_free = args.next_free;
         let key_data = args.key.data();
 
-        if DO_GENERATION_CHECK && slot.generation != key_data.generation {
-            return None;
+        if DO_GENERATION_CHECK {
+            if  slot.generation != key_data.generation{
+                return None;
+            }
         }
 
 
