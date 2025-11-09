@@ -362,7 +362,7 @@ fn paged_clone_handles_reentrant_t_clone() {
 }
 
 #[test]
-fn paged_clone_handles_reentrant_t_clone2() {
+fn paged_clone_handles_reentrant_t_clone_two() {
     let mut m: MapReentrant = StablePagedGenMap::new();
 
     // allow Reentrant::clone to find this map

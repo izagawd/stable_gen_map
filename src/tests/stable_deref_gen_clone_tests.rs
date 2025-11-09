@@ -310,7 +310,55 @@ impl Clone for Reentrant {
 }
 
 type MapReentrant = BoxStableDerefGenMap<DefaultKey, Reentrant>;
+#[test]
+fn stable_clone_handles_reentrant_t_clone_two() {
+    let mut m: MapReentrant = BoxStableDerefGenMap::new();
 
+    // Let Reentrant::clone know which map to mutate.
+    GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
+
+    let (k1, _) = m.insert(Box::new(Reentrant { val: 1 }));
+    let (k2, _) = m.insert(Box::new(Reentrant { val: 2 }));
+
+    let (k3, _) = m.insert(Box::new(Reentrant { val: 1 }));
+    let (k4, _) = m.insert(Box::new(Reentrant { val: 2 }));
+    m.remove(k3);
+    m.remove(k4);
+    // Before clone: 2 entries
+    // Before clone: 2 entries
+    assert_eq!(m.len(), 2);
+
+    // clone() will cause each Reentrant::clone to insert extra entries into *m*
+    let c = m.clone();
+
+    // Stop re-entrancy after cloning, so later code doesn't accidentally hit it.
+    GLOBAL_MAP_PTR.with(|cell| cell.set(std::ptr::null()));
+
+    // Original map now has at least as many entries as before (probably more).
+    assert!(m.len() >= 2);
+
+    // Cloned map must reflect the state at clone start → 2 logical elements.
+    assert_eq!(c.len(), 2);
+
+    // k1, k2 must exist in cloned map with original vals
+    let v1 = c.get(k1).unwrap();
+    let v2 = c.get(k2).unwrap();
+    assert_eq!(v1.val, 1);
+    assert_eq!(v2.val, 2);
+
+    // cloned keys set should be exactly {k1, k2}
+    let cloned_keys: HashSet<_> = {
+        // if you already have snapshot_key_only(), use that:
+        // c.snapshot_key_only().into_iter().collect()
+        //
+        // otherwise, approximate via snapshot of pairs:
+        c.snapshot().into_iter().map(|(k, _)| k).collect()
+    };
+
+    assert_eq!(cloned_keys.len(), 2);
+    assert!(cloned_keys.contains(&k1));
+    assert!(cloned_keys.contains(&k2));
+}
 #[test]
 fn stable_clone_handles_reentrant_t_clone() {
     let m: MapReentrant = BoxStableDerefGenMap::new();
