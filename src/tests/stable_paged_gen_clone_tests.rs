@@ -295,8 +295,8 @@ fn paged_clone_into_iter_matches_snapshot() {
 
 // We use a thread-local pointer so Reentrant::clone can find the map.
 thread_local! {
-        static GLOBAL_MAP_PTR: std::cell::Cell<*const StablePagedGenMap<DefaultKey, Reentrant, SLOTS>> =
-            std::cell::Cell::new(std::ptr::null());
+        static GLOBAL_MAP_PTR: std::cell::Cell<Option<&'static StablePagedGenMap<DefaultKey, Reentrant, SLOTS>>> =
+            std::cell::Cell::new(None);
     }
 
 #[derive(Debug)]
@@ -308,10 +308,10 @@ impl Clone for Reentrant {
     fn clone(&self) -> Self {
         // On clone, insert a new element into the original map (if set).
         GLOBAL_MAP_PTR.with(|cell| {
-            let ptr = cell.get();
+            let ptr = cell.get().unwrap();
             {
                 unsafe {
-                    let map = &*ptr;
+                    let map = ptr;
                     let _ = map.insert(Reentrant { val: self.val + 1000 });
                 }
             }
@@ -325,10 +325,10 @@ type MapReentrant = StablePagedGenMap<DefaultKey, Reentrant, SLOTS>;
 
 #[test]
 fn paged_clone_handles_reentrant_t_clone() {
-    let m: MapReentrant = StablePagedGenMap::new();
+    let m: &MapReentrant = Box::leak(Box::new(StablePagedGenMap::new())) ;
 
     // allow Reentrant::clone to find this map
-    GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
+    GLOBAL_MAP_PTR.with(|cell| cell.set(Some(m)));
 
     let (k1, _) = m.insert(Reentrant { val: 1 });
     let (k2, _) = m.insert(Reentrant { val: 2 });
@@ -338,7 +338,7 @@ fn paged_clone_handles_reentrant_t_clone() {
     let c = m.clone();
 
     // stop re-entrancy for the rest of the test
-    GLOBAL_MAP_PTR.with(|cell| cell.set(std::ptr::null()));
+    GLOBAL_MAP_PTR.with(|cell| cell.set(None));
 
     // original map may have more elements because of re-entrant inserts
     assert!(m.len() >= 2);
