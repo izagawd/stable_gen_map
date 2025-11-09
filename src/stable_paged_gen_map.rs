@@ -86,7 +86,7 @@ impl<T, K: Key> SlotVariant<T, K> {
 }
 
 struct Slot<T, K: Key> {
-    item: UnsafeCell<SlotVariant<T, K>>,
+    item: SlotVariant<T, K>,
     generation: K::Gen,
 }
 
@@ -110,7 +110,7 @@ impl<T: Clone, K: Key, const SLOTS_NUM_PER_PAGE: usize>  Page<T, K,SLOTS_NUM_PER
                                 MaybeUninit::new(
                                     Slot{
                                         generation: assumed_init.generation,
-                                        item: UnsafeCell::new((&*assumed_init.item.get()).clone())
+                                        item: assumed_init.item.clone()
                                     }
                                 )
 
@@ -162,6 +162,12 @@ impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE>
                 Some(self.get_slot_unchecked(slot_idx) )
             }
         }
+
+    }
+    #[inline]
+    unsafe fn get_slot_unsafe_cell_unchecked(&self, slot_idx: usize) -> &UnsafeCell<Slot<T, K>> {
+
+        &*(self.slots.get_unchecked(slot_idx) as *const UnsafeCell<MaybeUninit<Slot<T, K>>> as  *const _)
 
     }
     #[inline]
@@ -280,7 +286,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                             return None;
                         }
                         let slot_pure = (&*slot.get()).assume_init_ref();
-                        match  &*slot_pure.item.get() {
+                        match  &slot_pure.item {
                             SlotVariant::Occupied(ref a) => Some(
                                 (K::from(KeyData{idx: encode_index(page_idx,slot_idx,SLOTS_NUM_PER_PAGE),generation: slot_pure.generation}),
                                  a)),
@@ -402,7 +408,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             return None;
         }
 
-        let variant: &mut SlotVariant<T, K> = slot.item.get_mut();
+        let variant: &mut SlotVariant<T, K> = &mut slot.item;
         match variant {
             SlotVariant::Occupied(ref mut md) => {
                 // SAFETY: value is live; we never move the allocation.
@@ -429,7 +435,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             page.get_slot(split.slot_idx)?
         };
 
-        match unsafe { &*slot.item.get() } {
+        match unsafe { &slot.item } {
             SlotVariant::Occupied(ref md) => Some((K::from(KeyData{idx,generation: slot.generation}) ,md)),
             SlotVariant::Vacant(_) => None,
         }
@@ -452,7 +458,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             page.get_slot_mut(split.slot_idx)?
         };
 
-        let variant: &mut SlotVariant<T, K> = slot.item.get_mut();
+        let variant: &mut SlotVariant<T, K> = &mut slot.item;
         match variant {
             SlotVariant::Occupied(ref mut md) => Some((K::from(KeyData{idx,generation: slot.generation}) ,md)),
             SlotVariant::Vacant(_) => None,
@@ -481,7 +487,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         }
 
         if slot.generation == key_data.generation {
-            match unsafe { &*slot.item.get() } {
+            match unsafe { &slot.item } {
                 SlotVariant::Occupied(md) => {
                     // SAFETY: ManuallyDrop<T> holds a valid T, never moved.
                     let ptr = md as *const T;
@@ -536,7 +542,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         F: FnMut(K, &mut T) -> bool,
     {
         unsafe {
-            let pages: &mut Vec<Page<T, K, SLOTS_NUM_PER_PAGE>> = &mut self.pages.get_mut();
+            let pages: &mut Vec<Page<T, K, SLOTS_NUM_PER_PAGE>> =self.pages.get_mut();
 
             for (page_idx, page) in pages.iter_mut().enumerate() {
                 let length_used = page.length_used;
@@ -545,7 +551,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                     let slot = page.get_slot_unchecked_mut(slot_idx);
 
                     // Get mutable access to SlotVariant<T, K>.
-                    let variant: &mut SlotVariant<T, K> = slot.item.get_mut();
+                    let variant: &mut SlotVariant<T, K> = &mut slot.item;
 
                     if let SlotVariant::Occupied(ref mut value) = variant {
                         // Build key for this slot.
@@ -596,7 +602,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         }
 
 
-        let variant: &mut SlotVariant<T, K> = slot.item.get_mut();
+        let variant: &mut SlotVariant<T, K> = &mut slot.item;
         let value = match variant.take_occupied() {
             Some(v) => v,
             None => return None,
@@ -610,12 +616,12 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             Some(new_gen) => {
                 slot.generation = new_gen;
                 let old_head = next_free.get();
-                *slot.item.get_mut() = SlotVariant::Vacant(old_head);
+                slot.item = SlotVariant::Vacant(old_head);
                 next_free.set(Some(key_data.idx));
             }
             None => {
 
-                *slot.item.get_mut() = SlotVariant::Vacant(None);
+                slot.item = SlotVariant::Vacant(None);
             }
         }
 
@@ -707,11 +713,11 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                     page.get_slot_mut(split.slot_idx).unwrap_unchecked();
 
                 // Pop this slot from the free list.
-                let next = (*slot.item.get()).next_free_unchecked();
+                let next = slot.item.next_free_unchecked();
                 self.next_free.set(next);
 
                 // Mark as reserved: not linked in the free list anymore.
-                *slot.item.get_mut() = SlotVariant::Vacant(None);
+                slot.item = SlotVariant::Vacant(None);
 
                 let generation = slot.generation;
                 let key = K::from(KeyData { idx, generation });
@@ -735,11 +741,11 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                 let slot: &mut Slot<T, K> =
                     page.get_slot_mut(split.slot_idx).unwrap_unchecked();
 
-                *slot.item.get_mut() = SlotVariant::Occupied(value);
+                slot.item = SlotVariant::Occupied(value);
                 self.num_elements.set(self.num_elements.get() + 1);
 
                 // Build &T from ManuallyDrop.
-                let value_ref: &T = match &*slot.item.get() {
+                let value_ref: &T = match &slot.item {
                     SlotVariant::Occupied(md) => md,
                     SlotVariant::Vacant(_) => hint::unreachable_unchecked(),
                 };
@@ -763,7 +769,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
 
                 let slot_idx = last.insert_slot(Slot {
                     generation: K::Gen::zero(),
-                    item: UnsafeCell::new(SlotVariant::Vacant(None)),
+                    item: SlotVariant::Vacant(None),
                 });
 
                 let page_idx = pages.len() - 1;
@@ -783,15 +789,15 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                 let created = func(key)?;
                 guard.commit();
 
-                let pages = &mut *self.pages.get();
-                let page = pages.get_unchecked_mut(page_idx);
-                let the_slot: &Slot<T, K> =
-                    page.get_slot(slot_idx).unwrap_unchecked();
-
-                *the_slot.item.get() = SlotVariant::Occupied(created);
+                let pages = &*self.pages.get();
+                let page = pages.get_unchecked(page_idx);
+                let the_slot =
+                    page.get_slot_unsafe_cell_unchecked(slot_idx);
+                let the_slot =(&mut *the_slot.get());
+                the_slot.item = SlotVariant::Occupied(created);
                 self.num_elements.set(self.num_elements.get() + 1);
 
-                let value_ref: &T = match &*the_slot.item.get() {
+                let value_ref: &T = match &the_slot.item {
                     SlotVariant::Occupied(md) => md,
                     SlotVariant::Vacant(_) => hint::unreachable_unchecked(),
                 };
@@ -853,7 +859,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for StablePagedGen
                         .unwrap_unchecked();
 
                     let generation = slot.generation;
-                    let variant: &SlotVariant<T, K> = &*slot.item.get();
+                    let variant: &SlotVariant<T, K> = &slot.item;
 
                     let snap = match variant {
                         SlotVariant::Occupied(md) => {
@@ -895,7 +901,7 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for StablePagedGen
 
                     let slot = Slot {
                         generation: generation,
-                        item: UnsafeCell::new(item),
+                        item: item,
                     };
 
                     // writes Slot into the next uninit slot and bumps length_used
@@ -923,14 +929,14 @@ for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let pages: &Vec<Page<T, K, SLOTS_NUM_PER_PAGE>> = unsafe { &*self.map.pages.get() };
+            let pages: &mut Vec<Page<T, K, SLOTS_NUM_PER_PAGE>> = unsafe { &mut *self.map.pages.get() };
 
             if self.page_idx >= pages.len() {
                 return None;
             }
 
             let page_idx = self.page_idx;
-            let page = &pages[page_idx];
+            let page = &mut pages[page_idx];
 
             if self.slot_idx >= page.length_used {
                 self.page_idx += 1;
@@ -941,14 +947,14 @@ for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
             let slot_idx = self.slot_idx;
             self.slot_idx += 1;
 
-            let slot = match page.get_slot(slot_idx) {
+            let slot = match page.get_slot_mut(slot_idx) {
                 Some(s) => s,
                 None => continue,
             };
 
             // Get &mut SlotVariant<T, K> from &Slot<T, K> via UnsafeCell.
             let variant: &mut SlotVariant<T, K> =
-                unsafe { &mut *slot.item.get() };
+                unsafe { &mut slot.item};
 
             let value: &mut T = match variant {
                 SlotVariant::Occupied(ref mut md) => md,
@@ -1023,7 +1029,7 @@ for IntoIter<K, T, SLOTS_NUM_PER_PAGE>
                 None => continue,
             };
 
-            let variant = slot.item.get_mut();
+            let variant = &mut slot.item;
             let md = match std::mem::replace(
                 variant,
                 SlotVariant::Vacant(None),
@@ -1094,7 +1100,7 @@ for FreeGuard<'a, K, T, SLOTS_NUM_PER_PAGE>
 
             // This guard is used only for reserved/vacant slots.
             debug_assert!(!matches!(
-                &*slot.item.get(),
+                &slot.item,
                 SlotVariant::Occupied(_)
             ));
 
@@ -1105,7 +1111,7 @@ for FreeGuard<'a, K, T, SLOTS_NUM_PER_PAGE>
                 slot.generation = checked_add;
 
                 let old_head = self.map.next_free.get();
-                *slot.item.get_mut() = SlotVariant::Vacant(old_head);
+                slot.item = SlotVariant::Vacant(old_head);
                 self.map.next_free.set(Some(self.idx));
             }
         }
