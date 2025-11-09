@@ -7,7 +7,7 @@ A single-threaded, generational map that lets you:
 - and use **generational keys** to avoid use-after-free bugs.
 
 It’s designed for patterns like *graphs, self-referential structures, and arenas* where you want to keep `&T` references around while still inserting new elements, and you want to be able to defer the removal of elements, such as, at the end of a videogame's frame, or turn.
-Great for patterns that rely on shared mutability on a single thread.
+Great for patterns that rely on shared mutability on a single thread, and removes a lot of borrow checker struggles.
 
 > **Important:** This crate is intentionally single-threaded. The map types are not `Sync`, and are meant to be used from a single thread only.
 
@@ -129,6 +129,8 @@ impl Entity {
         let parent_key = self.key;
 
 
+      
+        /// No &mut reference to map required for the insert
         let (child_key, child_ref) = map.insert_with_key(|k| Entity {
             key: k,
             name: child_name.to_string(),
@@ -139,28 +141,16 @@ impl Entity {
         
         
         // Record the relationship using interior mutability inside the value.
-        // no need to reget the parent
+        // no need to reget the parent, since the insert did not need &mut
         self.children.borrow_mut().push(child_key);
 
-        /// Had `insert` of the map required &mut  it won't have been possible for
-        /// the entity itself to spawn the child,
-        /// and it would not enable us to use the parent reference we had earlier
-        /// ```
-        /// let parent_ref = world.get(parent_key);
-        /// parent_ref.do_something();
-        /// let child_key = world.insert(Entity::new());
-        /// // can't use the old parent_ref, i need to "reget" it.
-        /// let parent_ref = world.get(parent_key);
-        /// parent_ref.children.push(child)
-        /// ```
-        /// but since it doesn't need &mut, there is no need to call `get` multiple times,
-        /// as the borrow checker still lets us use previous references`
+
         (child_key, child_ref)
     }
 }
 
 fn main() {
-    let map: StableGenMap<DefaultKey, Entity> = StableGenMap::new();
+    let mut map: StableGenMap<DefaultKey, Entity> = StableGenMap::new();
 
     // Create the root entity. We get an `&Entity`, not `&mut Entity`.
     let (root_key, root) = map.insert_with_key(|k| Entity {
@@ -171,13 +161,21 @@ fn main() {
     });
 
     // Root spawns a child using only `&self` + `&StableGenMap`.
+    // An ECS pattern would require a `system` to be the one to do these operations,
+    // but with stable gen map, the instance itself can do the spawning
     let (child_key, child) = root.add_child(&map, "child");
 
     // That child spawns a grandchild, again only `&self` + `&StableGenMap`.
-  
+    // an ECS pattern would require a `system` to be the one to do these operations
+    // but with stable gen map, the instance itself can do the spawning
     let (grandchild_key, grandchild) = child.add_child(&map, "grandchild");
 
     // Everything stays wired up via generational keys.
+  
+  
+    // we do not need to reget the `root` and `child` references,
+    // since the inserts did not require a &mut reference,
+    // which can save performance in some cases
     assert_eq!(root.children.borrow().as_slice(), &[child_key]);
     assert_eq!(child.parent.get(), Some(root_key));
     assert_eq!(child.children.borrow().as_slice(), &[grandchild_key]);
