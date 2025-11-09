@@ -320,19 +320,25 @@ use std::sync::atomic::{AtomicUsize, Ordering};
     fn get_during_insert_returns_none_and_reentrancy_is_ok() {
         let map = BoxStableDerefGenMap::<DefaultKey, String>::new();
 
-        let (k_outer, r_outer) = map.insert_with_key(|k| {
-            // During construction, the slot is marked inserting; get() must return None.
-            assert!(map.get(k).is_none());
+            let mut inner = None;
+            let mut inner_ref = None;
+            let (k_outer, r_outer) = map.insert_with_key(|k| {
+                // During construction, the slot is "inserting"; get() must return None.
+                assert!(map.get(k).is_none());
 
-            // Re-entrant insert while the first slot is "inserting".
-            let (_k2, r2) = map.insert(Box::new("inner".to_string()));
-            assert_eq!(r2.as_str(), "inner");
+                // Re-entrant insert while the first slot is "inserting".
+                let (_k2, r2) = map.insert(Box::new("inner".to_string()));
+                inner = Some(_k2);
+                inner_ref = Some(r2);
+                assert_eq!(r2.as_str(), "inner");
+                Box::new("outer".to_string())
+            });
 
-            Box::new("outer".to_string())
-        });
+            assert_eq!(r_outer.as_str(), "outer");
+            assert_eq!(inner_ref.unwrap().as_str(), "inner");
+            assert_eq!(map.get(inner.unwrap()).unwrap().as_str(), "inner");
+            assert_eq!(map.get(k_outer).unwrap().as_str(), "outer");
 
-        assert_eq!(r_outer.as_str(), "outer");
-        assert_eq!(map.get(k_outer).unwrap().as_str(), "outer");
     }
 
     #[test]
