@@ -126,7 +126,7 @@ impl<Derefable: DerefGenMapPromise + Clone, K: Key>  Slot<Derefable, K> {
 }
 
 pub struct IterMut<'a, K: Key, Derefable: DerefGenMapPromise + 'a> {
-    ptr: *mut Slot<Derefable,K>,
+    ptr: *mut UnsafeCell<Slot<Derefable,K>>,
     len: usize,
     idx: usize,
     _marker: PhantomData<&'a mut Derefable::Target>,
@@ -169,13 +169,15 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone for Stable
             slots_ref.extend((&*self.slots.get())
                 .iter()
                 .enumerate()
-                .map(|(_slot_idx, slot)| ( slot.generation,
+                .map(|(_slot_idx, slot)| {
+                    let slot = &*slot.get();
+                    ( slot.generation,
                     if is_occupied_by_generation(slot.generation) {
                         RefOrNextFree::<K, Derefable>::Ref(slot.item.occupied.deref())
                     } else {
                         RefOrNextFree::Next(slot.item.vacant)
                     }
-                ))
+                )})
             );
             Self{
                 num_elements: Cell::new(num_elements),
@@ -183,13 +185,15 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone for Stable
                 slots: UnsafeCell::new(slots_ref
                     .into_iter()
                     .map(|x| {
-                        Slot{
-                            generation: x.0,
-                            item: match x.1 {
-                                RefOrNextFree::Ref(the_ref) => SlotVariant{occupied: ManuallyDrop::new(Derefable::clone_from_reference(the_ref).unwrap()) } ,
-                                RefOrNextFree::Next(next_free) => SlotVariant{vacant: next_free}
+                        UnsafeCell::new(
+                            Slot{
+                                generation: x.0,
+                                item: match x.1 {
+                                    RefOrNextFree::Ref(the_ref) => SlotVariant{occupied: ManuallyDrop::new(Derefable::clone_from_reference(the_ref).unwrap()) } ,
+                                    RefOrNextFree::Next(next_free) => SlotVariant{vacant: next_free}
+                                }
                             }
-                        }
+                        )
                     })
                     .collect()),
                 phantom: PhantomData,
@@ -207,7 +211,7 @@ impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for It
             let idx = self.idx;
             self.idx += 1;
 
-            let slot: &mut Slot<Derefable, K> = unsafe { &mut *self.ptr.add(idx) };
+            let slot: &mut Slot<Derefable, K> = unsafe { (&mut *self.ptr.add(idx)).get_mut() };
 
             let smart_ptr =
                 if is_occupied_by_generation(slot.generation) {
@@ -253,7 +257,7 @@ impl<'a, K: Key, Derefable: DerefGenMapPromise + DerefMut> IntoIterator for &'a 
 
 
 pub struct StableDerefGenMap<K: Key, Derefable: DerefGenMapPromise> {
-    slots: UnsafeCell<Vec<Slot<Derefable, K>>>,
+    slots: UnsafeCell<Vec<UnsafeCell<Slot<Derefable, K>>>>,
     phantom: PhantomData<fn(K)>,
     next_free: Cell<Option<K::Idx>>,
     num_elements: Cell<usize>,
@@ -279,7 +283,7 @@ union SlotVariant<Derefable, K: Key>{
 }
 
 pub struct IntoIter<K: Key, Derefable> {
-    slots: std::vec::IntoIter<Slot<Derefable, K>>,
+    slots: std::vec::IntoIter<UnsafeCell<Slot<Derefable, K>>>,
     idx: usize,
     _marker: PhantomData<K>,
 }
@@ -289,18 +293,19 @@ impl<K: Key, Derefable: DerefGenMapPromise> Iterator for IntoIter<K, Derefable> 
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(mut slot) = self.slots.next() {
+
             let idx = self.idx;
             self.idx += 1;
 
-            let alias = if is_occupied_by_generation(slot.generation) {
-                unsafe { ManuallyDrop::take(&mut slot.item.occupied)}
+            let alias = if is_occupied_by_generation(slot.get_mut().generation) {
+                unsafe { ManuallyDrop::take(&mut slot.get_mut().item.occupied)}
             } else {
                 continue;
             };
 
             let key_data = KeyData {
                 idx: K::Idx::from_usize(idx),
-                generation: slot.generation,
+                generation: slot.get_mut().generation,
             };
             std::mem::forget(slot); // we have taken out the occupied item. no need for drop to be called
             let key = K::from(key_data);
@@ -352,12 +357,12 @@ impl<'a, K: Key, Derefable: DerefGenMapPromise> Drop for FreeGuard<'a, K, Derefa
 
             let slots_mut = &mut *self.map.slots.get();
             // increment generation to invalidate previous indexes
-            let generation = &mut slots_mut.get_unchecked_mut(self.idx.into_usize()).generation;
+            let generation = &mut slots_mut.get_unchecked_mut(self.idx.into_usize()).get_mut().generation;
             let checked_add_maybe = generation.checked_add(&(K::Gen::one() + K::Gen::one())); // we add 2 to maintain even, cuz even means vacant
             if let Some(checked_add) = checked_add_maybe {
                 *generation  = checked_add;
                 let old_head = self.map.next_free.get();
-                slots_mut.get_unchecked_mut(self.idx.into_usize()).item.vacant = old_head;
+                slots_mut.get_unchecked_mut(self.idx.into_usize()).get_mut().item.vacant = old_head;
                 self.map.next_free.set(Some(self.idx));
 
 
@@ -434,6 +439,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
             .iter()
             .enumerate()
             .filter_map(|(idx, x)| {
+                let x = &*x.get();
                 if is_occupied_by_generation(x.generation) {
                     Some((K::from(KeyData{idx: K::Idx::from_usize(idx),generation: x.generation}),
                      x.item.occupied.deref().deref()))
@@ -450,7 +456,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
         unsafe{
             let slots_len = self.slots.get_mut().len();
             for idx in 0..slots_len {
-                let generation = self.slots.get_mut().get_unchecked_mut(idx).generation;
+                let generation = self.slots.get_mut().get_unchecked_mut(idx).get_mut().generation;
                 let key = K::from(KeyData{generation: generation, idx: K::Idx::from_usize(idx) });
                 self.remove(key);
             };
@@ -479,7 +485,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
                 num_elements: self.num_elements.clone(),
                 phantom: PhantomData,
                 next_free: self.next_free.clone(),
-                slots: UnsafeCell::new(self.slots.get_mut().iter_mut().map(|x| x.clone()).collect()),
+                slots: UnsafeCell::new(self.slots.get_mut().iter_mut().map(|x|  UnsafeCell::new(x.get_mut().clone())).collect()),
             }
         }
     }
@@ -490,7 +496,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
             num_elements: self.num_elements.clone(),
             phantom: PhantomData,
             next_free: self.next_free.clone(),
-            slots: UnsafeCell::new((&*self.slots.get()).iter().map(|x| x.clone()).collect()),
+            slots: UnsafeCell::new((&*self.slots.get()).iter().map(|x| UnsafeCell::new((&*x.get()).clone())).collect()),
         }
     }
     
@@ -520,8 +526,9 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
     /// gets by index, ignores generational count
     #[inline]
     pub fn get_by_index_only(&self, idx: K::Idx) -> Option<(K,&Derefable::Target)> {
-        let slot = unsafe { &*self.slots.get() }.get(idx.into_usize())?;
+        let slot = unsafe { &*((&*self.slots.get()) .get(idx.into_usize())?.get())};
         unsafe{
+
             if is_occupied_by_generation(slot.generation) {
                 Some((K::from(KeyData{generation: slot.generation, idx}),  &*(slot.item.occupied.deref().deref() as *const Derefable::Target)))
             } else {
@@ -536,6 +543,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
         let slot = self.slots.get_mut().get_mut(idx.into_usize())?;
 
         unsafe{
+            let slot = &mut *slot.get();
             if is_occupied_by_generation(slot.generation) {
                 Some((K::from(KeyData{generation: slot.generation, idx}), slot.item.occupied.deref_mut().deref_mut() ))
             } else {
@@ -549,8 +557,9 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
 
         let key_data = k.data();
         let slot = unsafe { &*self.slots.get() }.get(key_data.idx.into_usize())?;
+        let slot = unsafe { &*slot.get() };
         if  slot.generation == key_data.generation {
-            unsafe { Some(&*(slot.item.occupied.deref().deref() as *const Derefable::Target)) }
+            unsafe { Some(slot.item.occupied.deref().deref()) }
         }
         else {
             None
@@ -564,9 +573,10 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
     pub fn get_mut(&mut self, k: K) -> Option<&mut Derefable::Target> where Derefable: DerefMut {
 
         let key_data = k.data();
-        let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?;
+        let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?.get_mut();
+
         if  slot.generation == key_data.generation {
-            unsafe { Some(&mut *(slot.item.occupied.deref_mut().deref_mut() as *mut Derefable::Target)) }
+            unsafe { Some(slot.item.occupied.deref_mut().deref_mut())}
         }
         else {
             None
@@ -580,9 +590,10 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
         F: FnMut(K, &mut Derefable::Target) -> bool,
     {
         unsafe {
-            let slots: &mut Vec<Slot<Derefable, K>> = self.slots.get_mut();
+            let slots: &mut Vec<_> = self.slots.get_mut();
 
             for (idx_usize, slot) in slots.iter_mut().enumerate() {
+                let slot = slot.get_mut();
                 // Only care about occupied slots.
                 if is_occupied_by_generation(slot.generation)  {
                     let smart_ptr = slot.item.occupied.deref_mut();
@@ -651,7 +662,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
     pub fn remove(&mut self, k: K) -> Option<Derefable> {
         unsafe {
             Self::remove_split_data::<true>(RemoveArguments{
-                slot: self.slots.get_mut().get_mut(k.data().idx.into_usize())?,
+                slot: self.slots.get_mut().get_mut(k.data().idx.into_usize())?.get_mut(),
                 key: k,
                 num_elements: &self.num_elements,
                 next_free: &self.next_free,
@@ -733,7 +744,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
             // Case 1: reuse a free slot from the intrusive free list.
             let (idx, generation) = if let Some(idx) = self.next_free.get() {
                 let i = idx.into_usize();
-                let slot = slots.get_unchecked_mut(i);
+                let slot = &mut *slots.get_unchecked(i).get();
 
                 // Pop this slot from the free list.
                 let next = slot.item.vacant;
@@ -751,10 +762,10 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
 
 
                 // Push an initially vacant/reserved slot.
-                slots.push(Slot {
+                slots.push(UnsafeCell::new(Slot {
                     generation,
                     item: SlotVariant{vacant: None},
-                });
+                }));
                  (idx, generation)
             };
             let key = K::from(KeyData {
@@ -773,7 +784,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
             // Re-borrow slots because func(key) may have re-entered and
             // caused reallocations / new slots etc.
             let slots = &mut *self.slots.get();
-            let slot = slots.get_unchecked_mut(idx.into_usize());
+            let slot = &mut *slots.get_unchecked(idx.into_usize()).get();
 
             // Store value as occupied.
             slot.item.occupied = ManuallyDrop::new(value_box);
