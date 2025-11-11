@@ -70,10 +70,10 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
         }
 
         for (_k, v) in map.iter_mut() {
-            *v += 10;
+            **v += 10;
         }
 
-        let mut values: Vec<i32> = (&mut map).into_iter().map(|(_, v)| *v).collect();
+        let mut values: Vec<i32> = (&mut map).into_iter().map(|(_, v)| **v).collect();
         values.sort();
         assert_eq!(values, (10..15).collect::<Vec<_>>());
     }
@@ -105,6 +105,24 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
             assert_eq!(*map.get(k).unwrap(), i as i32 + 100);
         }
     }
+
+
+// if it compiles, that alone should be enough for test to pass
+#[test]
+fn can_clone_deref_shared_items_even_if_dereffed_value_doesnt_implement_clone(){
+    struct Foo; // foo doesnt implement clone
+
+    let mut deref = StableDerefGenMap::<DefaultKey, _>::new();
+    deref.insert(Rc::new(Foo));
+    deref.insert(Rc::new(Foo));
+    let _ = deref.clone();
+
+
+    let mut deref = StableDerefGenMap::<DefaultKey, _>::new();
+    deref.insert(Arc::new(Foo));
+    deref.insert(Arc::new(Foo));
+    let _ = deref.clone();
+}
 #[test]
 fn deref_drop_is_called_exactly_once_per_element() {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -377,9 +395,11 @@ fn deref_drop_is_called_exactly_once_per_element() {
     }
 
 use crate::key::DefaultKey;
-use crate::stable_deref_gen_map::BoxStableDerefGenMap;
+use crate::stable_deref_gen_map::{BoxStableDerefGenMap, StableDerefGenMap};
 use std::cell::Cell;
 use std::fmt::Display;
+use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
