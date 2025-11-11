@@ -1,6 +1,6 @@
 use num_traits::{CheckedAdd, Num, WrappingAdd};
 use std::convert::TryFrom;
-use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
 
 
 
@@ -19,6 +19,7 @@ Copy
 + PartialOrd
 + SubAssign
 + WrappingAdd
++ Rem<Output = Self>
 + CheckedAdd
 {
     fn into_usize(self: Self) -> usize;

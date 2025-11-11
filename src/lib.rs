@@ -1,3 +1,4 @@
+#![allow(warnings)]
 pub mod stable_deref_gen_map;
 
 
