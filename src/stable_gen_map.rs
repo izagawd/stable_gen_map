@@ -1,16 +1,10 @@
 use crate::key::{is_occupied_by_generation, Key, KeyData};
 use crate::numeric::Numeric;
 use num_traits::{CheckedAdd, One, Zero};
-use std::array::from_fn;
 use std::cell::{Cell, UnsafeCell};
 use std::marker::PhantomData;
-use std::mem::{ManuallyDrop, MaybeUninit};
+use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
-
-
-
-
-
 
 
 /// Occupancy + intrusive free list
@@ -42,7 +36,7 @@ impl<T, K: Key> Slot<T, K> {
     fn take_occupied(&mut self) -> Option<T> {
         use std::mem;
 
-        let mut matched = mem::replace(&mut self.item,  Box::new( SlotVariant{vacant: None}));
+        let mut matched = mem::replace(self.item.deref_mut(),   SlotVariant{vacant: None});
         if is_occupied_by_generation(self.generation){
            unsafe{ Some(ManuallyDrop::take(&mut matched.occupied)) }
         } else{
