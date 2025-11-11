@@ -1,12 +1,12 @@
-use crate::key::{Key, KeyData};
+use crate::key::{is_occupied_by_generation, Key, KeyData};
 use crate::numeric::Numeric;
 use num_traits::{CheckedAdd, One, Zero};
 use std::array::from_fn;
 use std::cell::{Cell, UnsafeCell};
 use std::hint;
 use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::ops::{Index, IndexMut};
+use std::mem::{ManuallyDrop, MaybeUninit};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 pub const DEFAULT_SLOTS_NUM_PER_PAGE: usize = 32;
 
@@ -52,45 +52,46 @@ pub fn decode_index<Idx: Numeric>(idx: Idx, slots_num_per_page: usize) -> SplitI
 pub type StableGenMap<K, T> = StablePagedGenMap<K, T, 1>;
 
 /// Occupancy + intrusive free list
-enum SlotVariant<T, K: Key> {
-    /// Occupied slot with a value.
-    Occupied(T),
-    /// Vacant slot; `Option<K::Idx>` is the next free index, or None for end of free list.
-    Vacant(Option<K::Idx>),
+union SlotVariant<T, K: Key> {
+    occupied: ManuallyDrop<T>,
+    vacant: Option<K::Idx>,
 }
 
 impl<T, K: Key> SlotVariant<T, K> {
 
-    /// If occupied, take the value and make this slot Vacant(None).
-    /// If already vacant, leave as-is and return None.
-    #[inline]
-    fn take_occupied(&mut self) -> Option<T> {
-        use std::mem;
-        match mem::replace(self, SlotVariant::Vacant(None)) {
-            SlotVariant::Occupied(md) => Some(md),
-            vacant @ SlotVariant::Vacant(_) => {
-                // Restore old vacant state.
-                *self = vacant;
-                None
-            }
-        }
-    }
 
-    /// Get next_free from a vacant slot; UB if called on Occupied.
-    #[inline]
-    unsafe fn next_free_unchecked(&self) -> Option<K::Idx> {
-        match self {
-            SlotVariant::Vacant(next) => *next,
-            SlotVariant::Occupied(_) => hint::unreachable_unchecked(),
-        }
-    }
 }
 
 struct Slot<T, K: Key> {
     item: SlotVariant<T, K>,
     generation: K::Gen,
 }
+impl<T, K: Key> Slot<T, K> {
+    /// If occupied, take the value and make this slot Vacant(None).
+    /// If already vacant, leave as-is and return None.
+    #[inline]
+    fn take_occupied(&mut self) -> Option<T> {
+        use std::mem;
 
+        let mut matched = mem::replace(&mut self.item, SlotVariant{vacant: None});
+        if is_occupied_by_generation(self.generation){
+           unsafe{ Some(ManuallyDrop::take(&mut matched.occupied)) }
+        } else{
+            None
+        }
+    }
+
+    #[inline]
+    unsafe fn clone(&self) -> Self where T: Clone {
+        let item =if is_occupied_by_generation(self.generation){
+            SlotVariant{occupied: ManuallyDrop::new( self.item.occupied.deref().clone())}
+        } else{
+            SlotVariant{vacant:self.item.vacant.clone() }
+        };
+        Self { item, generation: self.generation }
+    }
+
+}
 pub(crate) struct Page<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> {
     slots: Box<[UnsafeCell<MaybeUninit<Slot<T, K>>>; SLOTS_NUM_PER_PAGE]>,
     length_used: usize,
@@ -109,10 +110,7 @@ impl<T: Clone, K: Key, const SLOTS_NUM_PER_PAGE: usize>  Page<T, K,SLOTS_NUM_PER
                             let assumed_init = (&*self.slots.as_ref()[index].get()).assume_init_ref();
                             UnsafeCell::new(
                                 MaybeUninit::new(
-                                    Slot{
-                                        generation: assumed_init.generation,
-                                        item: assumed_init.item.clone()
-                                    }
+                                    assumed_init.clone(),
                                 )
 
                             )
@@ -122,15 +120,6 @@ impl<T: Clone, K: Key, const SLOTS_NUM_PER_PAGE: usize>  Page<T, K,SLOTS_NUM_PER
                 length_used: self.length_used,
             }
 
-    }
-}
-impl<T: Clone, K: Key> SlotVariant<T, K> {
-    #[inline]
-    unsafe fn clone(&self) -> Self{
-        match self {
-            Self::Occupied(item) => Self::Occupied(item.clone()),
-            Self::Vacant(vacant) => Self::Vacant(vacant.clone()),
-        }
     }
 }
 impl<T, K: Key,  const SLOTS_NUM_PER_PAGE: usize> Page<T, K, SLOTS_NUM_PER_PAGE> {
@@ -212,7 +201,10 @@ impl<T, K: Key, const SLOTS_NUM_PER_PAGE: usize> Drop for Page<T, K, SLOTS_NUM_P
                     break;
                 }
                 self.length_used -= 1;
-                slot_cell.get_mut().assume_init_read(); // dropped
+                let mut read =slot_cell.get_mut().assume_init_read(); // dropped
+                if is_occupied_by_generation(read.generation) {
+                    ManuallyDrop::drop(&mut read.item.occupied);
+                }
             }
         }
     }
@@ -287,11 +279,12 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                             return None;
                         }
                         let slot_pure = (&*slot.get()).assume_init_ref();
-                        match  &slot_pure.item {
-                            SlotVariant::Occupied(ref a) => Some(
+                        if is_occupied_by_generation(slot_pure.generation) {
+                            Some(
                                 (K::from(KeyData{idx: encode_index(page_idx,slot_idx,SLOTS_NUM_PER_PAGE),generation: slot_pure.generation}),
-                                 a)),
-                            _ => None
+                                 slot_pure.item.occupied.deref()))
+                        } else{
+                            None
                         }
                     })
             })
@@ -410,13 +403,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         }
 
         let variant: &mut SlotVariant<T, K> = &mut slot.item;
-        match variant {
-            SlotVariant::Occupied(ref mut md) => {
-                // SAFETY: value is live; we never move the allocation.
-                Some(md)
-            }
-            SlotVariant::Vacant(_) => None,
-        }
+        unsafe { Some(variant.occupied.deref_mut()) }
     }
 
     /// gets by index, ignores generational count
@@ -435,10 +422,12 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         } else {
             page.get_slot(split.slot_idx)?
         };
-
-        match &slot.item  {
-            SlotVariant::Occupied(ref md) => Some((K::from(KeyData{idx,generation: slot.generation}) ,md)),
-            SlotVariant::Vacant(_) => None,
+        unsafe{
+            if is_occupied_by_generation(slot.generation) {
+                Some((K::from(KeyData{idx,generation: slot.generation}) ,slot.item.occupied.deref()))
+            } else {
+                None
+            }
         }
     }
 
@@ -459,10 +448,13 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             page.get_slot_mut(split.slot_idx)?
         };
 
-        let variant: &mut SlotVariant<T, K> = &mut slot.item;
-        match variant {
-            SlotVariant::Occupied(ref mut md) => Some((K::from(KeyData{idx,generation: slot.generation}) ,md)),
-            SlotVariant::Vacant(_) => None,
+
+        unsafe{
+            if is_occupied_by_generation(slot.generation) {
+                Some((K::from(KeyData{idx,generation: slot.generation}) ,slot.item.occupied.deref_mut()))
+            } else {
+                None
+            }
         }
     }
 
@@ -488,13 +480,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         }
 
         if slot.generation == key_data.generation {
-            match  &slot.item {
-                SlotVariant::Occupied(md) => {
-                    // SAFETY: ManuallyDrop<T> holds a valid T, never moved.
-                    Some(md)
-                }
-                SlotVariant::Vacant(_) => None,
-            }
+           unsafe{ Some(slot.item.occupied.deref()) }
         } else {
             None
         }
@@ -549,7 +535,8 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                     // Get mutable access to SlotVariant<T, K>.
                     let variant: &mut SlotVariant<T, K> = &mut slot.item;
 
-                    if let SlotVariant::Occupied(ref mut value) = variant {
+                    if is_occupied_by_generation(slot.generation)  {
+                        let value = slot.item.occupied.deref_mut();
                         // Build key for this slot.
                         let idx = encode_index::<K::Idx>(page_idx, slot_idx, SLOTS_NUM_PER_PAGE);
                         let key_data = KeyData {
@@ -597,8 +584,8 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         }
 
 
-        let variant: &mut SlotVariant<T, K> = &mut slot.item;
-        let value = match variant.take_occupied() {
+
+        let value = match slot.take_occupied() {
             Some(v) => v,
             None => return None,
         };
@@ -611,12 +598,12 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             Some(new_gen) => {
                 slot.generation = new_gen;
                 let old_head = next_free.get();
-                slot.item = SlotVariant::Vacant(old_head);
+                slot.item.vacant = old_head;
                 next_free.set(Some(key_data.idx));
             }
             None => {
 
-                slot.item = SlotVariant::Vacant(None);
+                slot.item.vacant = None;
             }
         }
 
@@ -701,51 +688,21 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             let pages = &mut *self.pages.get();
 
             // Case 1: reuse a free slot from the intrusive free list.
-            if let Some(idx) = self.next_free.get() {
+            let (split_idx, generation) =  if let Some(idx) = self.next_free.get() {
                 let split = decode_index::<K::Idx>(idx, SLOTS_NUM_PER_PAGE);
                 let page = pages.get_unchecked_mut(split.page_idx);
                 let slot =
                     &mut *page.get_slot_unsafe_cell_unchecked(split.slot_idx).get();
 
                 // Pop this slot from the free list.
-                let next = slot.item.next_free_unchecked();
+                let next = slot.item.vacant;
                 self.next_free.set(next);
 
                 // Mark as reserved: not linked in the free list anymore.
-                slot.item = SlotVariant::Vacant(None);
+                slot.item.vacant = None;
 
                 let generation = slot.generation;
-                let key = K::from(KeyData { idx, generation });
-
-                // RAII guard: if func panics/returns Err, put this index
-                // back into the free list using the *current* head.
-                let guard = FreeGuard {
-                    map: self,
-                    idx,
-                };
-
-                let value = func(key)?; // may panic / Err
-
-                // Success: don't put it back into free list.
-                guard.commit();
-
-                // Re-borrow pages because func(key) may have re-entered and
-                // caused pages to grow, etc.
-                let pages = &*self.pages.get();
-                let page = pages.get_unchecked(split.page_idx);
-                let slot =
-                    &mut *page.get_slot_unsafe_cell_unchecked(split.slot_idx).get();
-
-                slot.item = SlotVariant::Occupied(value);
-                self.num_elements.set(self.num_elements.get() + 1);
-
-                // Build &T from ManuallyDrop.
-                let value_ref: &T = match &slot.item {
-                    SlotVariant::Occupied(md) => md,
-                    SlotVariant::Vacant(_) => hint::unreachable_unchecked(),
-                };
-
-                Ok((key, value_ref))
+                (split, generation)
             } else {
                 // Case 2: no free slot; append into pages.
                 let add_new_page = |pages: &mut Vec<Page<T, K, SLOTS_NUM_PER_PAGE>>| {
@@ -761,44 +718,55 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                     add_new_page(pages);
                     last = pages.last_mut().unwrap_unchecked();
                 }
-
+                let generation = K::Gen::zero();
                 let slot_idx = last.insert_slot(Slot {
-                    generation: K::Gen::zero(),
-                    item: SlotVariant::Vacant(None),
+                    generation ,
+                    item: SlotVariant{
+                        vacant: None,
+                    },
                 });
 
                 let page_idx = pages.len() - 1;
-                let idx = encode_index(page_idx, slot_idx, SLOTS_NUM_PER_PAGE);
-                let key_data = KeyData {
-                    idx,
-                    generation: K::Gen::zero(),
-                };
-                let key = K::from(key_data);
+                (SplitIdx{
+                    page_idx,
+                    slot_idx
+                }, generation)
+            };
+            let idx = encode_index(split_idx.page_idx, split_idx.slot_idx, SLOTS_NUM_PER_PAGE);
+            let key = K::from(KeyData {
+                idx,
+                generation: generation.checked_add(&K::Gen::one()).unwrap() // TODO TO COMMENT WHY IM DOING THIS
+            });
 
-                // Guard: if func fails, this brand-new slot becomes a free slot.
-                let guard = FreeGuard {
-                    map: self,
-                    idx: key_data.idx,
-                };
+            // RAII guard: if func panics/returns Err, put this index
+            // back into the free list using the *current* head.
+            let guard = FreeGuard {
+                map: self,
+                idx,
+            };
 
-                let created = func(key)?;
-                guard.commit();
+            let value = func(key)?; // may panic / Err
 
-                let pages = &*self.pages.get();
-                let page = pages.get_unchecked(page_idx);
-                let the_slot =
-                    page.get_slot_unsafe_cell_unchecked(slot_idx);
-                let the_slot = &mut *the_slot.get();
-                the_slot.item = SlotVariant::Occupied(created);
-                self.num_elements.set(self.num_elements.get() + 1);
+            // Success: don't put it back into free list.
+            guard.commit();
 
-                let value_ref: &T = match &the_slot.item {
-                    SlotVariant::Occupied(md) => md,
-                    SlotVariant::Vacant(_) => hint::unreachable_unchecked(),
-                };
+            // Re-borrow pages because func(key) may have re-entered and
+            // caused pages to grow, etc.
+            let pages = &*self.pages.get();
+            let page = pages.get_unchecked(split_idx.page_idx);
+            let slot =
+                &mut *page.get_slot_unsafe_cell_unchecked(split_idx.slot_idx).get();
 
-                Ok((key, value_ref))
-            }
+            slot.item.occupied = ManuallyDrop::new(value);
+
+            // no need for overflow check here, as that was done when incrementing generation for key
+            slot.generation += K::Gen::one(); // add one to match up with keys idx, since the function succeeded from here.
+            self.num_elements.set(self.num_elements.get() + 1);
+
+            // Build &T from ManuallyDrop.
+            let value_ref: &T = slot.item.occupied.deref();
+
+            Ok((key, value_ref))
         }
     }
 
@@ -856,14 +824,11 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for StablePagedGen
                     let generation = slot.generation;
                     let variant: &SlotVariant<T, K> = &slot.item;
 
-                    let snap = match variant {
-                        SlotVariant::Occupied(md) => {
-                            // grab &T from ManuallyDrop<T>
-                            Snap::Occupied(md)
-                        }
-                        SlotVariant::Vacant(next) => Snap::Vacant(*next),
+                    let snap = if is_occupied_by_generation(generation) {
+                        Snap::Occupied(variant.occupied.deref())
+                    }  else {
+                        Snap::Vacant(variant.vacant)
                     };
-
                     slots_snap.push((generation, snap));
                 }
 
@@ -885,18 +850,18 @@ impl<K: Key, T: Clone, const SLOTS_NUM_PER_PAGE: usize> Clone for StablePagedGen
                 let mut new_page: Page<T, K, SLOTS_NUM_PER_PAGE> = Page::new();
 
                 for (generation, snap) in slots_snap {
-                    let item = match snap {
+                    let item =  match snap {
                         Snap::Occupied(vref) => {
                             // T::clone may re-enter and mutate the original map,
                             // but we only use the snapshot, so we’re safe.
-                            SlotVariant::Occupied(vref.clone())
+                            SlotVariant{occupied: ManuallyDrop::new(vref.clone())}
                         }
-                        Snap::Vacant(next) => SlotVariant::Vacant(next),
+                        Snap::Vacant(next) => SlotVariant{vacant: next},
                     };
 
                     let slot = Slot {
                         generation,
-                        item,
+                        item: item,
                     };
 
                     // writes Slot into the next uninit slot and bumps length_used
@@ -947,12 +912,12 @@ for IterMut<'a, K, T, SLOTS_NUM_PER_PAGE>
                 None => continue,
             };
 
-            // Get &mut SlotVariant<T, K> from &Slot<T, K> via UnsafeCell.
-            let variant: &mut SlotVariant<T, K> = &mut slot.item;
 
-            let value: &mut T = match variant {
-                SlotVariant::Occupied(ref mut md) => md,
-                SlotVariant::Vacant(_) => continue,
+
+            let value: &mut T = if is_occupied_by_generation(slot.generation) {
+                unsafe{ slot.item.occupied.deref_mut() }
+            } else{
+                continue
             };
 
             // Encode global idx
@@ -1023,22 +988,20 @@ for IntoIter<K, T, SLOTS_NUM_PER_PAGE>
                 None => continue,
             };
 
-            let variant = &mut slot.item;
-            let md = match std::mem::replace(
-                variant,
-                SlotVariant::Vacant(None),
-            ) {
-                SlotVariant::Occupied(md) => md,
-                SlotVariant::Vacant(_) => continue,
-            };
 
-            let value = md;
+
+            let value = if is_occupied_by_generation(slot.generation) {
+                unsafe{ManuallyDrop::take(&mut slot.item.occupied)}
+            } else{
+                continue
+            };
 
             let idx = encode_index::<K::Idx>(page_idx, idx_in_page, SLOTS_NUM_PER_PAGE);
             let key_data = KeyData {
                 generation: slot.generation,
                 idx,
             };
+            slot.generation += K::Gen::one(); // making generation even do T's drop implementation is not called
             let key = K::from(key_data);
 
             return Some((key, value));
@@ -1092,20 +1055,16 @@ for FreeGuard<'a, K, T, SLOTS_NUM_PER_PAGE>
                 (&mut *page.slots.get_unchecked_mut(split.slot_idx).get_mut())
                     .assume_init_mut();
 
-            // This guard is used only for reserved/vacant slots.
-            debug_assert!(!matches!(
-                &slot.item,
-                SlotVariant::Occupied(_)
-            ));
+
 
             // increment generation to invalidate previous indexes
             if let Some(checked_add) =
-                slot.generation.checked_add(&K::Gen::one())
+                slot.generation.checked_add(&(K::Gen::one() + K::Gen::one())) // add by two to maintain evenness, cuz even means vacant, and thats what it is
             {
                 slot.generation = checked_add;
 
                 let old_head = self.map.next_free.get();
-                slot.item = SlotVariant::Vacant(old_head);
+                slot.item.vacant = old_head;
                 self.map.next_free.set(Some(self.idx));
             }
         }
