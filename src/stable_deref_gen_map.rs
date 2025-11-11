@@ -131,8 +131,6 @@ impl<K: Key, Derefable: DerefGenMapPromise> StableDerefGenMap<K, Derefable> wher
 }
 
 
-/// I am aware that types like `Rc<T>` can still clone even if T does not `Clone`, but `Specialization` is not stabilized yet, so this is the only safe way I can think of.
-/// This implementation still has a lot of room to grow, and I do not mind crit
 impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone for StableDerefGenMap< K, Derefable>  {
     fn clone(&self) -> Self {
 
@@ -590,6 +588,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
         }
     }
 
+    /// Retains only elements for which `f(key, &mut value)` returns true.
     pub fn retain<F>(&mut self, mut f: F)
     where
         Derefable: DerefMut,

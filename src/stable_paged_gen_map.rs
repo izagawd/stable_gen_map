@@ -36,6 +36,7 @@ pub fn encode_index<Idx: Numeric>(page_idx: usize, slot_idx: usize, slots_num_pe
     Idx::from_usize(combined)
 }
 
+/// decompresses a keys "idx" to get the index of a page and slot
 #[inline]
 pub fn decode_index<Idx: Numeric>(idx: Idx, slots_num_per_page: usize) -> SplitIdx {
     let idx = idx.into_usize();
@@ -532,10 +533,6 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
         debug_assert_eq!(self.len(), 0);
     }
     /// Retains only elements for which `f(key, &mut value)` returns true.
-    ///
-    /// Elements for which `f` returns false are removed as if by `remove`,
-    /// updating `num_elements`, bumping generations, and linking into
-    /// the intrusive free list (or retiring slot on overflow).
     pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(K, &mut T) -> bool,
@@ -650,7 +647,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
     }
 
     /// Inserts a value given by the inputted function into the map. The key where the
-    /// value will be stored is passed into the inputted function.\
+    /// value will be stored is passed into the inputted function
     /// # Examples
     /// ```
     /// # use stable_gen_map::key::DefaultKey;
