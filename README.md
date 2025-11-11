@@ -16,7 +16,7 @@ Great for patterns that rely on shared mutability on a single thread, and remove
 ## Core types
 
 - `StableGenMap<K, T>`  
-  A stable generational map storing `T` inline. This is generally what you would want
+  A stable generational map storing a sized `T` in a `Box`. Reusing slots does not need any new allocation. This is generally what you would want.
 
 - `StableDerefGenMap<K, Derefable>`  
   A stable generational map where each element is a **smart pointer** that
