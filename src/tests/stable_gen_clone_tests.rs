@@ -1,12 +1,12 @@
 use crate::key::{DefaultKey, Key};
-use crate::stable_paged_gen_map::StablePagedGenMap;
+use crate::stable_gen_map::StableGenMap;
 use std::collections::{HashMap, HashSet};
 
-const SLOTS: usize = 4;
-type Map = StablePagedGenMap<DefaultKey, i32, SLOTS>;
+
+type Map = StableGenMap<DefaultKey, i32>;
 
 #[test]
-fn paged_clone_empty() {
+fn clone_empty() {
     let m: Map = Map::new();
     assert_eq!(m.len(), 0);
 
@@ -15,7 +15,7 @@ fn paged_clone_empty() {
 }
 
 #[test]
-fn paged_clone_basic_contents_equal_but_independent() {
+fn clone_basic_contents_equal_but_independent() {
     let mut m: Map = Map::new();
 
     let (k1, _) = m.insert(10);
@@ -48,17 +48,17 @@ fn paged_clone_basic_contents_equal_but_independent() {
 }
 
 #[cfg(test)]
-mod clone_efficiently_paged_tests {
+mod clone_efficiently_tests {
 
     use crate::key::{DefaultKey, Key};
 
-    use crate::stable_paged_gen_map::{DefaultStablePagedGenMap, DEFAULT_SLOTS_NUM_PER_PAGE};
+    use crate::stable_gen_map::{StableGenMap};
 
-    type PagedMap<T> = DefaultStablePagedGenMap<DefaultKey, T>;
+    type Map<T> = StableGenMap<DefaultKey, T>;
 
     #[test]
-    fn paged_clone_efficiently_empty_map() {
-        let mut map: PagedMap<String> = DefaultStablePagedGenMap::new();
+    fn clone_efficiently_empty_map() {
+        let mut map: Map<String> = StableGenMap::new();
 
         let clone = map.clone_efficiently_mut();
 
@@ -69,31 +69,30 @@ mod clone_efficiently_paged_tests {
     }
 
     #[test]
-    fn paged_clone_efficiently_copies_all_live_entries_and_not_aliasing() {
-        let mut map: PagedMap<String> = DefaultStablePagedGenMap::new();
+    fn clone_efficiently_copies_all_live_entries_and_not_aliasing() {
+        let mut map: Map<String> = StableGenMap::new();
 
-        // Insert enough elements to cross at least one page boundary.
-        // DEFAULT_SLOTS_NUM_PER_PAGE = 32, so this gives multiple pages.
+        // Insert enough elements to resize
         let mut keys = Vec::new();
-        for i in 0..(DEFAULT_SLOTS_NUM_PER_PAGE + 5) {
+        for i in 0..1000 {
             let (k, _) = map.insert(format!("val-{i}"));
             keys.push(k);
         }
 
-        // Remove a few to create holes in various pages.
+        // Remove a few to create holes
         let removed_key_1 = keys[3];
-        let removed_key_2 = keys[DEFAULT_SLOTS_NUM_PER_PAGE]; // in a later page
+        let removed_key_2 = keys[10]; // in a later slot
         assert_eq!(map.remove(removed_key_1).as_deref(), Some("val-3"));
         assert_eq!(
             map.remove(removed_key_2).as_deref(),
-            Some(format!("val-{}", DEFAULT_SLOTS_NUM_PER_PAGE).as_str())
+            Some(format!("val-{}", 10).as_str())
         );
 
         let len_before = map.len();
 
         // Take some reference pointers in the original map.
         let k_keep_1 = keys[0];
-        let k_keep_2 = keys[DEFAULT_SLOTS_NUM_PER_PAGE - 1];
+        let k_keep_2 = keys[9];
 
         let p1 = map.get(k_keep_1).unwrap() as *const String;
         let p2 = map.get(k_keep_2).unwrap() as *const String;
@@ -129,8 +128,8 @@ mod clone_efficiently_paged_tests {
     }
 
     #[test]
-    fn paged_clone_efficiently_preserves_free_list_structure_but_independent() {
-        let mut map: PagedMap<i32> = DefaultStablePagedGenMap::new();
+    fn clone_efficiently_preserves_free_list_structure_but_independent() {
+        let mut map: Map<i32> = StableGenMap::new();
 
         let (k1, _) = map.insert(10);
         let (k2, _) = map.insert(20); // will be freed
@@ -186,7 +185,7 @@ mod clone_efficiently_paged_tests {
 
 
 #[test]
-fn paged_clone_preserves_all_keys_and_values() {
+fn clone_preserves_all_keys_and_values() {
     let m: Map = Map::new();
 
     let mut inserted = HashMap::new();
@@ -214,7 +213,7 @@ fn paged_clone_preserves_all_keys_and_values() {
 }
 
 #[test]
-fn paged_clone_respects_free_list_and_generations() {
+fn clone_respects_free_list_and_generations() {
     let mut m: Map = Map::new();
 
     let (_k1, _) = m.insert(1);
@@ -250,12 +249,12 @@ fn paged_clone_respects_free_list_and_generations() {
 }
 
 #[test]
-fn paged_clone_multi_page() {
+fn clone_multi_slot() {
     let m: Map = Map::new();
 
-    // Force multiple pages (SLOTS is small)
+    // Force multiple resizes (SLOTS is small)
     let mut keys = Vec::new();
-    for i in 0..(SLOTS * 5) as i32 {
+    for i in 0..1000 as i32 {
         let (k, _) = m.insert(i);
         keys.push((k, i));
     }
@@ -272,7 +271,7 @@ fn paged_clone_multi_page() {
 }
 
 #[test]
-fn paged_clone_into_iter_matches_snapshot() {
+fn clone_into_iter_matches_snapshot() {
     let m: Map = Map::new();
 
     for i in 0..20 {
@@ -297,7 +296,7 @@ fn paged_clone_into_iter_matches_snapshot() {
 
 // We use a thread-local pointer so Reentrant::clone can find the map.
 thread_local! {
-        static GLOBAL_MAP_PTR: std::cell::Cell<*const StablePagedGenMap<DefaultKey, Reentrant, SLOTS>> =
+        static GLOBAL_MAP_PTR: std::cell::Cell<*const StableGenMap<DefaultKey, Reentrant>> =
             std::cell::Cell::new(std::ptr::null());
     }
 
@@ -322,12 +321,12 @@ impl Clone for Reentrant {
     }
 }
 
-type MapReentrant = StablePagedGenMap<DefaultKey, Reentrant, SLOTS>;
+type MapReentrant = StableGenMap<DefaultKey, Reentrant>;
 
 
 #[test]
-fn paged_clone_handles_reentrant_t_clone() {
-    let m: MapReentrant = StablePagedGenMap::new();
+fn clone_handles_reentrant_t_clone() {
+    let m: MapReentrant = StableGenMap::new();
 
     // allow Reentrant::clone to find this map
     GLOBAL_MAP_PTR.set(&m as *const _);
@@ -362,8 +361,8 @@ fn paged_clone_handles_reentrant_t_clone() {
 }
 
 #[test]
-fn paged_clone_handles_reentrant_t_clone_two() {
-    let mut m: MapReentrant = StablePagedGenMap::new();
+fn clone_handles_reentrant_t_clone_two() {
+    let mut m: MapReentrant = StableGenMap::new();
 
     // allow Reentrant::clone to find this map
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));

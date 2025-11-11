@@ -16,10 +16,7 @@ Great for patterns that rely on shared mutability on a single thread, and remove
 ## Core types
 
 - `StableGenMap<K, T>`  
-  A stable generational map storing `T` inline. This is generally what you would want
-
-- `StablePagedGenMap<K, T, const SLOTS_NUM_PER_PAGE: usize>`  
-  Same semantics as `StableGenMap`, but uses multiple slots in a page. Use this variant when you want to pre-allocate slots so that inserting new elements usually doesn’t need a heap allocation, even when no slots have been freed by ```remove``` yet.
+  A stable generational map storing a sized `T` in a `Box`. Reusing slots does not need any new allocation. This is generally what you would want.
 
 - `StableDerefGenMap<K, Derefable>`  
   A stable generational map where each element is a **smart pointer** that
@@ -107,7 +104,7 @@ This shows the main selling point: **insert with `&self`** and indirect referenc
 use std::cell::{Cell, RefCell};
 
 use stable_gen_map::key::DefaultKey;
-use stable_gen_map::stable_paged_gen_map::StableGenMap;
+use stable_gen_map::stable_gen_map::StableGenMap;
 
 #[derive(Debug)]
 struct Entity {
