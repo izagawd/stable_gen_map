@@ -129,7 +129,7 @@
         let (k_ok, v_ok) = map.insert(123);
         let kd = k_ok.data();
 
-        assert_eq!(kd.idx, 0, "first live insert after error should reuse page 0, idx 0");
+        assert_eq!(kd.idx, 0, "first live insert after error should reuse idx 0");
         assert_eq!(*v_ok, 123);
     }
 
@@ -176,7 +176,7 @@
         let (k_ok, v_ok) = map.insert(123);
         let kd = k_ok.data();
 
-        assert_eq!(kd.idx, 0, "first live insert after panic should reuse page 0, idx 0");
+        assert_eq!(kd.idx, 0, "first live insert after panic should reuse idx 0");
         assert_eq!(*v_ok, 123);
     }
 
@@ -213,7 +213,7 @@
         let inner_data = inner_key.data();
         assert!(
             outer_data.idx != inner_data.idx,
-            "outer and inner must use distinct (page, idx) pairs"
+            "outer and inner must use distinct  idx"
         );
     }
 
@@ -301,7 +301,7 @@
         assert_eq!(map.len(), 1);
 
 
-        // Same physical slot (page + slot) reused
+        // Same physical slot reused
         assert_eq!(k1.data().idx, k2.data().idx);
 
         // Different generation
@@ -388,7 +388,7 @@
     fn try_insert_with_key_ok_path_new_page_slot() {
         let normal_map: Map<i32> = StableGenMap::new();
 
-        // OK path with a brand new map (no free slots, allocate in first page).
+        // OK path with a brand new map (no free slots, allocate in first slot.
         let (k, v) = normal_map
             .try_insert_with_key(|_k| -> Result<i32, &'static str> {
                 Ok(10)
@@ -439,7 +439,7 @@
         let normal_map: Map<i32> = StableGenMap::new();
         assert_eq!(normal_map.len(), 0);
 
-        // No free slots yet → this hits the "add new slot/page" branch.
+        // No free slots yet → this hits the "add new slot" branch.
         let res: Result<(DefaultKey, &i32), &'static str> =
             normal_map.try_insert_with_key(|_k| -> Result<i32, &'static str> {
                 Err("oops in normal_map constructor")
@@ -477,7 +477,7 @@
         assert_eq!(removed, 1);
         assert!(normal_map.get(k1).is_none());
 
-        // Now there is exactly one free slot recorded in `free` for that (page, idx).
+        // Now there is exactly one free slot recorded in `free` for that idx
         let res_err: Result<(DefaultKey, &i32), &'static str> =
             (&normal_map as &Map<i32>)
                 .try_insert_with_key(|_k| -> Result<i32, &'static str> {
@@ -486,7 +486,7 @@
 
         assert!(res_err.is_err());
 
-        // Next successful try_insert_with_key should reuse the same (page, idx),
+        // Next successful try_insert_with_key should reuse the same idx,
         // with the bumped generation from remove.
         let (k2, v2) =
             (&normal_map as &Map<i32>)
@@ -533,7 +533,7 @@
         assert!(normal_map.get(k1).is_none());
         assert!(normal_map.get_mut(k1).is_none());
 
-        // Next insert should reuse the same (page, idx) with incremented generation.
+        // Next insert should reuse the same  idx with incremented generation.
         let (k1_new, _) = normal_map.insert(99);
         let old = k1.data();
         let new = k1_new.data();
@@ -552,7 +552,7 @@
     }
 
     // 1. First value’s reference must remain stable across many inserts
-    //    (Vec<Page<T>> growth + page allocations).
+    //    (Vec<Page<T>> growth + slot allocations).
     #[test]
     fn stable_ref_survives_many_vec_and_page_resizes() {
         let map = StableGenMap::<DefaultKey, String>::new();
@@ -604,7 +604,7 @@
         assert_eq!(*r_new, 222);
         assert_eq!(map.get(k_new), Some(&222));
 
-        // Same page + index should be reused, but generation must bump.
+        // Same index should be reused, but generation must bump.
         assert_eq!(k_new.key_data.idx, idx_old, "same index reused");
 
         assert_ne!(
@@ -641,7 +641,7 @@
 
 
     // 4. Removing a key invalidates it forever, even after lots of inserts
-    //    and page growth that reuse free slots.
+    //    and slot growth that reuse free slots.
     #[test]
     fn remove_then_mass_insert_then_reuse_keeps_old_key_invalid() {
         let mut map = StableGenMap::<DefaultKey, i32>::new();
@@ -690,7 +690,7 @@
 
 
     // 7. Remove invalidates the key, and reinsert reuses the same slot but
-    //    with a bumped generation (and the same page).
+    //    with a bumped generation (and the same slot).
     #[test]
     fn remove_invalidates_old_key_and_reuse_bumps_generation() {
         let mut map = StableGenMap::<DefaultKey, i32>::new();
@@ -708,7 +708,7 @@
         // Old key is now invalid (generation mismatch).
         assert!(map.get(k1).is_none());
 
-        // Insert again; free slot reused -> same idx/page, bumped generation.
+        // Insert again; free slot reused -> same idx, bumped generation.
         let (k2, r2) = map.insert(20);
         assert_eq!(*r2, 20);
 
@@ -720,12 +720,12 @@
         );
     }
 
-    // 8. Removing a bogus key (wrong page/idx or wrong generation) returns None.
+    // 8. Removing a bogus key (wrong idx or wrong generation) returns None.
     #[test]
     fn remove_nonexistent_returns_none() {
         let mut map = StableGenMap::<DefaultKey, i32>::new();
 
-        // Completely bogus page/idx.
+        // Completely bogus idx.
         let bogus = DefaultKey {
             key_data: KeyData {
                 idx: 999_999,

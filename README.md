@@ -18,9 +18,6 @@ Great for patterns that rely on shared mutability on a single thread, and remove
 - `StableGenMap<K, T>`  
   A stable generational map storing `T` inline. This is generally what you would want
 
-- `StableGenMap<K, T, const SLOTS_NUM_PER_PAGE: usize>`  
-  Same semantics as `StableGenMap`, but uses multiple slots in a page. Use this variant when you want to pre-allocate slots so that inserting new elements usually doesn’t need a heap allocation, even when no slots have been freed by ```remove``` yet.
-
 - `StableDerefGenMap<K, Derefable>`  
   A stable generational map where each element is a **smart pointer** that
   implements 
