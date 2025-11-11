@@ -6,6 +6,7 @@ mod paged_stable_gen_map_tests {
     use std::cell::Cell;
     use std::collections::HashSet;
     use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use crate::numeric::Numeric;
     use crate::stable_paged_gen_map::{decode_index, DefaultStablePagedGenMap, DEFAULT_SLOTS_NUM_PER_PAGE};
@@ -353,6 +354,49 @@ mod paged_stable_gen_map_tests {
         assert_eq!(values, (1000..1040).collect::<Vec<_>>());
     }
 
+    #[test]
+    fn paged_drop_is_called_exactly_once_per_element() {
+        #[derive(Debug)]
+        struct DropCounter(Arc<AtomicUsize>);
+
+        impl Drop for DropCounter {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let drops = Arc::new(AtomicUsize::new(0));
+
+        {
+            let mut map = DefaultStablePagedGenMap::<DefaultKey, DropCounter>::new();
+
+            // Insert a bunch
+            let mut keys = Vec::new();
+            for _ in 0..100 {
+                let dc = DropCounter(drops.clone());
+                let (k, _) = map.insert(dc);
+                keys.push(k);
+            }
+
+            // Remove some
+            for (i, k) in keys.iter().enumerate() {
+                if i % 2 == 0 {
+                    assert!(map.remove(*k).is_some());
+                }
+            }
+
+            // Insert again to stress free list reuse
+            for _ in 0..50 {
+                let dc = DropCounter(drops.clone());
+                let (_k, _) = map.insert(dc);
+            }
+
+            // Map drops here
+        }
+
+        // Every value created should be dropped exactly once.
+        // 100 first wave + 50 second wave = 150
+        assert_eq!(drops.load(Ordering::SeqCst), 150);
+    }
     #[test]
     fn paged_into_iter_consumes_and_yields_owned_values() {
         let mut map: PagedMap<i32> = DefaultStablePagedGenMap::new();

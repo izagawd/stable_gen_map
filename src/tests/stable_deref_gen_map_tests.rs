@@ -77,7 +77,73 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
         values.sort();
         assert_eq!(values, (10..15).collect::<Vec<_>>());
     }
+    #[test]
+    fn deref_get_by_index_only_matches_key_get() {
+        let mut map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
+        let mut keys = Vec::new();
 
+        for i in 0..10 {
+            let (k, _) = map.insert(Box::new(i));
+            keys.push(k);
+        }
+
+        for k in &keys {
+            let (k2, r) = map.get_by_index_only(k.data().idx).unwrap();
+            assert_eq!(*r, *map.get(*k).unwrap());
+            assert_eq!(k2.data().idx, k.data().idx);
+            assert_eq!(k2.data().generation, k.data().generation);
+        }
+
+        // Test the mut variant too.
+        for k in &keys {
+            let (k2, r_mut) = map.get_by_index_only_mut(k.data().idx).unwrap();
+            *r_mut += 100;
+            assert_eq!(k2.data().idx, k.data().idx);
+        }
+
+        for (i, k) in keys.into_iter().enumerate() {
+            assert_eq!(*map.get(k).unwrap(), i as i32 + 100);
+        }
+    }
+#[test]
+fn deref_drop_is_called_exactly_once_per_element() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[derive(Debug)]
+    struct DropCounter(Arc<AtomicUsize>);
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let drops = Arc::new(AtomicUsize::new(0));
+
+    {
+        let mut map = BoxStableDerefGenMap::<DefaultKey, DropCounter>::new();
+        let mut keys = Vec::new();
+
+        for _ in 0..50 {
+            let (k, _) = map.insert(Box::new(DropCounter(drops.clone())));
+            keys.push(k);
+        }
+
+        // Remove a subset
+        for (i, k) in keys.iter().enumerate() {
+            if i % 2 == 0 {
+                assert!(map.remove(*k).is_some());
+            }
+        }
+
+        // Clear the rest
+        map.clear();
+        assert_eq!(map.len(), 0);
+    }
+
+    // All 50 elements must have been dropped exactly once
+    assert_eq!(drops.load(Ordering::SeqCst), 50);
+}
     #[test]
     fn stable_into_iter_consumes_and_yields_boxes() {
         let mut map: StableMap<String> = BoxStableDerefGenMap::new();
