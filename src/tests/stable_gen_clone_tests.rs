@@ -249,7 +249,7 @@ fn clone_respects_free_list_and_generations() {
 }
 
 #[test]
-fn clone_multi_page() {
+fn clone_multi_slot() {
     let m: Map = Map::new();
 
     // Force multiple resizes (SLOTS is small)

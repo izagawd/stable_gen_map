@@ -480,8 +480,8 @@ impl<K: Key, T> StableGenMap<K, T>
             // Success: don't put it back into free list.
             guard.commit();
 
-            // Re-borrow pages because func(key) may have re-entered and
-            // caused pages to grow, etc.
+            // Re-borrow slots because func(key) may have re-entered and
+            // caused slots collection to grow, etc.
             let slots = &*self.slots.get();
             let slot = &mut *slots.get_unchecked(idx.into_usize()).get();
 

@@ -21,7 +21,7 @@ const SLOTS: usize = 4;
     fn snapshot_covers_all_items_and_matches_get() {
         let map = Map::new();
 
-        // Insert enough to spill into multiple pages
+        // Insert enough to spill into multiple slots
         let mut keys = Vec::new();
         for i in 0..(SLOTS * 3 + 1) as i32 {
             let (k, r) = map.insert(i);
@@ -84,7 +84,7 @@ const SLOTS: usize = 4;
     fn snapshot_ref_only_contains_all_values() {
         let map = Map::new();
 
-        // force multiple pages
+        // force multiple slots
         for i in 0..(SLOTS * 3 + 1) as i32 {
             map.insert(i);
         }

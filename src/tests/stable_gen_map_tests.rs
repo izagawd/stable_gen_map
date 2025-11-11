@@ -17,7 +17,7 @@
 
     /// After clear(), the map must not reuse any key that existed before.
     #[test]
-    fn clear_does_not_reuse_keys_default_paged() {
+    fn clear_does_not_reuse_keys_default_slots() {
         let mut map: StableGenMap<DefaultKey, i32> =
             StableGenMap::new();
 
@@ -159,7 +159,7 @@
         assert!(map.get_by_index_only(idx).is_none());
     }
 
-    // New-slot branch + panic: (page=0, idx=0) must be reusable.
+    // New-slot branch + panic: (idx=0) must be reusable.
     #[test]
     fn try_insert_with_key_panic_reuses_reserved_new_slot() {
         let map: Map<i32> = StableGenMap::new();
@@ -208,7 +208,7 @@
         assert_eq!(*outer_ref, 222);
         assert_eq!(*map.get(inner_key).unwrap(), 111);
 
-        // They must not alias the same (page, idx) slot anymore.
+        // They must not alias the same idx slot anymore.
         let outer_data = outer_key.data();
         let inner_data = inner_key.data();
         assert!(
@@ -245,7 +245,7 @@
 
         let mut map = StableGenMap::<TestKey, i32>::new();
 
-        // Insert enough items to span multiple pages
+        // Insert enough items to span multiple slots
         let mut expected = Vec::new();
         for i in 0..1_000 {
             let (k, v) = map.insert(i);
@@ -385,7 +385,7 @@
     }
 
     #[test]
-    fn try_insert_with_key_ok_path_new_page_slot() {
+    fn try_insert_with_key_ok_path_new_slot() {
         let normal_map: Map<i32> = StableGenMap::new();
 
         // OK path with a brand new map (no free slots, allocate in first slot.
@@ -552,15 +552,15 @@
     }
 
     // 1. First value’s reference must remain stable across many inserts
-    //    (Vec<Page<T>> growth + slot allocations).
+    //    (Vec<Slot<T>> growth + slot allocations).
     #[test]
-    fn stable_ref_survives_many_vec_and_page_resizes() {
+    fn stable_ref_survives_many_vec_and_resizes() {
         let map = StableGenMap::<DefaultKey, String>::new();
 
         let (k, r) = map.insert("root".to_string());
         let p_before = (r as *const String) as usize;
 
-        // Force plenty of internal growth and new pages.
+        // Force plenty of internal growth and new slots.
         for i in 0..1_000 {
             let s = i.to_string();
             let _ = map.insert(s);
@@ -574,7 +574,7 @@
     // 2. Free list reuse + re-entrant insert_with while resizing.
     //    - Slot freed by remove is reused.
     //    - Generation is bumped.
-    //    - Page + idx stay the same.
+    //    - idx stay the same.
     //    - get() returns None during construction.
     #[test]
     fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
