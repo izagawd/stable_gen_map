@@ -129,7 +129,7 @@ pub struct IterMut<'a, K: Key, Derefable: DerefGenMapPromise + 'a> {
     ptr: *mut UnsafeCell<Slot<Derefable,K>>,
     len: usize,
     idx: usize,
-    _marker: PhantomData<&'a mut Derefable::Target>,
+    _marker: PhantomData<&'a mut Derefable>,
     _key_marker: PhantomData<K>,
 }
 pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
