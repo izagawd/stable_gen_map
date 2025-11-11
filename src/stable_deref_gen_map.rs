@@ -588,7 +588,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
     pub fn retain<F>(&mut self, mut f: F)
     where
         Derefable: DerefMut,
-        F: FnMut(K, &mut Derefable::Target) -> bool,
+        F: FnMut(K, &mut Derefable) -> bool,
     {
         unsafe {
             let slots: &mut Vec<_> = self.slots.get_mut();
@@ -605,12 +605,9 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
                         generation: slot.generation,
                     };
                     let key = K::from(key_data);
-
-                    // Get &mut Target from the smart pointer.
-                    let value: &mut Derefable::Target = smart_ptr.deref_mut();
-
+                    
                     // Decide whether to keep it.
-                    if !f(key, value) {
+                    if !f(key, smart_ptr) {
                         Self::remove_split_data::<false>(RemoveArguments{
                             slot,
                             key,

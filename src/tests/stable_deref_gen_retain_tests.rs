@@ -13,7 +13,7 @@ fn retain_keeps_all_and_can_mutate_values() {
 
     // Keep everything, mutate values.
     map.retain(|_, v| {
-        *v += 1;
+        **v += 1;
         true
     });
 
@@ -31,7 +31,7 @@ fn retain_removes_some_and_len_tracks() {
     let (k3, _) = map.insert(Box::new(3));
 
     // Keep only even values.
-    map.retain(|_, v| *v % 2 == 0);
+    map.retain(|_, v| **v % 2 == 0);
 
     assert!(map.get(k1).is_none());
     assert!(map.get(k3).is_none());
