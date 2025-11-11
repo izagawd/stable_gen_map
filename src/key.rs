@@ -6,6 +6,10 @@ pub struct KeyData<Idx, Generation>{
     pub(crate) generation: Generation,
 }
 
+/// Odd means occupied, even means not occupied
+pub(crate) fn is_occupied_by_generation<Num: Numeric>(generation: Num) -> bool {
+    generation % (Num::one() + Num::one()) != Num::zero()
+}
 /// This trait should be implemented for any custom key that is desired
 pub unsafe trait Key : Copy + From<KeyData<Self::Idx, Self::Gen>> {
 
