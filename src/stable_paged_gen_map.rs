@@ -3,7 +3,6 @@ use crate::numeric::Numeric;
 use num_traits::{CheckedAdd, One, Zero};
 use std::array::from_fn;
 use std::cell::{Cell, UnsafeCell};
-use std::hint;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
@@ -532,9 +531,6 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
                 for slot_idx in 0..length_used {
                     let slot = page.get_slot_unchecked_mut(slot_idx);
 
-                    // Get mutable access to SlotVariant<T, K>.
-                    let variant: &mut SlotVariant<T, K> = &mut slot.item;
-
                     if is_occupied_by_generation(slot.generation)  {
                         let value = slot.item.occupied.deref_mut();
                         // Build key for this slot.
@@ -761,7 +757,7 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             slot.item.occupied = ManuallyDrop::new(value);
 
             // no need for overflow check here, as that was done when incrementing generation for key
-            slot.generation += K::Gen::one(); // add one to match up with keys idx, since the function succeeded from here.
+            slot.generation += K::Gen::one(); // add one to match up with keys idx, since the function has succeeded from this point
             self.num_elements.set(self.num_elements.get() + 1);
 
             // Build &T from ManuallyDrop.

@@ -791,7 +791,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
             slot.item.occupied = ManuallyDrop::new(value_box);
 
             // no need for overflow check here, as that was done when incrementing generation for key
-            slot.generation += K::Gen::one(); // add one to match up with keys idx, since the function succeeded from here. 
+            slot.generation += K::Gen::one(); // add one to match up with keys idx, since the function has succeeded from this point
             self.num_elements.set(self.num_elements.get() + 1);
 
             // Build &T from the AliasableBox.
