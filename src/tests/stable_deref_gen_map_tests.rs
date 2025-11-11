@@ -70,10 +70,10 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
         }
 
         for (_k, v) in map.iter_mut() {
-            *v += 10;
+            **v += 10;
         }
 
-        let mut values: Vec<i32> = (&mut map).into_iter().map(|(_, v)| *v).collect();
+        let mut values: Vec<i32> = (&mut map).into_iter().map(|(_, v)| **v).collect();
         values.sort();
         assert_eq!(values, (10..15).collect::<Vec<_>>());
     }

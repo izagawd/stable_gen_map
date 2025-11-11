@@ -135,6 +135,7 @@ pub struct IterMut<'a, K: Key, Derefable: DerefGenMapPromise + 'a> {
 pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
 impl<K: Key, Derefable: DerefGenMapPromise> StableDerefGenMap<K, Derefable> where K::Idx : Zero {
     /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
+    /// It is safe to access the Derefer, since the access is mutable
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, Derefable> {
         let slots = self.slots.get_mut(); // &mut Vec<Slot<T>>
@@ -204,7 +205,7 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone for Stable
 }
 
 impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for IterMut<'a, K, Derefable> where K::Idx : Numeric, K::Gen: Numeric {
-    type Item = (K, &'a mut Derefable::Target);
+    type Item = (K, &'a mut Derefable);
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.idx < self.len {
@@ -227,9 +228,9 @@ impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for It
             };
             let key = K::from(key_data);
 
-            let value: &mut Derefable::Target = smart_ptr.deref_mut();
 
-            return Some((key, value));
+
+            return Some((key, smart_ptr));
         }
 
         None
@@ -242,7 +243,7 @@ impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for It
 }
 
 impl<'a, K: Key, Derefable: DerefGenMapPromise + DerefMut> IntoIterator for &'a mut StableDerefGenMap<K, Derefable> where K::Idx : Numeric, <K as Key>::Gen: Numeric {
-    type Item = (K, &'a mut Derefable::Target);
+    type Item = (K, &'a mut  Derefable);
     type IntoIter = IterMut<'a, K, Derefable>;
 
 
