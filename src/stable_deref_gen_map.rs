@@ -50,19 +50,19 @@ unsafe impl<T: Clone> SmartPtrCloneable for Box<T>{
         Some(Box::new(reference.clone())) // this is essentially what Box::clone does, assuming `reference` is what it `Derefs` to
     }
 }
-unsafe impl<'a,T: Clone> SmartPtrCloneable for &'a T{
+unsafe impl<'a,T> SmartPtrCloneable for &'a T{
     const KIND : SmartPtrKind = SmartPtrKind::Shared;
     unsafe fn clone_from_reference(_: &T) -> Option<Self>{
         None
     }
 }
-unsafe impl<T: Clone> SmartPtrCloneable for Rc<T>{
+unsafe impl<T> SmartPtrCloneable for Rc<T>{
     const KIND : SmartPtrKind = SmartPtrKind::Shared;
     unsafe fn clone_from_reference(_: &T) -> Option<Self>{
         None
     }
 }
-unsafe impl<T: Clone> SmartPtrCloneable for Arc<T>{
+unsafe impl<T> SmartPtrCloneable for Arc<T>{
     const KIND : SmartPtrKind = SmartPtrKind::Shared;
     unsafe fn clone_from_reference(_: &T) -> Option<Self>{
         None
