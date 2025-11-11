@@ -770,7 +770,8 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
             };
             let key = K::from(KeyData {
                 idx,
-                generation: generation.checked_add(&K::Gen::one()).unwrap() // explanation as to why i do this is TODO
+                generation: generation.checked_add(&K::Gen::one()).unwrap() // increment only the keys gen by 1, so the key of the inserter isn't valid until after the slot 
+                // has incremented their key, which would be after it confirms the func call didn't have any errors/panics  
             });
             // RAII guard: if func panics/returns Err, put this index
             // back into the free list using the *current* head.

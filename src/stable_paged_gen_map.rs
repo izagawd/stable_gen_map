@@ -735,7 +735,8 @@ impl<K: Key, T, const SLOTS_NUM_PER_PAGE: usize> StablePagedGenMap<K, T, SLOTS_N
             let idx = encode_index(split_idx.page_idx, split_idx.slot_idx, SLOTS_NUM_PER_PAGE);
             let key = K::from(KeyData {
                 idx,
-                generation: generation.checked_add(&K::Gen::one()).unwrap() // TODO TO COMMENT WHY IM DOING THIS
+                generation: generation.checked_add(&K::Gen::one()).unwrap() // increment only the keys gen by 1, so the key of the inserter isn't valid until after the slot
+                // has incremented their key, which would be after it confirms the func call didn't have any errors/panics
             });
 
             // RAII guard: if func panics/returns Err, put this index
