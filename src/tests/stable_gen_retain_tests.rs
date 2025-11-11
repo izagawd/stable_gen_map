@@ -1,12 +1,12 @@
 use crate::key::{DefaultKey, Key};
 use crate::numeric::Numeric;
-use crate::stable_paged_gen_map::DefaultStablePagedGenMap;
+use crate::stable_gen_map::StableGenMap;
 
-type PagedMap = DefaultStablePagedGenMap<DefaultKey, i32>;
+type Map = StableGenMap<DefaultKey, i32>;
 
     #[test]
-    fn retain_keeps_all_in_paged_map() {
-        let mut map: PagedMap = DefaultStablePagedGenMap::new();
+    fn retain_keeps_all_in_map() {
+        let mut map: Map = StableGenMap::new();
         let (k1, _) = map.insert(10);
         let (k2, _) = map.insert(20);
 
@@ -21,8 +21,8 @@ type PagedMap = DefaultStablePagedGenMap<DefaultKey, i32>;
     }
 
     #[test]
-    fn retain_removes_some_in_paged_map() {
-        let mut map: PagedMap = DefaultStablePagedGenMap::new();
+    fn retain_removes_some_in_map() {
+        let mut map: Map = StableGenMap::new();
 
         let (k1, _) = map.insert(1);
         let (k2, _) = map.insert(2);
@@ -37,8 +37,8 @@ type PagedMap = DefaultStablePagedGenMap<DefaultKey, i32>;
     }
 
     #[test]
-    fn retain_reuses_indices_and_bumps_generation_in_paged_map() {
-        let mut map: PagedMap = DefaultStablePagedGenMap::new();
+    fn retain_reuses_indices_and_bumps_generation_in_map() {
+        let mut map: Map = StableGenMap::new();
 
         let (k1, _) = map.insert(42);
         let k1_data = k1.data();

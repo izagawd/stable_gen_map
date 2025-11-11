@@ -1,4 +1,4 @@
-mod paged_stable_gen_map_tests {
+
 
 
     use crate::key::DefaultKey;
@@ -9,7 +9,7 @@ mod paged_stable_gen_map_tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use crate::numeric::Numeric;
-    use crate::stable_paged_gen_map::{decode_index, DefaultStablePagedGenMap, DEFAULT_SLOTS_NUM_PER_PAGE};
+    use crate::stable_gen_map::{StableGenMap};
     // try_insert_with_key while iterating with iter()
 
     // iter() inside try_insert_with_key closure
@@ -18,8 +18,8 @@ mod paged_stable_gen_map_tests {
     /// After clear(), the map must not reuse any key that existed before.
     #[test]
     fn clear_does_not_reuse_keys_default_paged() {
-        let mut map: DefaultStablePagedGenMap<DefaultKey, i32> =
-            DefaultStablePagedGenMap::new();
+        let mut map: StableGenMap<DefaultKey, i32> =
+            StableGenMap::new();
 
         const N: usize = 256;
 
@@ -63,8 +63,8 @@ mod paged_stable_gen_map_tests {
     /// Even with removes and reinserts before clear(), no key should be reused after clear().
     #[test]
     fn clear_does_not_reuse_any_previous_key_even_after_prior_removes() {
-        let mut map: DefaultStablePagedGenMap<DefaultKey, i32> =
-            DefaultStablePagedGenMap::new();
+        let mut map: StableGenMap<DefaultKey, i32> =
+            StableGenMap::new();
         const N: usize = 256;
 
         let mut all_keys_before_clear = HashSet::new();
@@ -109,49 +109,23 @@ mod paged_stable_gen_map_tests {
         );
     }
 
-    /// Sanity: clear should keep page allocation (we don't call Vec::clear on pages).
+
+    type Map<T>  = StableGenMap<DefaultKey, T>;
+
+
     #[test]
-    fn clear_preserves_pages_capacity() {
-        let mut map: DefaultStablePagedGenMap<DefaultKey, i32> =
-            DefaultStablePagedGenMap::new();
+    fn try_insert_with_key_err_reuses_reserved_new_slot() {
+        let map: Map<i32> = StableGenMap::new();
 
-        // Force multiple pages.
-        for i in 0..(DEFAULT_SLOTS_NUM_PER_PAGE * 3) {
-            let _ = map.insert(i as i32);
-        }
-
-        let before_pages = map.pages.get_mut().len();
-        assert!(
-            before_pages >= 3,
-            "expected multiple pages to be allocated"
-        );
-
-        map.clear();
-        assert_eq!(map.len(), 0);
-
-        let after_pages = map.pages.get_mut().len();
-        assert_eq!(
-            before_pages, after_pages,
-            "clear() should not drop pages; it should only free slots"
-        );
-    }
-
-    type PagedMap<T>  = DefaultStablePagedGenMap<DefaultKey, T>;
-
-    // New-slot branch + Err: (page=0, idx=0) must be reusable.
-    #[test]
-    fn paged_try_insert_with_key_err_reuses_reserved_new_slot() {
-        let map: PagedMap<i32> = DefaultStablePagedGenMap::new();
-
-        // Empty map → allocates first page and first slot, then returns Err.
+        // Empty map → allocates first slot, then returns Err.
         let res: Result<(DefaultKey, &i32), &'static str> =
             map.try_insert_with_key(|_k| -> Result<i32, &'static str> {
-                Err("oops in paged constructor")
+                Err("oops in normal_map constructor")
             });
 
         assert!(res.is_err());
 
-        // Next insert should reuse (page=0, idx=0).
+        // Next insert should reuse (idx=0).
         let (k_ok, v_ok) = map.insert(123);
         let kd = k_ok.data();
 
@@ -160,8 +134,8 @@ mod paged_stable_gen_map_tests {
     }
 
     #[test]
-    fn paged_get_by_index_only_round_trips_index_and_key() {
-        let map = DefaultStablePagedGenMap::<DefaultKey,_>::new();
+    fn get_by_index_only_round_trips_index_and_key() {
+        let map = StableGenMap::<DefaultKey,_>::new();
 
         let (k, _) = map.insert(777);
         let idx = k.data().idx;
@@ -174,8 +148,8 @@ mod paged_stable_gen_map_tests {
     }
 
     #[test]
-    fn paged_get_by_index_only_returns_none_for_vacant_slot() {
-        let mut map = DefaultStablePagedGenMap::<DefaultKey,_>::new();
+    fn get_by_index_only_returns_none_for_vacant_slot() {
+        let mut map = StableGenMap::<DefaultKey,_>::new();
 
         let (k, _) = map.insert(42);
         let idx = k.data().idx;
@@ -187,13 +161,13 @@ mod paged_stable_gen_map_tests {
 
     // New-slot branch + panic: (page=0, idx=0) must be reusable.
     #[test]
-    fn paged_try_insert_with_key_panic_reuses_reserved_new_slot() {
-        let map: PagedMap<i32> = DefaultStablePagedGenMap::new();
+    fn try_insert_with_key_panic_reuses_reserved_new_slot() {
+        let map: Map<i32> = StableGenMap::new();
 
         // Empty map → "new slot" path, then panic inside func.
         let res = catch_unwind(AssertUnwindSafe(|| {
             let _ = map.try_insert_with_key::<()>(|_k| -> Result<i32, ()> {
-                panic!("boom in paged new-slot branch");
+                panic!("boom in normal_map new-slot branch");
             });
         }));
         assert!(res.is_err(), "panic should be caught by catch_unwind");
@@ -208,10 +182,10 @@ mod paged_stable_gen_map_tests {
 
 
     #[test]
-    fn paged_nested_try_insert_with_key_uses_distinct_slots() {
+    fn nested_try_insert_with_key_uses_distinct_slots() {
         use std::cell::Cell;
 
-        let map: DefaultStablePagedGenMap<DefaultKey, i32> = DefaultStablePagedGenMap::new();
+        let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
 
         // Record the inner key created inside the outer try_insert_with_key closure.
         let inner_key_cell: Cell<Option<DefaultKey>> = Cell::new(None);
@@ -269,7 +243,7 @@ mod paged_stable_gen_map_tests {
     #[test]
     fn iter_mut_yields_valid_keys_and_values() {
 
-        let mut map = DefaultStablePagedGenMap::<TestKey, i32>::new();
+        let mut map = StableGenMap::<TestKey, i32>::new();
 
         // Insert enough items to span multiple pages
         let mut expected = Vec::new();
@@ -286,8 +260,8 @@ mod paged_stable_gen_map_tests {
         let mut seen = Vec::new();
         for (k, v) in &mut map {
             // Key should decode to something valid
-            let coords = decode_index::<_>(k.data().idx, DEFAULT_SLOTS_NUM_PER_PAGE);
-            assert!(coords.page_idx < len);
+;
+            assert!(k.data().idx.into_usize() < len);
 
             seen.push((k, *v));
         }
@@ -306,14 +280,14 @@ mod paged_stable_gen_map_tests {
     #[test]
     fn remove_reuses_same_slot_with_bumped_generation() {
 
-        let mut map = DefaultStablePagedGenMap::<TestKey, i32>::new();
+        let mut map = StableGenMap::<TestKey, i32>::new();
 
 
 
         let (k1, v1) = map.insert(10);
         assert_eq!(*v1, 10);
 
-        let coords1 = decode_index::<_>(k1.data().idx, DEFAULT_SLOTS_NUM_PER_PAGE);
+
         assert_eq!(map.len(), 1);
 
         // Remove: old key should become invalid.
@@ -326,11 +300,9 @@ mod paged_stable_gen_map_tests {
         assert_eq!(*v2, 20);
         assert_eq!(map.len(), 1);
 
-        let coords2 = decode_index::<_>(k2.data().idx,DEFAULT_SLOTS_NUM_PER_PAGE);
 
         // Same physical slot (page + slot) reused
-        assert_eq!(coords1.page_idx, coords2.page_idx);
-        assert_eq!(coords1.slot_idx, coords2.slot_idx);
+        assert_eq!(k1.data().idx, k2.data().idx);
 
         // Different generation
         assert_ne!(k1.data().generation, k2.data().generation);
@@ -338,8 +310,8 @@ mod paged_stable_gen_map_tests {
 
 
     #[test]
-    fn paged_iter_mut_can_modify_all_values() {
-        let mut map: PagedMap<i32> = DefaultStablePagedGenMap::new();
+    fn iter_mut_can_modify_all_values() {
+        let mut map: Map<i32> = StableGenMap::new();
 
         for i in 0..40 {
             let (_k, _) = map.insert(i);
@@ -355,7 +327,7 @@ mod paged_stable_gen_map_tests {
     }
 
     #[test]
-    fn paged_drop_is_called_exactly_once_per_element() {
+    fn drop_is_called_exactly_once_per_element() {
         #[derive(Debug)]
         struct DropCounter(Arc<AtomicUsize>);
 
@@ -367,7 +339,7 @@ mod paged_stable_gen_map_tests {
         let drops = Arc::new(AtomicUsize::new(0));
 
         {
-            let mut map = DefaultStablePagedGenMap::<DefaultKey, DropCounter>::new();
+            let mut map = StableGenMap::<DefaultKey, DropCounter>::new();
 
             // Insert a bunch
             let mut keys = Vec::new();
@@ -398,8 +370,8 @@ mod paged_stable_gen_map_tests {
         assert_eq!(drops.load(Ordering::SeqCst), 150);
     }
     #[test]
-    fn paged_into_iter_consumes_and_yields_owned_values() {
-        let mut map: PagedMap<i32> = DefaultStablePagedGenMap::new();
+    fn into_iter_consumes_and_yields_owned_values() {
+        let mut map: Map<i32> = StableGenMap::new();
 
         for i in 0..40 {
             let (_k, _) = map.insert(i);
@@ -413,101 +385,101 @@ mod paged_stable_gen_map_tests {
     }
 
     #[test]
-    fn paged_try_insert_with_key_ok_path_new_page_slot() {
-        let paged: PagedMap<i32> = DefaultStablePagedGenMap::new();
+    fn try_insert_with_key_ok_path_new_page_slot() {
+        let normal_map: Map<i32> = StableGenMap::new();
 
         // OK path with a brand new map (no free slots, allocate in first page).
-        let (k, v) = paged
+        let (k, v) = normal_map
             .try_insert_with_key(|_k| -> Result<i32, &'static str> {
                 Ok(10)
             })
             .unwrap();
 
         assert_eq!(*v, 10);
-        assert_eq!(*paged.get(k).unwrap(), 10);
+        assert_eq!(*normal_map.get(k).unwrap(), 10);
     }
 
 
 
     #[test]
-    fn paged_len_tracks_insert_remove_and_clear() {
-        let paged: PagedMap<i32> = DefaultStablePagedGenMap::new();
-        assert_eq!(paged.len(), 0, "new paged map must start empty");
+    fn len_tracks_insert_remove_and_clear() {
+        let normal_map: Map<i32> = StableGenMap::new();
+        assert_eq!(normal_map.len(), 0, "new normal_map map must start empty");
 
-        let (k1, _) = paged.insert(10);
-        assert_eq!(paged.len(), 1, "one insert increments len to 1");
+        let (k1, _) = normal_map.insert(10);
+        assert_eq!(normal_map.len(), 1, "one insert increments len to 1");
 
-        let (k2, _) = paged.insert(20);
-        assert_eq!(paged.len(), 2, "two inserts increments len to 2");
+        let (k2, _) = normal_map.insert(20);
+        assert_eq!(normal_map.len(), 2, "two inserts increments len to 2");
 
         // Move into mutable binding.
-        let mut paged = paged;
+        let mut normal_map = normal_map;
 
         // Removing a live key decrements len.
-        assert_eq!(paged.remove(k1), Some(10));
-        assert_eq!(paged.len(), 1, "remove must decrement len");
+        assert_eq!(normal_map.remove(k1), Some(10));
+        assert_eq!(normal_map.len(), 1, "remove must decrement len");
 
         // Removing again (already removed) must not change len.
-        assert!(paged.remove(k1).is_none());
-        assert_eq!(paged.len(), 1, "removing non-existent key must not change len");
+        assert!(normal_map.remove(k1).is_none());
+        assert_eq!(normal_map.len(), 1, "removing non-existent key must not change len");
 
         // Removing bogus generation must not change len.
         let mut bad = k2;
         bad.key_data.generation = bad.key_data.generation.wrapping_add(1);
-        assert!(paged.remove(bad).is_none());
-        assert_eq!(paged.len(), 1, "failed remove (generation mismatch) must not change len");
+        assert!(normal_map.remove(bad).is_none());
+        assert_eq!(normal_map.len(), 1, "failed remove (generation mismatch) must not change len");
 
         // clear() must reset len to 0.
-        paged.clear();
-        assert_eq!(paged.len(), 0, "clear must reset len to 0");
+        normal_map.clear();
+        assert_eq!(normal_map.len(), 0, "clear must reset len to 0");
     }
 
     #[test]
-    fn paged_len_unchanged_on_try_insert_new_slot_err_and_panic() {
-        let paged: PagedMap<i32> = DefaultStablePagedGenMap::new();
-        assert_eq!(paged.len(), 0);
+    fn len_unchanged_on_try_insert_new_slot_err_and_panic() {
+        let normal_map: Map<i32> = StableGenMap::new();
+        assert_eq!(normal_map.len(), 0);
 
         // No free slots yet → this hits the "add new slot/page" branch.
         let res: Result<(DefaultKey, &i32), &'static str> =
-            paged.try_insert_with_key(|_k| -> Result<i32, &'static str> {
-                Err("oops in paged constructor")
+            normal_map.try_insert_with_key(|_k| -> Result<i32, &'static str> {
+                Err("oops in normal_map constructor")
             });
 
         assert!(res.is_err());
-        assert_eq!(paged.len(), 0, "len must stay 0 after Err in new-slot branch");
+        assert_eq!(normal_map.len(), 0, "len must stay 0 after Err in new-slot branch");
 
         // Same idea, but closure panics.
         let res_panic = catch_unwind(AssertUnwindSafe(|| {
-            let _ = paged.try_insert_with_key::<()>(|_k| -> Result<i32, ()> {
-                panic!("boom in paged new-slot branch");
+            let _ = normal_map.try_insert_with_key::<()>(|_k| -> Result<i32, ()> {
+                panic!("boom in normal_map new-slot branch");
             });
         }));
         assert!(res_panic.is_err());
-        assert_eq!(paged.len(), 0, "len must stay 0 after panic in new-slot branch");
+        assert_eq!(normal_map.len(), 0, "len must stay 0 after panic in new-slot branch");
 
         // After those failures, a normal insert must bump len to 1.
-        let (_k_ok, _v_ok) = paged.insert(123);
-        assert_eq!(paged.len(), 1, "successful insert after failures must bump len to 1");
+        let (_k_ok, _v_ok) = normal_map.insert(123);
+        assert_eq!(normal_map.len(), 1, "successful insert after failures must bump len to 1");
     }
 
     #[test]
-    fn paged_try_insert_with_key_error_reuses_free_slot() {
-        let paged: PagedMap<i32> = DefaultStablePagedGenMap::new();
+    fn try_insert_with_key_error_reuses_free_slot() {
+        let normal_map: Map<i32> = StableGenMap::new();
 
         // First insert through the simple insert API so we can remove it.
-        let (k1, _) = paged.insert(1);
+        let (k1, _) = normal_map.insert(1);
 
         // Move to a mutable binding for remove.
-        let mut paged = paged;
+        let mut normal_map = normal_map;
 
         let old_data = k1.data();
-        let removed = paged.remove(k1).unwrap();
+        let removed = normal_map.remove(k1).unwrap();
         assert_eq!(removed, 1);
-        assert!(paged.get(k1).is_none());
+        assert!(normal_map.get(k1).is_none());
 
         // Now there is exactly one free slot recorded in `free` for that (page, idx).
         let res_err: Result<(DefaultKey, &i32), &'static str> =
-            (&paged as &PagedMap<i32>)
+            (&normal_map as &Map<i32>)
                 .try_insert_with_key(|_k| -> Result<i32, &'static str> {
                     Err("oops")
                 });
@@ -517,7 +489,7 @@ mod paged_stable_gen_map_tests {
         // Next successful try_insert_with_key should reuse the same (page, idx),
         // with the bumped generation from remove.
         let (k2, v2) =
-            (&paged as &PagedMap<i32>)
+            (&normal_map as &Map<i32>)
                 .try_insert_with_key::<()>(|_k| Ok(99))
                 .unwrap();
 
@@ -527,12 +499,12 @@ mod paged_stable_gen_map_tests {
         assert_ne!(old_data.generation, new_data.generation);
 
         assert_eq!(*v2, 99);
-        assert_eq!(*paged.get(k2).unwrap(), 99);
+        assert_eq!(*normal_map.get(k2).unwrap(), 99);
 
         // Old key is stale.
-        assert!(paged.get(k1).is_none());
-        assert!(paged.get_mut(k1).is_none());
-        assert!(paged.remove(k1).is_none());
+        assert!(normal_map.get(k1).is_none());
+        assert!(normal_map.get_mut(k1).is_none());
+        assert!(normal_map.remove(k1).is_none());
     }
 
 
@@ -541,28 +513,28 @@ mod paged_stable_gen_map_tests {
 
 
     #[test]
-    fn paged_get_mut_respects_generation() {
-        let paged: DefaultStablePagedGenMap<DefaultKey,i32> = DefaultStablePagedGenMap::new();
+    fn get_mut_respects_generation() {
+        let normal_map: StableGenMap<DefaultKey,i32> = StableGenMap::new();
 
-        let (k1, _) = paged.insert(1);
-        let (k2, _) = paged.insert(2);
+        let (k1, _) = normal_map.insert(1);
+        let (k2, _) = normal_map.insert(2);
 
-        let mut paged = paged;
+        let mut normal_map = normal_map;
 
         // Mutate via get_mut on live keys.
-        *paged.get_mut(k1).unwrap() = 10;
-        *paged.get_mut(k2).unwrap() = 20;
-        assert_eq!(*paged.get(k1).unwrap(), 10);
-        assert_eq!(*paged.get(k2).unwrap(), 20);
+        *normal_map.get_mut(k1).unwrap() = 10;
+        *normal_map.get_mut(k2).unwrap() = 20;
+        assert_eq!(*normal_map.get(k1).unwrap(), 10);
+        assert_eq!(*normal_map.get(k2).unwrap(), 20);
 
         // Remove k1; generation for that slot should bump and the slot becomes free.
-        let removed = paged.remove(k1).unwrap();
+        let removed = normal_map.remove(k1).unwrap();
         assert_eq!(removed, 10);
-        assert!(paged.get(k1).is_none());
-        assert!(paged.get_mut(k1).is_none());
+        assert!(normal_map.get(k1).is_none());
+        assert!(normal_map.get_mut(k1).is_none());
 
         // Next insert should reuse the same (page, idx) with incremented generation.
-        let (k1_new, _) = paged.insert(99);
+        let (k1_new, _) = normal_map.insert(99);
         let old = k1.data();
         let new = k1_new.data();
 
@@ -570,20 +542,20 @@ mod paged_stable_gen_map_tests {
         assert_ne!(old.generation, new.generation);
 
         // Stale key must fail.
-        assert!(paged.get(k1).is_none());
-        assert!(paged.get_mut(k1).is_none());
+        assert!(normal_map.get(k1).is_none());
+        assert!(normal_map.get_mut(k1).is_none());
 
         // New key must work.
-        assert_eq!(*paged.get(k1_new).unwrap(), 99);
-        *paged.get_mut(k1_new).unwrap() = 123;
-        assert_eq!(*paged.get(k1_new).unwrap(), 123);
+        assert_eq!(*normal_map.get(k1_new).unwrap(), 99);
+        *normal_map.get_mut(k1_new).unwrap() = 123;
+        assert_eq!(*normal_map.get(k1_new).unwrap(), 123);
     }
 
     // 1. First value’s reference must remain stable across many inserts
     //    (Vec<Page<T>> growth + page allocations).
     #[test]
-    fn paged_stable_ref_survives_many_vec_and_page_resizes() {
-        let map = DefaultStablePagedGenMap::<DefaultKey, String>::new();
+    fn stable_ref_survives_many_vec_and_page_resizes() {
+        let map = StableGenMap::<DefaultKey, String>::new();
 
         let (k, r) = map.insert("root".to_string());
         let p_before = (r as *const String) as usize;
@@ -605,8 +577,8 @@ mod paged_stable_gen_map_tests {
     //    - Page + idx stay the same.
     //    - get() returns None during construction.
     #[test]
-    fn paged_reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
-        let mut map = DefaultStablePagedGenMap::<DefaultKey, i32>::new();
+    fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
+        let mut map = StableGenMap::<DefaultKey, i32>::new();
         let (k_old, _) = map.insert(111);
 
         let idx_old = k_old.key_data.idx;
@@ -645,8 +617,8 @@ mod paged_stable_gen_map_tests {
     // 3. get() returns None for the key being constructed inside insert_with,
     //    even if we trigger a lot of resizes while in-flight.
     #[test]
-    fn paged_get_returns_none_during_insert_even_while_resizing() {
-        let map = DefaultStablePagedGenMap::<DefaultKey, String>::new();
+    fn get_returns_none_during_insert_even_while_resizing() {
+        let map = StableGenMap::<DefaultKey, String>::new();
 
         let (_k, r) = map.insert_with_key(|k_self| {
             // During the window where the slot is logically "inserting",
@@ -671,8 +643,8 @@ mod paged_stable_gen_map_tests {
     // 4. Removing a key invalidates it forever, even after lots of inserts
     //    and page growth that reuse free slots.
     #[test]
-    fn paged_remove_then_mass_insert_then_reuse_keeps_old_key_invalid() {
-        let mut map = DefaultStablePagedGenMap::<DefaultKey, i32>::new();
+    fn remove_then_mass_insert_then_reuse_keeps_old_key_invalid() {
+        let mut map = StableGenMap::<DefaultKey, i32>::new();
 
         let (k1, _) = map.insert(1);
         assert_eq!(map.remove(k1), Some(1));
@@ -691,8 +663,8 @@ mod paged_stable_gen_map_tests {
     //    get() must still return None during the outer insert, and both
     //    values must end up visible afterwards.
     #[test]
-    fn paged_get_during_insert_returns_none_and_reentrancy_is_ok() {
-        let map = DefaultStablePagedGenMap::<DefaultKey, String>::new();
+    fn get_during_insert_returns_none_and_reentrancy_is_ok() {
+        let map = StableGenMap::<DefaultKey, String>::new();
 
         let mut inner = None;
         let mut inner_ref = None;
@@ -720,8 +692,8 @@ mod paged_stable_gen_map_tests {
     // 7. Remove invalidates the key, and reinsert reuses the same slot but
     //    with a bumped generation (and the same page).
     #[test]
-    fn paged_remove_invalidates_old_key_and_reuse_bumps_generation() {
-        let mut map = DefaultStablePagedGenMap::<DefaultKey, i32>::new();
+    fn remove_invalidates_old_key_and_reuse_bumps_generation() {
+        let mut map = StableGenMap::<DefaultKey, i32>::new();
 
         let (k1, r1) = map.insert(10);
         assert_eq!(*r1, 10);
@@ -750,8 +722,8 @@ mod paged_stable_gen_map_tests {
 
     // 8. Removing a bogus key (wrong page/idx or wrong generation) returns None.
     #[test]
-    fn paged_remove_nonexistent_returns_none() {
-        let mut map = DefaultStablePagedGenMap::<DefaultKey, i32>::new();
+    fn remove_nonexistent_returns_none() {
+        let mut map = StableGenMap::<DefaultKey, i32>::new();
 
         // Completely bogus page/idx.
         let bogus = DefaultKey {
@@ -776,7 +748,7 @@ mod paged_stable_gen_map_tests {
     //    - Removing a value drops it once.
     //    - Dropping the map drops all remaining live values exactly once.
     #[test]
-    fn paged_drops_happen_on_remove_and_on_map_drop() {
+    fn drops_happen_on_remove_and_on_map_drop() {
         static DROPS: AtomicUsize = AtomicUsize::new(0);
 
         struct CountDrop(&'static AtomicUsize, u32);
@@ -789,7 +761,7 @@ mod paged_stable_gen_map_tests {
         let drops = &DROPS;
         DROPS.store(0, Ordering::SeqCst);
 
-        let mut map = DefaultStablePagedGenMap::<DefaultKey, CountDrop>::new();
+        let mut map = StableGenMap::<DefaultKey, CountDrop>::new();
         let (k1, _) = map.insert(CountDrop(drops, 1));
 
         let (_k2, _) = map.insert(CountDrop(drops, 2));
@@ -806,8 +778,8 @@ mod paged_stable_gen_map_tests {
 
     // 10. insert() and insert_with() must have consistent semantics.
     #[test]
-    fn paged_insert_and_insert_with_match_semantics() {
-        let map = DefaultStablePagedGenMap::<DefaultKey, String>::new();
+    fn insert_and_insert_with_match_semantics() {
+        let map = StableGenMap::<DefaultKey, String>::new();
 
         let (k1, r1) = map.insert("X".into());
         let (k2, r2) = map.insert_with_key(|_| "Y".into());
@@ -820,8 +792,8 @@ mod paged_stable_gen_map_tests {
 
     // 11. Sanity check for the Index<K> impl.
     #[test]
-    fn paged_index_operator_works() {
-        let map = DefaultStablePagedGenMap::<DefaultKey, String>::new();
+    fn index_operator_works() {
+        let map = StableGenMap::<DefaultKey, String>::new();
 
         let (k1, _) = map.insert("hello".to_string());
         let (k2, _) = map.insert("world".to_string());
@@ -829,4 +801,4 @@ mod paged_stable_gen_map_tests {
         assert_eq!(&map[k1], "hello");
         assert_eq!(&map[k2], "world");
     }
-}
+

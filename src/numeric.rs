@@ -35,7 +35,7 @@ macro_rules! impl_numeric {
                 fn into_usize(self) -> usize {
                     self as usize // converting to usize is ok, since it is impossible for self to be higher than usize when used within this crate,
                     // unless a dev uses unsafe magic
-                    //  It is up to the dev making the key size to consider if their choice of Gen/Idx/Page type might go above usize. it wont cause UB if they dont.
+                    //  It is up to the dev making the key size to consider if their choice of Gen/Idx type might go above usize. it wont cause UB if they dont.
                     // Just bugs, and it will only happen if someone decides to create a key outside insert
                 }
                 fn from_usize(v: usize) -> Self {

@@ -1,15 +1,15 @@
 use crate::key::DefaultKey;
 
 use std::collections::HashSet;
-use crate::stable_paged_gen_map::StablePagedGenMap;
+use crate::stable_gen_map::StableGenMap;
 
 const SLOTS: usize = 4;
 
-    type PagedMap = StablePagedGenMap<DefaultKey, i32, SLOTS>;
+    type Map = StableGenMap<DefaultKey, i32>;
 
     #[test]
-    fn paged_snapshot_on_empty_map_is_empty() {
-        let map = PagedMap::new();
+    fn snapshot_on_empty_map_is_empty() {
+        let map = Map::new();
 
         let snap = map.snapshot();
 
@@ -18,8 +18,8 @@ const SLOTS: usize = 4;
     }
 
     #[test]
-    fn paged_snapshot_covers_all_items_and_matches_get() {
-        let map = PagedMap::new();
+    fn snapshot_covers_all_items_and_matches_get() {
+        let map = Map::new();
 
         // Insert enough to spill into multiple pages
         let mut keys = Vec::new();
@@ -37,17 +37,17 @@ const SLOTS: usize = 4;
         // No duplicate keys
         let mut seen = HashSet::new();
         for (k, v) in &snap {
-            assert!(seen.insert(*k), "duplicate key in paged snapshot");
+            assert!(seen.insert(*k), "duplicate key in normal_map snapshot");
 
-            let from_map = map.get(*k).expect("key from paged snapshot not found in map");
+            let from_map = map.get(*k).expect("key from normal_map snapshot not found in map");
             assert_eq!(from_map, *v);
             assert!(std::ptr::eq::<i32>(from_map, *v));
         }
     }
 
     #[test]
-    fn paged_snapshot_ignores_future_inserts() {
-        let map = PagedMap::new();
+    fn snapshot_ignores_future_inserts() {
+        let map = Map::new();
 
         let (k1, _) = map.insert(10);
         let (k2, _) = map.insert(20);
@@ -68,7 +68,7 @@ const SLOTS: usize = 4;
 
     #[test]
     fn snapshot_ref_only_empty() {
-        let map = PagedMap::new();
+        let map = Map::new();
 
         let refs = map.snapshot_ref_only();
         let keys = map.snapshot_key_only();
@@ -82,7 +82,7 @@ const SLOTS: usize = 4;
 
     #[test]
     fn snapshot_ref_only_contains_all_values() {
-        let map = PagedMap::new();
+        let map = Map::new();
 
         // force multiple pages
         for i in 0..(SLOTS * 3 + 1) as i32 {
@@ -110,7 +110,7 @@ const SLOTS: usize = 4;
 
     #[test]
     fn snapshot_ref_only_ignores_future_inserts() {
-        let map = PagedMap::new();
+        let map = Map::new();
 
         map.insert(10);
         map.insert(20);
@@ -125,7 +125,7 @@ const SLOTS: usize = 4;
 
     #[test]
     fn snapshot_key_only_contains_all_keys() {
-        let map = PagedMap::new();
+        let map = Map::new();
 
         let mut inserted_keys = Vec::new();
         for i in 0..(SLOTS * 3 + 1) as i32 {
@@ -149,7 +149,7 @@ const SLOTS: usize = 4;
 
     #[test]
     fn snapshot_key_only_ignores_future_inserts() {
-        let map = PagedMap::new();
+        let map = Map::new();
 
         let (k1, _) = map.insert(1);
         let (k2, _) = map.insert(2);
@@ -168,8 +168,8 @@ const SLOTS: usize = 4;
     }
     
     #[test]
-    fn paged_snapshot_iter_matches_snapshot() {
-        let map = PagedMap::new();
+    fn snapshot_iter_matches_snapshot() {
+        let map = Map::new();
 
         for i in 0..(SLOTS * 2) as i32 {
             map.insert(i);
