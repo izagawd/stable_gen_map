@@ -260,7 +260,7 @@
         let mut seen = Vec::new();
         for (k, v) in &mut map {
             // Key should decode to something valid
-;
+
             assert!(k.data().idx.into_usize() < len);
 
             seen.push((k, *v));
