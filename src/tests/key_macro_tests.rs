@@ -5,29 +5,29 @@ use std::collections::HashSet;
 
 // Default form: u32/u32
 crate::new_key_type! {
-        struct TestKey;
-    }
+    struct TestKey;
+}
 
 // Custom idx/gen types
 crate::new_key_type! {
-        struct SmallKey(u16, u16);
-    }
+    struct SmallKey(u16, u16);
+}
 
 // Multiple keys in one invocation
 crate::new_key_type! {
-        struct KeyA;
-        struct KeyB;
-    }
+    struct KeyA;
+    struct KeyB;
+}
 
 // Public visibility
 crate::new_key_type! {
-        pub struct PubKey;
-    }
+    pub struct PubKey;
+}
 
 // Custom types with pub visibility
 crate::new_key_type! {
-        pub struct PubSmallKey(u16, u16);
-    }
+    pub struct PubSmallKey(u16, u16);
+}
 
 #[test]
 fn default_key_type_has_correct_assoc_types() {
