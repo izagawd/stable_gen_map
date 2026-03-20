@@ -7,7 +7,7 @@ use std::ops::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
 /// This trait is used to allow polymorphism between all number types
 /// This enables the key type to have any type they want for their Idx and Generation, which enables a lot
 /// of flexibility
-pub unsafe trait Numeric:
+pub unsafe trait KeyPiece:
 Copy
 + Num
 + 'static
@@ -31,7 +31,7 @@ Copy
 macro_rules! impl_numeric {
     ($($t:ty)*) => {
         $(
-            unsafe impl Numeric for $t {
+            unsafe impl KeyPiece for $t {
                 fn into_usize(self) -> usize {
                     self as usize // converting to usize is ok, since it is impossible for self to be higher than usize when used within this crate,
                     // unless a dev uses unsafe magic

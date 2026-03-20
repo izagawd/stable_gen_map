@@ -1,5 +1,5 @@
 use crate::key::{DefaultKey, Key};
-use crate::numeric::Numeric;
+use crate::numeric::KeyPiece;
 use crate::stable_gen_map::StableGenMap;
 
 type Map = StableGenMap<DefaultKey, i32>;
