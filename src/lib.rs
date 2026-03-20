@@ -26,6 +26,9 @@ mod tests{
     mod stable_gen_map_tests;
 
     #[cfg(test)]
+    mod key_macro_tests;
+
+    #[cfg(test)]
     mod stable_gen_snapshot_tests;
 
     #[cfg(test)]
