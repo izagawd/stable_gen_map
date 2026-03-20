@@ -1,5 +1,5 @@
 use crate::key::{is_occupied_by_generation, Key, KeyData};
-use crate::numeric::Numeric;
+use crate::numeric::KeyPiece;
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::cmp::PartialEq;
@@ -204,7 +204,8 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone for Stable
     }
 }
 
-impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for IterMut<'a, K, Derefable> where K::Idx : Numeric, K::Gen: Numeric {
+impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for IterMut<'a, K, Derefable> where K::Idx : KeyPiece, K::Gen: KeyPiece
+{
     type Item = (K, &'a mut Derefable);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -242,7 +243,8 @@ impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for It
     }
 }
 
-impl<'a, K: Key, Derefable: DerefGenMapPromise + DerefMut> IntoIterator for &'a mut StableDerefGenMap<K, Derefable> where K::Idx : Numeric, <K as Key>::Gen: Numeric {
+impl<'a, K: Key, Derefable: DerefGenMapPromise + DerefMut> IntoIterator for &'a mut StableDerefGenMap<K, Derefable> where K::Idx : KeyPiece, <K as Key>::Gen: KeyPiece
+{
     type Item = (K, &'a mut  Derefable);
     type IntoIter = IterMut<'a, K, Derefable>;
 
@@ -289,7 +291,8 @@ pub struct IntoIter<K: Key, Derefable> {
     _marker: PhantomData<K>,
 }
 
-impl<K: Key, Derefable: DerefGenMapPromise> Iterator for IntoIter<K, Derefable> where <K as Key>::Idx : Numeric{
+impl<K: Key, Derefable: DerefGenMapPromise> Iterator for IntoIter<K, Derefable> where <K as Key>::Idx : KeyPiece
+{
     type Item = (K, Derefable);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -323,7 +326,8 @@ impl<K: Key, Derefable: DerefGenMapPromise> Iterator for IntoIter<K, Derefable> 
     }
 }
 
-impl<K: Key, Derefable: DerefGenMapPromise> IntoIterator for StableDerefGenMap<K, Derefable> where <K as Key>::Idx: Numeric{
+impl<K: Key, Derefable: DerefGenMapPromise> IntoIterator for StableDerefGenMap<K, Derefable> where <K as Key>::Idx: KeyPiece
+{
     type Item = (K, Derefable);
     type IntoIter = IntoIter<K, Derefable>;
 
