@@ -44,3 +44,71 @@ unsafe impl Key for DefaultKey{
         self.key_data
     }
 }
+
+/// Macro for creating new key types, similar to slotmap's `new_key_type!`.
+///
+/// # Examples
+/// ```
+/// use stable_gen_map::new_key_type;
+///
+/// new_key_type! {
+///     pub struct PlayerKey;
+/// }
+///
+/// // With custom index/generation types:
+/// new_key_type! {
+///     pub struct SmallKey(u16, u16);
+/// }
+/// ```
+#[macro_export]
+macro_rules! new_key_type {
+    ( $(#[$attr:meta])* $vis:vis struct $name:ident ; $($rest:tt)* ) => {
+        $(#[$attr])*
+        #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+        $vis struct $name {
+            key_data: $crate::key::KeyData<u32, u32>,
+        }
+
+        impl From<$crate::key::KeyData<u32, u32>> for $name {
+            fn from(key_data: $crate::key::KeyData<u32, u32>) -> Self {
+                Self { key_data }
+            }
+        }
+
+        unsafe impl $crate::key::Key for $name {
+            type Idx = u32;
+            type Gen = u32;
+
+            fn data(&self) -> $crate::key::KeyData<u32, u32> {
+                self.key_data
+            }
+        }
+
+        $crate::new_key_type!($($rest)*);
+    };
+    ( $(#[$attr:meta])* $vis:vis struct $name:ident ( $idx:ty , $gen:ty ) ; $($rest:tt)* ) => {
+        $(#[$attr])*
+        #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+        $vis struct $name {
+            key_data: $crate::key::KeyData<$idx, $gen>,
+        }
+
+        impl From<$crate::key::KeyData<$idx, $gen>> for $name {
+            fn from(key_data: $crate::key::KeyData<$idx, $gen>) -> Self {
+                Self { key_data }
+            }
+        }
+
+        unsafe impl $crate::key::Key for $name {
+            type Idx = $idx;
+            type Gen = $gen;
+
+            fn data(&self) -> $crate::key::KeyData<$idx, $gen> {
+                self.key_data
+            }
+        }
+
+        $crate::new_key_type!($($rest)*);
+    };
+    () => {};
+}
