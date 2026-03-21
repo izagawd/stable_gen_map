@@ -1,22 +1,21 @@
+use crate::gen_map::{GenMap, Slot};
 use crate::key::{is_occupied_by_generation, Key, KeyData};
-use crate::key_piece::KeyPiece;
+use crate::slot_item::{DerefGenMapPromise, DerefSlot, SlotData, SlotItem};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
-use std::cmp::PartialEq;
-use std::collections::TryReserveError;
-
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::Arc;
+
+// ─── SmartPtrKind / SmartPtrCloneable ────────────────────────────────────────
 
 /// NOTE: SELECTING THE WRONG SMART POINTER KIND FOR A SMART POINTER MAY LEAD TO UNDEFINED BEHAVIOUR.<br><br>
 /// EACH SMART POINTER KIND IS DOCUMENTED WITH GUIDELINES TO FOLLOW.<br><br> NOT FOLLOWING THEM MEANS YOU HAVE SELECTED THE WRONG SMART POINTER KIND,
 /// WHICH, AS I SAID, MAY LEAD TO UNDEFINED BEHAVIOUR
-#[derive(Clone,Copy,PartialEq,Eq)]
-pub enum SmartPtrKind{
-
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SmartPtrKind {
     /// Meaning the smart pointer owns the type. When the smart pointer is destroyed, so as the type its pointing to. eg `Box`
     Owned,
 
@@ -27,14 +26,12 @@ pub enum SmartPtrKind{
     /// <br><br>
     /// If your smart pointer is of kind `Shared` and implements `Clone`, the `Clone` implementation must NOT mutate any shared `Stable Gen Map` (eg with `insert`)
     /// If not, there would be a possibility of Undefined Behavior
-    Shared
+    Shared,
 }
 
-pub unsafe trait SmartPtrCloneable: DerefGenMapPromise + Clone{
-
+pub unsafe trait SmartPtrCloneable: DerefGenMapPromise + Clone {
     /// BE VERY CAREFUL WHEN SELECTING THE SMART POINTER KIND TO AVOID POSSIBLE UNDEFINED BEHAVIOR
-    const KIND : SmartPtrKind;
-
+    const KIND: SmartPtrKind;
 
     /// NOTE: THIS METHOD MUST BE IMPLEMENTED BY SMART POINTERS WITH KIND `Owned`. IF THE SMART POINTER KIND IS `Shared`, SIMPLY RETURN `None`.
     /// IF THESE GUIDELINES ARE NOT FOLLOWED, THERE COULD BE BUGS, UNEXPECTED BEHAVIOUR, AND MAYBE UNDEFINED BEHAVIOUR
@@ -44,828 +41,101 @@ pub unsafe trait SmartPtrCloneable: DerefGenMapPromise + Clone{
     unsafe fn clone_from_reference(reference: &Self::Target) -> Option<Self>;
 }
 
-unsafe impl<T: Clone> SmartPtrCloneable for Box<T>{
-    const KIND : SmartPtrKind = SmartPtrKind::Owned;
-    unsafe fn clone_from_reference(reference: &T) -> Option<Self>{
-        Some(Box::new(reference.clone())) // this is essentially what Box::clone does, assuming `reference` is what it `Derefs` to
+unsafe impl<T: Clone> SmartPtrCloneable for Box<T> {
+    const KIND: SmartPtrKind = SmartPtrKind::Owned;
+    unsafe fn clone_from_reference(reference: &T) -> Option<Self> {
+        Some(Box::new(reference.clone()))
     }
 }
-unsafe impl<'a,T: ?Sized> SmartPtrCloneable for &'a T{
-    const KIND : SmartPtrKind = SmartPtrKind::Shared;
-    unsafe fn clone_from_reference(_: &T) -> Option<Self>{
+unsafe impl<'a, T: ?Sized> SmartPtrCloneable for &'a T {
+    const KIND: SmartPtrKind = SmartPtrKind::Shared;
+    unsafe fn clone_from_reference(_: &T) -> Option<Self> {
         None
     }
 }
-unsafe impl<T: ?Sized> SmartPtrCloneable for Rc<T>{
-    const KIND : SmartPtrKind = SmartPtrKind::Shared;
-    unsafe fn clone_from_reference(_: &T) -> Option<Self>{
+unsafe impl<T: ?Sized> SmartPtrCloneable for Rc<T> {
+    const KIND: SmartPtrKind = SmartPtrKind::Shared;
+    unsafe fn clone_from_reference(_: &T) -> Option<Self> {
         None
     }
 }
-unsafe impl<T: ?Sized> SmartPtrCloneable for Arc<T>{
-    const KIND : SmartPtrKind = SmartPtrKind::Shared;
-    unsafe fn clone_from_reference(_: &T) -> Option<Self>{
+unsafe impl<T: ?Sized> SmartPtrCloneable for Arc<T> {
+    const KIND: SmartPtrKind = SmartPtrKind::Shared;
+    unsafe fn clone_from_reference(_: &T) -> Option<Self> {
         None
     }
 }
 
-struct Slot<Derefable, K: Key> {
-    generation: K::Gen,
-    item: SlotVariant<Derefable, K>,
-}
+// ─── type aliases ────────────────────────────────────────────────────────────
 
-impl<Derefable, K: Key> Drop for Slot<Derefable, K> {
-    fn drop(&mut self) {
-        if is_occupied_by_generation(self.generation) {
-            unsafe{  ManuallyDrop::drop(&mut self.item.occupied) }
-        }
-    }
-}
-impl<Derefable, K: Key> Slot<Derefable, K> {
-    #[inline]
-    fn take_occupied(&mut self) -> Option<Derefable> {
-        use std::mem;
-        unsafe{
-            let gotten = mem::replace(&mut self.item, SlotVariant{vacant: None});
-            if is_occupied_by_generation(self.generation){
-                return Some(ManuallyDrop::into_inner(gotten.occupied));
-            } else{
-                return None;
-            }
-        }
-
-    }
-}
-
-/// NOTE: IMPLEMENTING THIS TRAIT IS A PROMISE THAT THE `Deref` IMPLEMENTATION (also `DerefMut` implementation if it has that too) DOES NOT MUTATE ANY `SHARED` STABLE GEN MAPS (eg with `insert`) <br>
-/// IT IS ALSO A PROMISE THAT THE DEREF OF THE SMART POINTER IS STABLE, MEANING THE POINTER IT DEREFS TO DOES NOT CHANGE<br><br>
-/// IF THESE PROMISES ARE VIOLATED, THERE MAY BE UNDEFINED BEHAVIOR
-pub unsafe trait DerefGenMapPromise: Deref {
-
-}
-
-unsafe impl<T: ?Sized> DerefGenMapPromise for Box<T>{}
-unsafe impl<T: ?Sized> DerefGenMapPromise for Rc<T>{}
-unsafe impl<T: ?Sized> DerefGenMapPromise for Arc<T>{}
-unsafe impl<'a,T: ?Sized> DerefGenMapPromise for &'a T{}
-impl<Derefable: DerefGenMapPromise + Clone, K: Key>  Slot<Derefable, K> {
-    #[inline]
-    unsafe fn clone(&self) -> Self {
-
-        Self{
-            generation: self.generation,
-            item: if is_occupied_by_generation(self.generation){
-                SlotVariant{occupied: self.item.occupied.clone()}
-            } else {
-                SlotVariant{
-                    vacant: self.item.vacant
-                }
-            },
-        }
-    }
-}
-
-pub struct IterMut<'a, K: Key, Derefable: DerefGenMapPromise + 'a> {
-    inner: std::slice::IterMut<'a, UnsafeCell<Slot<Derefable, K>>>,
-    idx: usize,
-}
-
-/// Draining iterator over a `StableDerefGenMap`. Created by [`StableDerefGenMap::drain`].
-///
-/// Yields all occupied `(K, Derefable)` pairs, removing them from the map.
-/// If dropped before being fully consumed, remaining elements are still removed and dropped.
-pub struct Drain<'a, K: Key, Derefable: DerefGenMapPromise> {
-    map: &'a mut StableDerefGenMap<K, Derefable>,
-    idx: usize,
-}
-
-impl<'a, K: Key, Derefable: DerefGenMapPromise> Iterator for Drain<'a, K, Derefable> {
-    type Item = (K, Derefable);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let idx = self.idx;
-
-            let generation = {
-                let slots = self.map.slots.get_mut();
-                if idx >= slots.len() {
-                    return None;
-                }
-                self.idx += 1;
-                let slot = slots[idx].get_mut();
-                if !is_occupied_by_generation(slot.generation) {
-                    continue;
-                }
-                slot.generation
-            };
-
-            let key = K::from(KeyData {
-                idx: K::Idx::from_usize(idx),
-                generation,
-            });
-            let value = unsafe{ self.map.remove(key).unwrap_unchecked() };
-            return Some((key, value));
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.map.len()))
-    }
-}
-
-impl<'a, K: Key, Derefable: DerefGenMapPromise> Drop for Drain<'a, K, Derefable> {
-    fn drop(&mut self) {
-        while self.next().is_some() {}
-    }
-}
+/// Generational map that stores user-supplied smart pointers (`Box`, `Rc`,
+/// `Arc`, `&T`, …) directly.  The smart pointer provides pointer stability.
+pub type StableDerefGenMap<K, Derefable> = GenMap<K, DerefSlot<Derefable, K>>;
 
 pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
-impl<K: Key, Derefable: DerefGenMapPromise> StableDerefGenMap<K, Derefable> where K::Idx : Zero {
-    /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
-    /// It is safe to access the Derefer, since the access is mutable
-    #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<'_, K, Derefable> {
-        IterMut {
-            inner: self.slots.get_mut().iter_mut(),
-            idx: 0,
-        }
-    }
 
-    /// Removes all elements from the map and returns them as an iterator.
-    ///
-    /// The map is left empty but retains its allocated capacity.
-    /// If the returned iterator is dropped before being fully consumed,
-    /// the remaining elements are still removed and dropped.
-    #[inline]
-    pub fn drain(&mut self) -> Drain<'_, K, Derefable> {
-        Drain {
-            map: self,
-            idx: 0,
-        }
-    }
-}
+// ─── Clone (two strategies) ──────────────────────────────────────────────────
 
-
-impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone for StableDerefGenMap< K, Derefable>  {
+impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
+for StableDerefGenMap<K, Derefable>
+{
     fn clone(&self) -> Self {
-
         unsafe {
-            if <Derefable as SmartPtrCloneable>::KIND == SmartPtrKind::Shared{
-                // if the smart pointer kind was correctly selected as `Shared`, as per the documentation of `Shared`, This should not cause
-                // any undefined behavior and is a faster path
-                return self.clone_efficiently()
+            // Fast path for Shared smart pointers (Rc, Arc, &T):
+            // Clone can't mutate the map, so clone_efficiently is safe.
+            if <Derefable as SmartPtrCloneable>::KIND == SmartPtrKind::Shared {
+                return self.clone_efficiently();
             }
-            enum RefOrNextFree<'a, K: Key, T: ?Sized> {
+
+            // Slow path for Owned smart pointers (Box<T>):
+            // Two-phase snapshot to tolerate T::clone re-entering the map.
+            enum RefOrNext<'a, K: Key, T: ?Sized> {
                 Ref(&'a T),
                 Next(Option<K::Idx>),
             }
+
             let num_elements = self.len();
             let next_free = self.next_free.clone();
-            let mut slots_ref = Vec::with_capacity(num_elements);
+            let slots_ref: &Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> =
+                &*self.slots.get();
 
-            slots_ref.extend((&*self.slots.get())
-                .iter()
-                .enumerate()
-                .map(|(_slot_idx, slot)| {
-                    let slot = &*slot.get();
-                    ( slot.generation,
-                      if is_occupied_by_generation(slot.generation) {
-                          RefOrNextFree::<K, Derefable>::Ref(slot.item.occupied.deref())
-                      } else {
-                          RefOrNextFree::Next(slot.item.vacant)
-                      }
-                    )})
-            );
-            Self{
-                num_elements: Cell::new(num_elements),
-                next_free,
-                slots: UnsafeCell::new(slots_ref
-                    .into_iter()
-                    .map(|x| {
-                        UnsafeCell::new(
-                            Slot{
-                                generation: x.0,
-                                item: match x.1 {
-                                    RefOrNextFree::Ref(the_ref) => SlotVariant{occupied: ManuallyDrop::new(Derefable::clone_from_reference(the_ref).unwrap()) } ,
-                                    RefOrNextFree::Next(next_free) => SlotVariant{vacant: next_free}
-                                }
-                            }
-                        )
-                    })
-                    .collect()),
-                phantom: PhantomData,
-            }
-        }
+            // ── phase 1: snapshot refs ───────────────────────────────────
+            let mut snapshot: Vec<(K::Gen, RefOrNext<'_, K, Derefable::Target>)> =
+                Vec::with_capacity(slots_ref.len());
 
-    }
-}
+            for cell in slots_ref.iter() {
+                let slot = &*cell.get();
+                let gen = slot.generation;
 
-impl<'a, K: Key + 'a , Derefable: DerefGenMapPromise + DerefMut> Iterator for IterMut<'a, K, Derefable> where K::Idx : KeyPiece, K::Gen: KeyPiece
-{
-    type Item = (K, &'a mut Derefable);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(slot_cell) = self.inner.next() {
-            let idx = self.idx;
-            self.idx += 1;
-
-            let slot = slot_cell.get_mut();
-
-            if !is_occupied_by_generation(slot.generation) {
-                continue;
-            }
-
-            let smart_ptr = unsafe { slot.item.occupied.deref_mut() };
-
-            let key = K::from(KeyData {
-                idx: K::Idx::from_usize(idx),
-                generation: slot.generation,
-            });
-
-            return Some((key, smart_ptr));
-        }
-
-        None
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.inner.len()))
-    }
-}
-
-impl<'a, K: Key, Derefable: DerefGenMapPromise + DerefMut> IntoIterator for &'a mut StableDerefGenMap<K, Derefable> where K::Idx : KeyPiece, <K as Key>::Gen: KeyPiece
-{
-    type Item = (K, &'a mut  Derefable);
-    type IntoIter = IterMut<'a, K, Derefable>;
-
-
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter_mut()
-    }
-}
-
-
-
-
-
-pub struct StableDerefGenMap<K: Key, Derefable: DerefGenMapPromise> {
-    slots: UnsafeCell<Vec<UnsafeCell<Slot<Derefable, K>>>>,
-    phantom: PhantomData<fn(K)>,
-    next_free: Cell<Option<K::Idx>>,
-    num_elements: Cell<usize>,
-}
-
-impl<K: Key, Derefable: DerefGenMapPromise> Index<K> for StableDerefGenMap<K,Derefable> {
-    type Output = Derefable::Target;
-    fn index(&self, key: K) -> &Self::Output{
-        self.get(key).unwrap()
-    }
-}
-impl<K: Key,Derefable: DerefGenMapPromise + DerefMut> IndexMut<K> for StableDerefGenMap<K,Derefable> {
-
-    fn index_mut(&mut self, key: K) -> &mut Self::Output{
-        self.get_mut(key).unwrap()
-    }
-}
-
-
-union SlotVariant<Derefable, K: Key>{
-    occupied: ManuallyDrop<Derefable>,
-    vacant: Option<K::Idx>,
-}
-
-pub struct IntoIter<K: Key, Derefable> {
-    slots: std::vec::IntoIter<UnsafeCell<Slot<Derefable, K>>>,
-    idx: usize,
-    _marker: PhantomData<K>,
-}
-
-impl<K: Key, Derefable: DerefGenMapPromise> Iterator for IntoIter<K, Derefable> where <K as Key>::Idx : KeyPiece
-{
-    type Item = (K, Derefable);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(mut slot) = self.slots.next() {
-
-            let idx = self.idx;
-            self.idx += 1;
-
-            let alias = if is_occupied_by_generation(slot.get_mut().generation) {
-                unsafe { ManuallyDrop::take(&mut slot.get_mut().item.occupied)}
-            } else {
-                continue;
-            };
-
-            let key_data = KeyData {
-                idx: K::Idx::from_usize(idx),
-                generation: slot.get_mut().generation,
-            };
-            std::mem::forget(slot); // we have taken out the occupied item. no need for drop to be called
-            let key = K::from(key_data);
-
-
-            return Some((key, alias));
-        }
-        None
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining_slots = self.slots.len().saturating_sub(self.idx);
-        (0, Some(remaining_slots))
-    }
-}
-
-impl<K: Key, Derefable: DerefGenMapPromise> IntoIterator for StableDerefGenMap<K, Derefable> where <K as Key>::Idx: KeyPiece
-{
-    type Item = (K, Derefable);
-    type IntoIter = IntoIter<K, Derefable>;
-
-    /// Converts the map into an iterator that owns all elements. This operation consumes the map
-    fn into_iter(self) -> Self::IntoIter {
-        let slots_vec = self.slots.into_inner();
-        IntoIter {
-            slots: slots_vec.into_iter(),
-            idx: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-// RAII "reservation" for a single index in `free`.
-struct FreeGuard<'a, K: Key, Derefable: DerefGenMapPromise> {
-    map: &'a StableDerefGenMap<K, Derefable>,
-    idx: K::Idx,
-}
-
-impl<'a, K: Key, Derefable: DerefGenMapPromise> FreeGuard<'a, K, Derefable> {
-    fn commit(self) {
-
-        std::mem::forget(self);
-    }
-}
-
-impl<'a, K: Key, Derefable: DerefGenMapPromise> Drop for FreeGuard<'a, K, Derefable> {
-    fn drop(&mut self) {
-
-        unsafe {
-
-            let slots_mut = &mut *self.map.slots.get();
-            // increment generation to invalidate previous indexes
-            let generation = &mut slots_mut.get_unchecked_mut(self.idx.into_usize()).get_mut().generation;
-            let checked_add_maybe = generation.checked_add(&(K::Gen::one() + K::Gen::one())); // we add 2 to maintain even, cuz even means vacant
-            if let Some(checked_add) = checked_add_maybe {
-                *generation  = checked_add;
-                let old_head = self.map.next_free.get();
-                slots_mut.get_unchecked_mut(self.idx.into_usize()).get_mut().item.vacant = old_head;
-                self.map.next_free.set(Some(self.idx));
-
-
-            }
-
-        }
-    }
-}
-
-
-
-
-struct RemoveArguments<'a, K: Key, Derefable>{
-    slot: &'a mut Slot<Derefable, K>,
-    num_elements: &'a Cell<usize>,
-    next_free: &'a Cell<Option<K::Idx>>,
-    key: K
-}
-impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
-
-
-
-
-
-    /// Returns a snapshot of the map at the current moment. it ignores future inserts
-    /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
-    #[inline]
-    pub fn snapshot(&self) -> Vec<(K, &Derefable::Target)> {
-        unsafe{
-            let mut vec = Vec::with_capacity(self.len());
-            vec.extend(
-                self.iter_unsafe()
-            );
-            return vec;
-        }
-
-    }
-
-
-
-
-    /// Returns a snapshot of the current keys only (no references).
-    /// Future inserts are ignored. Allocates a single `Vec<K>`.
-    #[inline]
-    pub fn snapshot_keys(&self) -> Vec<K> {
-        unsafe{
-            let mut vec = Vec::with_capacity(self.len());
-            vec.extend(
-                self.iter_unsafe()
-                    .map(|(k, _)| k)
-            );
-            vec
-        }
-    }
-
-
-    /// Iterator over `&T` for a snapshot of the map. Ignores future inserts.
-    /// Allocates internally via `snapshot_ref_only`.
-    #[inline]
-    pub fn snapshot_refs(&self) -> Vec<&Derefable::Target> {
-        unsafe{
-            let mut vec = Vec::with_capacity(self.len());
-            vec.extend(
-                self.iter_unsafe()
-                    .map(|(_, r)| r)
-            );
-            vec
-        }
-    }
-    /// Iteration with this method is only safe if no mutation of the map occurs while iterating, which can happen even with safe code. For example, inserting while iterating with this is UB
-    #[inline]
-    pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (K, &Derefable::Target)> {
-        (&*self.slots.get())
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, x)| {
-                let x = &*x.get();
-                if is_occupied_by_generation(x.generation) {
-                    Some((K::from(KeyData{idx: K::Idx::from_usize(idx),generation: x.generation}),
-                          x.item.occupied.deref().deref()))
+                let snap = if is_occupied_by_generation(gen) {
+                    RefOrNext::Ref(slot.item.ref_output())
                 } else {
-                    None
-                }
-            })
-
-    }
-
-    /// Removes all elements from the map
-    #[inline]
-    pub fn clear(&mut self){
-        unsafe{
-            let slots_len = self.slots.get_mut().len();
-            for idx in 0..slots_len {
-                let generation = self.slots.get_mut().get_unchecked_mut(idx).get_mut().generation;
-                let key = K::from(KeyData{generation: generation, idx: K::Idx::from_usize(idx) });
-                self.remove(key);
-            };
-        }
-        debug_assert_eq!(self.len(), 0);
-    }
-
-    /// Creates a new StableDerefGenMap, with an initial capacity.
-    /// The map will be able to hold at least `capacity` elements before a need to resize
-    #[inline]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self{
-            slots: UnsafeCell::new(Vec::with_capacity(capacity)),
-            next_free: Cell::new(None),
-            phantom: PhantomData,
-            num_elements: Cell::new(0),
-        }
-    }
-
-    /// a more efficient Clone operation than the Clone::clone implementation. Since done with a mutable reference, the `Clone` implementation of `Derefable` cannot mutate the map without unsafe code,
-    /// so `clone_efficiently_mut` is safe
-    #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self where Derefable: Clone {
-        unsafe {
-            Self{
-                num_elements: self.num_elements.clone(),
-                phantom: PhantomData,
-                next_free: self.next_free.clone(),
-                slots: UnsafeCell::new(self.slots.get_mut().iter_mut().map(|x|  UnsafeCell::new(x.get_mut().clone())).collect()),
+                    RefOrNext::Next(slot.item.get_vacant())
+                };
+                snapshot.push((gen, snap));
             }
+
+            // ── phase 2: rebuild via clone_from_reference ────────────────
+            let new_slots: Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> =
+                snapshot
+                    .into_iter()
+                    .map(|(generation, snap)| {
+                        let data = match snap {
+                            RefOrNext::Ref(the_ref) => SlotData {
+                                occupied: ManuallyDrop::new(
+                                    Derefable::clone_from_reference(the_ref).unwrap(),
+                                ),
+                            },
+                            RefOrNext::Next(next_free) => SlotData { vacant: next_free },
+                        };
+                        UnsafeCell::new(Slot {
+                            generation,
+                            item: DerefSlot(data),
+                        })
+                    })
+                    .collect();
+
+            GenMap::from_raw_parts(new_slots, next_free.get(), num_elements)
         }
     }
-    /// A more efficient Clone operation than the Clone::clone implementation, but if the `Clone` implementation of `Derefable` mutates the map, UB occurs
-    #[inline]
-    pub unsafe  fn clone_efficiently(&self) -> Self where Derefable: Clone {
-        Self{
-            num_elements: self.num_elements.clone(),
-            phantom: PhantomData,
-            next_free: self.next_free.clone(),
-            slots: UnsafeCell::new((&*self.slots.get()).iter().map(|x| UnsafeCell::new((&*x.get()).clone())).collect()),
-        }
-    }
-
-    /// Creates a new StableGenMap, with no elements
-    #[inline]
-    pub const fn new() -> Self {
-        Self {
-            slots: UnsafeCell::new(Vec::new()),
-            next_free: Cell::new(None),
-            phantom: PhantomData,
-            num_elements: Cell::new(0),
-        }
-    }
-    /// Tries to reserve capacity for at least `additional` more elements to be inserted before a resize occurs
-    #[inline]
-    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
-        unsafe { &mut *self.slots.get() }.try_reserve(additional)
-    }
-
-    /// Reserves capacity for at least `additional` more elements to be inserted before a resize occurs
-    #[inline]
-    pub fn reserve(&self, additional: usize){
-        unsafe { &mut *self.slots.get() }.reserve(additional);
-    }
-
-
-    /// gets by index, ignores generational count
-    #[inline]
-    pub fn get_by_index_only(&self, idx: K::Idx) -> Option<(K,&Derefable::Target)> {
-        let slot = unsafe { &*((&*self.slots.get()) .get(idx.into_usize())?.get())};
-        unsafe{
-
-            if is_occupied_by_generation(slot.generation) {
-                Some((K::from(KeyData{generation: slot.generation, idx}),  &*(slot.item.occupied.deref().deref() as *const Derefable::Target)))
-            } else {
-                None
-            }
-        }
-
-    }
-    /// gets by index, ignores generational count
-    #[inline]
-    pub fn get_by_index_only_mut(&mut self, idx: K::Idx) -> Option<(K,&mut Derefable::Target)> where Derefable: DerefMut {
-        let slot = self.slots.get_mut().get_mut(idx.into_usize())?;
-
-        unsafe{
-            let slot = &mut *slot.get();
-            if is_occupied_by_generation(slot.generation) {
-                Some((K::from(KeyData{generation: slot.generation, idx}), slot.item.occupied.deref_mut().deref_mut() ))
-            } else {
-                None
-            }
-        }
-    }
-    /// Shared access to a value by key (no guard, plain &T).
-    #[inline]
-    pub fn get(&self, k: K) -> Option<&Derefable::Target> {
-
-        let key_data = k.data();
-        let slot = unsafe { &*self.slots.get() }.get(key_data.idx.into_usize())?;
-        let slot = unsafe { &*slot.get() };
-        if  slot.generation == key_data.generation {
-            unsafe { Some(slot.item.occupied.deref().deref()) }
-        }
-        else {
-            None
-        }
-    }
-
-
-
-    /// Gets a unique reference to a value when supplied a key
-    #[inline]
-    pub fn get_mut(&mut self, k: K) -> Option<&mut Derefable::Target> where Derefable: DerefMut {
-
-        let key_data = k.data();
-        let slot = self.slots.get_mut().get_mut(key_data.idx.into_usize())?.get_mut();
-
-        if  slot.generation == key_data.generation {
-            unsafe { Some(slot.item.occupied.deref_mut().deref_mut())}
-        }
-        else {
-            None
-        }
-    }
-
-    /// Retains only elements for which `f(key, &mut value)` returns true.
-    pub fn retain<F>(&mut self, mut f: F)
-    where
-        Derefable: DerefMut,
-        F: FnMut(K, &mut Derefable) -> bool,
-    {
-        unsafe {
-            let slots: &mut Vec<_> = self.slots.get_mut();
-
-            for (idx_usize, slot) in slots.iter_mut().enumerate() {
-                let slot = slot.get_mut();
-                // Only care about occupied slots.
-                if is_occupied_by_generation(slot.generation)  {
-                    let smart_ptr = slot.item.occupied.deref_mut();
-                    // Build the key for this slot.
-                    let idx = K::Idx::from_usize(idx_usize);
-                    let key_data = KeyData {
-                        idx,
-                        generation: slot.generation,
-                    };
-                    let key = K::from(key_data);
-
-                    // Decide whether to keep it.
-                    if !f(key, smart_ptr) {
-                        Self::remove_split_data::<false>(RemoveArguments{
-                            slot,
-                            key,
-                            num_elements: &self.num_elements,
-                            next_free: &self.next_free,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-
-    /// Splitting the logic into fields so borrow checker doesn't complain
-    #[inline]
-    unsafe fn remove_split_data<const DO_GENERATION_CHECK: bool>(remove_arguments: RemoveArguments<K,Derefable>) -> Option<Derefable>{
-        let slot = remove_arguments.slot;
-        let k = remove_arguments.key;
-        let num_elements = remove_arguments.num_elements;
-        let next_free = remove_arguments.next_free;
-        let key_data = k.data();
-
-        if DO_GENERATION_CHECK {
-            if slot.generation != key_data.generation { return None; }
-        }
-
-        let smart_ptr = slot.take_occupied()?;
-        num_elements.set(num_elements.get() - 1);
-        match slot.generation.checked_add(&K::Gen::one()) {
-            Some(generation) => {
-                slot.generation = generation;
-
-                // 3. Link this vacant slot into the intrusive free list.
-                //    head = Some(idx); slot.next_free = old_head.
-                let old_head =  next_free.get();
-                slot.item.vacant = old_head;
-                next_free.set(Some(key_data.idx));
-            }
-            None => {
-                slot.generation = K::Gen::zero();
-            }
-        }
-        Some(smart_ptr)
-    }
-    /// Removes an element of the supplied key from the map, and returns its owned value.
-    /// Removes only with &mut self. This is safe because the borrow checker
-    /// prevents calling this while any &'_ T derived from &self is alive.
-    /// A use case will be in, for example, freeing memory after the end of a frame in a video game
-    #[inline]
-    pub fn remove(&mut self, k: K) -> Option<Derefable> {
-        unsafe {
-            Self::remove_split_data::<true>(RemoveArguments{
-                slot: self.slots.get_mut().get_mut(k.data().idx.into_usize())?.get_mut(),
-                key: k,
-                num_elements: &self.num_elements,
-                next_free: &self.next_free,
-            })
-        }
-
-    }
-
-
-    /// Returns the total amount of elements in the map
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.num_elements.get()
-    }
-
-
-    /// How much elements (Occupied or Vacant, doesn't matter), the deref_stable_gen_map can hold before reallocating
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        unsafe { &*self.slots.get() }.capacity()
-    }
-
-    /// Inserts a value given by the inputted function into the map. The key where the
-    /// value will be stored is passed into the inputted function.
-    /// This is useful to store values that contain their own key.
-    /// # Examples
-    /// ```
-    /// # use stable_gen_map::key::DefaultKey;///
-    /// use stable_gen_map::stable_deref_gen_map::StableDerefGenMap;
-    /// let mut sm = StableDerefGenMap::new();
-    /// #[derive(Eq,PartialEq, Debug)]
-    /// struct KeyHolder{
-    ///     key: DefaultKey
-    /// }
-    /// let (key, reference) = sm.insert_with_key(|k| Box::new(KeyHolder{
-    ///     key: k
-    /// }));
-    /// assert_eq!(sm[key], KeyHolder{key});
-    /// ```
-    #[inline]
-    pub fn insert_with_key(&self, func: impl FnOnce(K) -> Derefable) -> (K, &Derefable::Target){
-        self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
-    }
-
-
-    /// Inserts a value given by the inputted function into the map. The key where the
-    /// value will be stored is passed into the inputted function.
-    /// This is useful to store values that contain their own key.
-    /// This version allows the closure to return a `Result`, so you can propagate errors.
-    ///
-    /// # Examples
-    /// ```rust
-    /// use stable_gen_map::key::DefaultKey;
-    /// use stable_gen_map::stable_deref_gen_map::StableDerefGenMap;
-    ///
-    /// #[derive(Eq, PartialEq, Debug)]
-    /// struct KeyHolder {
-    ///     key: DefaultKey,
-    /// }
-    ///
-    /// let sm = StableDerefGenMap::new();
-    ///
-    /// let (key, reference) = sm
-    ///     .try_insert_with_key::<()>(|k| Ok(Box::new(KeyHolder { key: k })))
-    ///     .unwrap();
-    ///
-    /// assert_eq!(sm[key], KeyHolder { key });
-    /// // optional: also prove `reference` really points to the same element:
-    /// assert!(std::ptr::eq(reference, &sm[key]));
-    /// ```
-    #[inline]
-    pub fn try_insert_with_key<E>(
-        &self,
-        func: impl FnOnce(K) -> Result<Derefable, E>,
-    ) -> Result<(K, &Derefable::Target), E> {
-        unsafe {
-            let slots = &mut *self.slots.get();
-
-            // Case 1: reuse a free slot from the intrusive free list.
-            let (idx, generation) = if let Some(idx) = self.next_free.get() {
-                let i = idx.into_usize();
-                let slot = &mut *slots.get_unchecked(i).get();
-
-                // Pop this slot from the free list.
-                let next = slot.item.vacant;
-                self.next_free.set(next);
-
-                // Mark as reserved: not linked in the free list anymore.
-                slot.item.vacant = None;
-
-                let generation = slot.generation;
-                (idx,generation)
-            } else {
-                // Case 2: no free slot; append a new slot at the end.
-                let idx = K::Idx::from_usize(slots.len());
-                let generation = K::Gen::zero();
-
-
-                // Push an initially vacant/reserved slot.
-                slots.push(UnsafeCell::new(Slot {
-                    generation,
-                    item: SlotVariant{vacant: None},
-                }));
-                (idx, generation)
-            };
-            let key = K::from(KeyData {
-                idx,
-                generation: generation.checked_add(&K::Gen::one()).unwrap() // increment only the keys gen by 1, so the key of the inserter isn't valid until after the slot
-                // has incremented their key, which would be after it confirms the func call didn't have any errors/panics
-            });
-            // RAII guard: if func panics/returns Err, put this index
-            // back into the free list using the *current* head.
-            let guard = FreeGuard { map: self, idx };
-
-            let value_box = func(key)?;  // may panic / return Err
-
-            // Success: don't put it back into free list.
-            guard.commit();
-
-            // Re-borrow slots because func(key) may have re-entered and
-            // caused reallocations / new slots etc.
-            let slots = &mut *self.slots.get();
-            let slot = &mut *slots.get_unchecked(idx.into_usize()).get();
-
-            // Store value as occupied.
-            slot.item.occupied = ManuallyDrop::new(value_box);
-
-            // no need for overflow check here, as that was done when incrementing generation for key
-            slot.generation += K::Gen::one(); // add one to match up with keys idx, since the function has succeeded from this point
-            self.num_elements.set(self.num_elements.get() + 1);
-
-            // Build &T from the AliasableBox.
-            let value_ref: &Derefable::Target = slot.item.occupied.deref().deref();
-
-            Ok((key, value_ref))
-        }
-    }
-
-    /// Simple insert. When it inserts, it returns the key and reference
-    /// # Examples
-    /// ```rust
-    /// use stable_gen_map::key::DefaultKey;
-    /// use stable_gen_map::stable_deref_gen_map::StableDerefGenMap;
-    /// let sm = StableDerefGenMap::<DefaultKey,_>::new();
-    /// let (key, reference) = sm.insert(Box::new(4));
-    /// assert_eq!(*reference, 4);
-    /// assert_eq!(*sm.get(key).unwrap(), 4);
-    ///```
-    #[inline]
-    pub fn insert(&self, value: Derefable) -> (K, &Derefable::Target) {
-        self.insert_with_key(|_| value)
-    }
-
 }

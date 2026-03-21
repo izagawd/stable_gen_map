@@ -2,7 +2,6 @@ use crate::key::{DefaultKey, Key};
 use crate::stable_gen_map::StableGenMap;
 use std::collections::{HashMap, HashSet};
 
-
 type Map = StableGenMap<DefaultKey, i32>;
 
 #[test]
@@ -33,10 +32,7 @@ fn clone_basic_contents_equal_but_independent() {
     assert_eq!(c.get(k3), Some(&30));
 
     // removing from original does not affect clone
-    let removed = {
-
-        m.remove(k2).unwrap()
-    };
+    let removed = { m.remove(k2).unwrap() };
     assert_eq!(removed, 20);
     assert_eq!(m.get(k2), None);
     assert_eq!(c.get(k2), Some(&20));
@@ -52,7 +48,7 @@ mod clone_efficiently_tests {
 
     use crate::key::{DefaultKey, Key};
 
-    use crate::stable_gen_map::{StableGenMap};
+    use crate::stable_gen_map::StableGenMap;
 
     type Map<T> = StableGenMap<DefaultKey, T>;
 
@@ -183,7 +179,6 @@ mod clone_efficiently_tests {
     }
 }
 
-
 #[test]
 fn clone_preserves_all_keys_and_values() {
     let m: Map = Map::new();
@@ -208,7 +203,10 @@ fn clone_preserves_all_keys_and_values() {
     for (k, _) in c.snapshot() {
         let p_orig = m.get(k).unwrap() as *const _;
         let p_clone = c.get(k).unwrap() as *const _;
-        assert_ne!(p_orig, p_clone, "clone must allocate new storage for values");
+        assert_ne!(
+            p_orig, p_clone,
+            "clone must allocate new storage for values"
+        );
     }
 }
 
@@ -296,9 +294,9 @@ fn clone_into_iter_matches_snapshot() {
 
 // We use a thread-local pointer so Reentrant::clone can find the map.
 thread_local! {
-        static GLOBAL_MAP_PTR: std::cell::Cell<*const StableGenMap<DefaultKey, Reentrant>> =
-            std::cell::Cell::new(std::ptr::null());
-    }
+    static GLOBAL_MAP_PTR: std::cell::Cell<*const StableGenMap<DefaultKey, Reentrant>> =
+        std::cell::Cell::new(std::ptr::null());
+}
 
 #[derive(Debug)]
 struct Reentrant {
@@ -313,7 +311,9 @@ impl Clone for Reentrant {
             {
                 unsafe {
                     let map = &*ptr;
-                    let _ = map.insert(Reentrant { val: self.val + 1000 });
+                    let _ = map.insert(Reentrant {
+                        val: self.val + 1000,
+                    });
                 }
             }
         });
@@ -322,7 +322,6 @@ impl Clone for Reentrant {
 }
 
 type MapReentrant = StableGenMap<DefaultKey, Reentrant>;
-
 
 #[test]
 fn clone_handles_reentrant_t_clone() {
@@ -340,7 +339,6 @@ fn clone_handles_reentrant_t_clone() {
 
     // stop re-entrancy for the rest of the test
     GLOBAL_MAP_PTR.set(std::ptr::null());
-
 
     // original map may have more elements because of re-entrant inserts
     assert!(m.len() >= 2);
@@ -370,7 +368,6 @@ fn clone_handles_reentrant_t_clone_two() {
     let (k1, _) = m.insert(Reentrant { val: 1 });
     let (k2, _) = m.insert(Reentrant { val: 2 });
 
-
     let (k3, _) = m.insert(Reentrant { val: 1 });
     let (k4, _) = m.insert(Reentrant { val: 2 });
 
@@ -383,7 +380,6 @@ fn clone_handles_reentrant_t_clone_two() {
 
     // stop re-entrancy for the rest of the test
     GLOBAL_MAP_PTR.with(|cell| cell.set(std::ptr::null()));
-
 
     // original map may have more elements because of re-entrant inserts
     assert!(m.len() >= 2);

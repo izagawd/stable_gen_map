@@ -253,8 +253,8 @@ fn drain_with_gaps_drops_only_occupied_exactly_once() {
 
     let mut map = StableGenMap::<DefaultKey, DropItem>::new();
     let (k0, _) = map.insert(tracker.make_item()); // id 0
-    let (_, _) = map.insert(tracker.make_item());   // id 1
-    let (_, _) = map.insert(tracker.make_item());   // id 2
+    let (_, _) = map.insert(tracker.make_item()); // id 1
+    let (_, _) = map.insert(tracker.make_item()); // id 2
 
     // Remove id 0 — its drop fires now via remove.
     map.remove(k0);

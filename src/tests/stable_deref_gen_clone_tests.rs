@@ -19,7 +19,7 @@ use std::rc::Rc;
 fn clone_preserves_live_entries_and_len_and_allocates_new_boxes() {
     // Use the StableMap alias you already have:
     // type StableMap<T> = BoxStableDerefGenMap<DefaultKey, T>;
-    let mut map = BoxStableDerefGenMap::<DefaultKey,i32>::new();
+    let mut map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
 
     let (k1, _) = map.insert(Box::new(10));
     let (k2, _) = map.insert(Box::new(20));
@@ -30,7 +30,11 @@ fn clone_preserves_live_entries_and_len_and_allocates_new_boxes() {
     assert_eq!(map.len(), 2);
 
     let mut cloned = map.clone();
-    assert_eq!(cloned.len(), 2, "clone must see the same number of live entries");
+    assert_eq!(
+        cloned.len(),
+        2,
+        "clone must see the same number of live entries"
+    );
 
     // Both maps see the same live keys and values.
     assert_eq!(*map.get(k1).unwrap(), 10);
@@ -47,8 +51,7 @@ fn clone_preserves_live_entries_and_len_and_allocates_new_boxes() {
     let p1_orig = map.get(k1).unwrap() as *const i32 as usize;
     let p1_clone = cloned.get(k1).unwrap() as *const i32 as usize;
     assert_ne!(
-        p1_orig,
-        p1_clone,
+        p1_orig, p1_clone,
         "cloned map must allocate independent Box<T> for each slot"
     );
 
@@ -159,8 +162,14 @@ mod clone_efficiently_stable_tests {
         // Deep clone: different allocations for the *same* keys.
         let c1 = clone.get(k1).unwrap() as *const String;
         let c3 = clone.get(k3).unwrap() as *const String;
-        assert_ne!(p1, c1, "clone_efficiently must deep-clone values, not share them");
-        assert_ne!(p3, c3, "clone_efficiently must deep-clone values, not share them");
+        assert_ne!(
+            p1, c1,
+            "clone_efficiently must deep-clone values, not share them"
+        );
+        assert_ne!(
+            p3, c3,
+            "clone_efficiently must deep-clone values, not share them"
+        );
 
         // Mutate original; clone should be unaffected.
         *map.get_mut(k1).unwrap() = "ONE!".to_owned();
@@ -218,7 +227,6 @@ mod clone_efficiently_stable_tests {
         assert_eq!(clone.len(), len_before + 1);
     }
 }
-
 
 #[test]
 fn clone_basic_contents_equal_but_independent() {
@@ -281,9 +289,9 @@ fn clone_with_holes_preserves_logical_state() {
 // Thread-local pointer to "the map being cloned".
 // Reentrant::clone will use this to insert into the map.
 thread_local! {
-        static GLOBAL_MAP_PTR: Cell<*const BoxStableDerefGenMap<DefaultKey, Reentrant>> =
-            Cell::new(std::ptr::null());
-    }
+    static GLOBAL_MAP_PTR: Cell<*const BoxStableDerefGenMap<DefaultKey, Reentrant>> =
+        Cell::new(std::ptr::null());
+}
 
 #[derive(Debug)]
 struct Reentrant {
@@ -295,7 +303,7 @@ impl Clone for Reentrant {
         // On clone, insert a new element into the original map (if any).
         GLOBAL_MAP_PTR.with(|cell| {
             let ptr = cell.get();
-             {
+            {
                 unsafe {
                     let map: &BoxStableDerefGenMap<DefaultKey, Reentrant> = &*ptr;
                     let _ = map.insert(Box::new(Reentrant {
@@ -322,14 +330,11 @@ fn stable_clone_handles_reentrant_t_clone_two() {
 
     let (k3, _) = m.insert(Box::new(Reentrant { val: 1 }));
     let (k4, _) = m.insert(Box::new(Reentrant { val: 2 }));
-    
+
     // making two slots initialized  but free (THIS IS VERY IMPORTANT)
     m.remove(k3);
     m.remove(k4);
-    
-    
-    
-    
+
     // Before clone: 2 entries
     assert_eq!(m.len(), 2);
 

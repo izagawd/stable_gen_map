@@ -1,13 +1,13 @@
 #![allow(warnings)]
+pub mod slot_item;
+pub mod gen_map;
 pub mod stable_deref_gen_map;
-
-
 pub mod key_piece;
 pub mod key;
 pub mod stable_gen_map;
 
 #[cfg(test)]
-mod tests{
+mod tests {
     #[cfg(test)]
     mod stable_deref_gen_retain_tests;
 
@@ -46,4 +46,3 @@ mod tests{
     #[cfg(test)]
     mod stable_deref_gen_drain_tests;
 }
-
