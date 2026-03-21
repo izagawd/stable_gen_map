@@ -737,8 +737,8 @@ impl<K: Key, T> Iterator for IntoIter<K, T> {
                 idx: K::Idx::from_usize(idx),
             };
 
-            // Bump generation so Slot::drop won't double-drop.
-            slot.generation += K::Gen::one();
+            // Set gen to 0 so Slot won't double drop
+            slot.generation = K::Gen::zero();
 
             let key = K::from(key_data);
             return Some((key, value));
