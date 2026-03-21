@@ -357,6 +357,18 @@ impl<K: Key, T> StableGenMap<K, T>
         Some(value)
     }
 
+    /// Creates a new StableGenMap, with an initial capacity.
+    /// The map will be able to hold at least `capacity` elements before a need to resize
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self{
+            slots: UnsafeCell::new(Vec::with_capacity(capacity)),
+            next_free: Cell::new(None),
+            phantom: PhantomData,
+            num_elements: Cell::new(0),
+        }
+    }
+
     /// Reserves capacity for at least `additional` more elements to be inserted before a resize occurs
     #[inline]
     pub fn reserve(&self, additional: usize){

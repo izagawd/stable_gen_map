@@ -469,7 +469,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
         debug_assert_eq!(self.len(), 0);
     }
 
-    /// Creates a new StableGenMap, with an initial capacity. 
+    /// Creates a new StableDerefGenMap, with an initial capacity.
     /// The map will be able to hold at least `capacity` elements before a need to resize
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
@@ -504,7 +504,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
             slots: UnsafeCell::new((&*self.slots.get()).iter().map(|x| UnsafeCell::new((&*x.get()).clone())).collect()),
         }
     }
-    
+
     /// Creates a new StableGenMap, with no elements
     #[inline]
     pub const fn new() -> Self {
