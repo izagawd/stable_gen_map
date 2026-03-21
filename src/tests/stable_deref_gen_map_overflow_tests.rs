@@ -7,7 +7,6 @@ crate::new_key_type! {
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-
 use crate::stable_gen_map::StableGenMap;
 
 crate::new_key_type! {
@@ -27,12 +26,13 @@ fn stable_gen_map_into_iter_handles_max_live_generation_without_panicking() {
         }
 
         assert_eq!(map.remove(key), Some(next_value));
-    };
+    }
 
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut iter = map.into_iter();
 
-        iter.next().map(|(key, value)| (key.data().generation, value));
+        iter.next()
+            .map(|(key, value)| (key.data().generation, value));
 
         assert_eq!(iter.next(), None);
     }));

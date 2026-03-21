@@ -85,12 +85,7 @@ mod snapshot_stablegen_tests {
 
         assert_eq!(snap_keys, key_set);
     }
-
-
-
-
 }
-
 
 #[test]
 fn snapshot_contains_all_items_and_matches_get() {
@@ -138,5 +133,3 @@ fn snapshot_ignores_future_inserts() {
     assert!(snap_keys.contains(&k2));
     assert!(!snap_keys.contains(&k3));
 }
-
-

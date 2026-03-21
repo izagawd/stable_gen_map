@@ -265,8 +265,8 @@ fn drain_with_gaps_drops_only_occupied_exactly_once() {
 
     let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
     let (k0, _) = map.insert(tracker.make_item()); // id 0
-    let (_, _) = map.insert(tracker.make_item());   // id 1
-    let (_, _) = map.insert(tracker.make_item());   // id 2
+    let (_, _) = map.insert(tracker.make_item()); // id 1
+    let (_, _) = map.insert(tracker.make_item()); // id 2
 
     map.remove(k0);
     assert_eq!(tracker.total_dropped(), 1);
