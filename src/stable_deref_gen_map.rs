@@ -701,7 +701,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
                 next_free.set(Some(key_data.idx));
             }
             None => {
-
+                slot.generation = K::Gen::zero();
             }
         }
         Some(smart_ptr)

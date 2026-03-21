@@ -349,8 +349,7 @@ impl<K: Key, T> StableGenMap<K, T>
                 next_free.set(Some(key_data.idx));
             }
             None => {
-
-                slot.item.vacant = None;
+                slot.generation = K::Gen::zero();
             }
         }
 
