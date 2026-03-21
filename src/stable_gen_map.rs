@@ -25,7 +25,7 @@ pub(crate) struct Slot<T, K: Key> {
 impl<T, K: Key> Drop for Slot<T, K>{
     fn drop(&mut self) {
         if is_occupied_by_generation(self.generation){
-          unsafe{  ManuallyDrop::drop(&mut self.item.occupied) }
+            unsafe{  ManuallyDrop::drop(&mut self.item.occupied) }
         }
     }
 }
@@ -38,7 +38,7 @@ impl<T, K: Key> Slot<T, K> {
 
         let mut matched = mem::replace(self.item.deref_mut(),   SlotVariant{vacant: None});
         if is_occupied_by_generation(self.generation){
-           unsafe{ Some(ManuallyDrop::take(&mut matched.occupied)) }
+            unsafe{ Some(ManuallyDrop::take(&mut matched.occupied)) }
         } else{
             None
         }
@@ -283,26 +283,26 @@ impl<K: Key, T> StableGenMap<K, T>
             let slots: &mut Vec<_> =self.slots.get_mut();
 
             for (idx, slot) in slots.iter_mut().enumerate() {
-                    let slot = slot.get_mut();
-                    if is_occupied_by_generation(slot.generation) {
-                        let value = slot.item.occupied.deref_mut();
+                let slot = slot.get_mut();
+                if is_occupied_by_generation(slot.generation) {
+                    let value = slot.item.occupied.deref_mut();
 
-                        let key_data = KeyData {
-                            idx: K::Idx::from_usize(idx),
-                            generation: slot.generation,
-                        };
-                        let key = K::from(key_data);
+                    let key_data = KeyData {
+                        idx: K::Idx::from_usize(idx),
+                        generation: slot.generation,
+                    };
+                    let key = K::from(key_data);
 
-                        if !f(key, value) {
-                            // Use shared removal logic (no generation check, we know this is current).
-                            Self::remove_split_data::<false>(RemoveArguments {
-                                slot,
-                                key,
-                                num_elements: &self.num_elements,
-                                next_free: &self.next_free,
-                            });
-                        }
+                    if !f(key, value) {
+                        // Use shared removal logic (no generation check, we know this is current).
+                        Self::remove_split_data::<false>(RemoveArguments {
+                            slot,
+                            key,
+                            num_elements: &self.num_elements,
+                            next_free: &self.next_free,
+                        });
                     }
+                }
             }
         }
     }
@@ -532,40 +532,31 @@ impl<'a, K: Key, T> Iterator for IterMut<'a, K, T> {
     type Item = (K, &'a mut T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            while self.ptr != self.end {
-                let current = self.ptr;
-                self.ptr = self.ptr.add(1);
+        while let Some(slot_cell) = self.inner.next() {
+            let idx = self.idx;
+            self.idx += 1;
 
-                let idx = self.idx;
-                self.idx += 1;
+            let slot = slot_cell.get_mut();
 
-                // current: *mut UnsafeCell<Slot<T, K>>
-                let slot_cell: &mut UnsafeCell<Slot<T, K>> = &mut *current;
-                let slot= &mut *slot_cell.get();
-
-                if !is_occupied_by_generation(slot.generation) {
-                    continue;
-                }
-
-                let value: &mut T = slot.item.occupied.deref_mut();
-
-                let key_idx = K::Idx::from_usize(idx);
-                let key_data = KeyData {
-                    idx: key_idx,
-                    generation: slot.generation,
-                };
-                let key = K::from(key_data);
-
-                return Some((key, value));
+            if !is_occupied_by_generation(slot.generation) {
+                continue;
             }
 
-            None
+            let value: &mut T = unsafe { slot.item.occupied.deref_mut() };
+
+            let key = K::from(KeyData {
+                idx: K::Idx::from_usize(idx),
+                generation: slot.generation,
+            });
+
+            return Some((key, value));
         }
+
+        None
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
+        (0, Some(self.inner.len()))
     }
 }
 impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
@@ -643,32 +634,17 @@ impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
 }
 
 pub struct IterMut<'a, K: Key, T> {
-    // Pointer into the slots Vec (current position)
-    ptr: *mut UnsafeCell<Slot<T, K>>,
-    // One-past-the-end pointer
-    end: *mut UnsafeCell<Slot<T, K>>,
-    // Current index in the Vec (for building keys)
+    inner: std::slice::IterMut<'a, UnsafeCell<Slot<T, K>>>,
     idx: usize,
-    // Tie lifetime to "&mut T" so we can yield &'a mut T
-    _marker: PhantomData<&'a mut T>,
 }
 
 impl<K: Key, T> StableGenMap<K, T> {
     /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, T> {
-        unsafe {
-            let slots: &mut Vec<UnsafeCell<Slot<T, K>>> = &mut *self.slots.get();
-            let ptr = slots.as_mut_ptr();
-            let len = slots.len();
-            let end = ptr.add(len);
-
-            IterMut {
-                ptr,
-                end,
-                idx: 0,
-                _marker: PhantomData,
-            }
+        IterMut {
+            inner: self.slots.get_mut().iter_mut(),
+            idx: 0,
         }
     }
 
@@ -736,13 +712,7 @@ impl<'a, K: Key, T> Drop for Drain<'a, K, T> {
 
 // Owning iterator (consumes map)
 pub struct IntoIter<K: Key, T> {
-    // We keep the Vec so the underlying allocation stays alive.
-    slots: Vec<UnsafeCell<Slot<T, K>>>,
-    // Pointer into slots (current)
-    ptr: *mut UnsafeCell<Slot<T, K>>,
-    // One-past-the-end
-    end: *mut UnsafeCell<Slot<T, K>>,
-    // Current index for key.idx
+    inner: std::vec::IntoIter<UnsafeCell<Slot<T, K>>>,
     idx: usize,
     _marker: PhantomData<K>,
 }
@@ -751,43 +721,35 @@ impl<K: Key, T> Iterator for IntoIter<K, T> {
     type Item = (K, T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            while self.ptr != self.end {
-                let current = self.ptr;
-                self.ptr = self.ptr.add(1);
+        while let Some(mut slot_cell) = self.inner.next() {
+            let idx = self.idx;
+            self.idx += 1;
 
-                let idx = self.idx;
-                self.idx += 1;
+            let slot = slot_cell.get_mut();
 
-                let slot_cell: &mut UnsafeCell<Slot<T, K>> = &mut *current;
-                let slot: &mut Slot<T, K> = &mut *slot_cell.get();
-
-                if !is_occupied_by_generation(slot.generation) {
-                    continue;
-                }
-
-                // Take the value out of the occupied variant
-                let value = ManuallyDrop::take(&mut slot.item.occupied);
-
-                let key_idx = K::Idx::from_usize(idx);
-                let key_data = KeyData {
-                    generation: slot.generation,
-                    idx: key_idx,
-                };
-
-                // Bump generation so drop of the map (if any) won't drop T again.
-                slot.generation += K::Gen::one();
-
-                let key = K::from(key_data);
-                return Some((key, value));
+            if !is_occupied_by_generation(slot.generation) {
+                continue;
             }
 
-            None
+            let value = unsafe { ManuallyDrop::take(&mut slot.item.occupied) };
+
+            let key_data = KeyData {
+                generation: slot.generation,
+                idx: K::Idx::from_usize(idx),
+            };
+
+            // Bump generation so Slot::drop won't double-drop.
+            slot.generation += K::Gen::one();
+
+            let key = K::from(key_data);
+            return Some((key, value));
         }
+
+        None
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
+        (0, Some(self.inner.len()))
     }
 }
 
@@ -797,16 +759,8 @@ impl<K: Key, T> IntoIterator for StableGenMap<K, T> {
 
     /// Converts the map into an iterator that owns all elements. This operation consumes the map
     fn into_iter(self) -> Self::IntoIter {
-        // Take ownership of the underlying Vec<UnsafeCell<Slot<...>>>
-        let mut slots_vec = self.slots.into_inner();
-        let ptr = slots_vec.as_mut_ptr();
-        let len = slots_vec.len();
-        let end = unsafe { ptr.add(len) };
-
         IntoIter {
-            slots: slots_vec,
-            ptr,
-            end,
+            inner: self.slots.into_inner().into_iter(),
             idx: 0,
             _marker: PhantomData,
         }
