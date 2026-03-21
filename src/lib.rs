@@ -2,7 +2,7 @@
 pub mod stable_deref_gen_map;
 
 
-pub mod numeric;
+pub mod key_piece;
 pub mod key;
 pub mod stable_gen_map;
 

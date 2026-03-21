@@ -2,10 +2,8 @@ use num_traits::{CheckedAdd, Num, WrappingAdd};
 use std::convert::TryFrom;
 use std::ops::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
 
-
-
-/// This trait is used to allow polymorphism between all number types
-/// This enables the key type to have any type they want for their Idx and Generation, which enables a lot
+/// This trait is used to allow conversion between usize and most unsigned number types
+/// This enables a key's Idx and Generation to have a variety of possible types, which enables a lot
 /// of flexibility
 pub unsafe trait KeyPiece:
 Copy

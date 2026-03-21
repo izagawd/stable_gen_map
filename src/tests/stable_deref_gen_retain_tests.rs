@@ -1,5 +1,5 @@
 use crate::key::{DefaultKey, Key};
-use crate::numeric::KeyPiece;
+use crate::key_piece::KeyPiece;
 use crate::stable_deref_gen_map::{BoxStableDerefGenMap, StableDerefGenMap};
 
 type Map = BoxStableDerefGenMap<DefaultKey, i32>;
