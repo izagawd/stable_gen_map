@@ -1,10 +1,86 @@
 use crate::gen_map::{GenMap, Slot};
 use crate::key::{is_occupied_by_generation, Key, KeyData};
-use crate::slot_item::{BoxedSlot, SlotData, SlotItem};
+use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
+
+// ─── BoxedSlot ───────────────────────────────────────────────────────────────
+
+/// Per-slot storage that wraps the payload in a `Box` for pointer stability.
+/// The `Box` allocation is **reused** across remove / re-insert cycles.
+pub struct BoxedSlot<T, K: Key>(pub(crate) Box<SlotData<T, K>>);
+
+unsafe impl<T, K: Key> SlotItem<K> for BoxedSlot<T, K> {
+    type Stored = T;
+    type Output = T;
+
+    #[inline]
+    fn new_vacant(next: Option<K::Idx>) -> Self {
+        BoxedSlot(Box::new(SlotData { vacant: next }))
+    }
+
+    #[inline]
+    unsafe fn get_vacant(&self) -> Option<K::Idx> {
+        self.0.vacant
+    }
+
+    #[inline]
+    unsafe fn set_vacant(&mut self, next: Option<K::Idx>) {
+        self.0.vacant = next;
+    }
+
+    #[inline]
+    unsafe fn write_occupied(&mut self, value: T) {
+        self.0.occupied = ManuallyDrop::new(value);
+    }
+
+    #[inline]
+    unsafe fn take_occupied(&mut self) -> T {
+        let old = std::mem::replace(&mut *self.0, SlotData { vacant: None });
+        ManuallyDrop::into_inner(old.occupied)
+    }
+
+    #[inline]
+    unsafe fn ref_output(&self) -> &T {
+        &*self.0.occupied
+    }
+
+    #[inline]
+    unsafe fn stored_mut(&mut self) -> &mut T {
+        &mut *self.0.occupied
+    }
+
+    #[inline]
+    unsafe fn drop_occupied(&mut self) {
+        ManuallyDrop::drop(&mut self.0.occupied);
+    }
+}
+
+unsafe impl<T, K: Key> SlotItemMutOutput<K> for BoxedSlot<T, K> {
+    #[inline]
+    unsafe fn mut_output(&mut self) -> &mut T {
+        &mut *self.0.occupied
+    }
+}
+
+unsafe impl<T: Clone, K: Key> SlotItemClone<K> for BoxedSlot<T, K> {
+    #[inline]
+    unsafe fn clone_item(&self, is_occupied: bool) -> Self {
+        if is_occupied {
+            BoxedSlot(Box::new(SlotData {
+                occupied: ManuallyDrop::new((*self.0.occupied).clone()),
+            }))
+        } else {
+            BoxedSlot(Box::new(SlotData {
+                vacant: self.0.vacant,
+            }))
+        }
+    }
+}
+
+// ─── StableGenMap (type alias) ───────────────────────────────────────────────
 
 /// Generational map where each value is stored behind a `Box` for pointer
 /// stability.  The `Box` allocation is **reused** across remove / re-insert

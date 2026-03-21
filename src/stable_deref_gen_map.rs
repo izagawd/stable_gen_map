@@ -1,13 +1,107 @@
 use crate::gen_map::{GenMap, Slot};
 use crate::key::{is_occupied_by_generation, Key, KeyData};
-use crate::slot_item::{DerefGenMapPromise, DerefSlot, SlotData, SlotItem};
+use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::Arc;
+
+// ─── DerefGenMapPromise ──────────────────────────────────────────────────────
+
+/// A promise that the `Deref` (and `DerefMut`, if implemented) implementation
+/// does **not** mutate any shared `GenMap` (e.g. via `insert`), and that the
+/// deref target pointer is stable (does not move).
+///
+/// # Safety
+/// Violating either promise may cause undefined behaviour.
+pub unsafe trait DerefGenMapPromise: Deref {}
+
+unsafe impl<T: ?Sized> DerefGenMapPromise for Box<T> {}
+unsafe impl<T: ?Sized> DerefGenMapPromise for Rc<T> {}
+unsafe impl<T: ?Sized> DerefGenMapPromise for Arc<T> {}
+unsafe impl<'a, T: ?Sized> DerefGenMapPromise for &'a T {}
+
+// ─── DerefSlot ───────────────────────────────────────────────────────────────
+
+/// Per-slot storage that stores the user-supplied smart pointer (`Box<T>`,
+/// `Rc<T>`, `Arc<T>`, …) directly.  The smart pointer itself provides pointer
+/// stability; there is no outer `Box`.
+pub struct DerefSlot<D: DerefGenMapPromise, K: Key>(pub(crate) SlotData<D, K>);
+
+unsafe impl<D: DerefGenMapPromise, K: Key> SlotItem<K> for DerefSlot<D, K> {
+    type Stored = D;
+    type Output = D::Target;
+
+    #[inline]
+    fn new_vacant(next: Option<K::Idx>) -> Self {
+        DerefSlot(SlotData { vacant: next })
+    }
+
+    #[inline]
+    unsafe fn get_vacant(&self) -> Option<K::Idx> {
+        self.0.vacant
+    }
+
+    #[inline]
+    unsafe fn set_vacant(&mut self, next: Option<K::Idx>) {
+        self.0.vacant = next;
+    }
+
+    #[inline]
+    unsafe fn write_occupied(&mut self, value: D) {
+        self.0.occupied = ManuallyDrop::new(value);
+    }
+
+    #[inline]
+    unsafe fn take_occupied(&mut self) -> D {
+        let old = std::mem::replace(&mut self.0, SlotData { vacant: None });
+        ManuallyDrop::into_inner(old.occupied)
+    }
+
+    #[inline]
+    unsafe fn ref_output(&self) -> &D::Target {
+        self.0.occupied.deref().deref()
+    }
+
+    #[inline]
+    unsafe fn stored_mut(&mut self) -> &mut D {
+        &mut *self.0.occupied
+    }
+
+    #[inline]
+    unsafe fn drop_occupied(&mut self) {
+        ManuallyDrop::drop(&mut self.0.occupied);
+    }
+}
+
+unsafe impl<D: DerefGenMapPromise + DerefMut, K: Key> SlotItemMutOutput<K>
+for DerefSlot<D, K>
+{
+    #[inline]
+    unsafe fn mut_output(&mut self) -> &mut D::Target {
+        self.0.occupied.deref_mut().deref_mut()
+    }
+}
+
+unsafe impl<D: DerefGenMapPromise + Clone, K: Key> SlotItemClone<K>
+for DerefSlot<D, K>
+{
+    #[inline]
+    unsafe fn clone_item(&self, is_occupied: bool) -> Self {
+        if is_occupied {
+            DerefSlot(SlotData {
+                occupied: self.0.occupied.clone(),
+            })
+        } else {
+            DerefSlot(SlotData {
+                vacant: self.0.vacant,
+            })
+        }
+    }
+}
 
 // ─── SmartPtrKind / SmartPtrCloneable ────────────────────────────────────────
 
@@ -66,7 +160,7 @@ unsafe impl<T: ?Sized> SmartPtrCloneable for Arc<T> {
     }
 }
 
-// ─── type aliases ────────────────────────────────────────────────────────────
+// ─── Type aliases ────────────────────────────────────────────────────────────
 
 /// Generational map that stores user-supplied smart pointers (`Box`, `Rc`,
 /// `Arc`, `&T`, …) directly.  The smart pointer provides pointer stability.
