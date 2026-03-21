@@ -127,17 +127,11 @@ impl<K: Key, T> StableGenMap<K, T>
             })
             .flatten()
     }
-    /// Returns a snapshot of the map at the current moment. it ignores future inserts
-    /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
-    #[inline]
-    pub fn snapshot_iter(&self) -> <Vec<(K, &T)> as IntoIterator>::IntoIter {
-        self.snapshot().into_iter()
-    }
 
     /// Returns a snapshot of the current value references only (no keys).
     /// Future inserts are ignored. Allocates a single `Vec<&T>`.
     #[inline]
-    pub fn snapshot_ref_only(&self) -> Vec<&T> {
+    pub fn snapshot_refs(&self) -> Vec<&T> {
 
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
@@ -153,7 +147,7 @@ impl<K: Key, T> StableGenMap<K, T>
     /// Returns a snapshot of the current keys only (no references).
     /// Future inserts are ignored. Allocates a single `Vec<K>`.
     #[inline]
-    pub fn snapshot_key_only(&self) -> Vec<K> {
+    pub fn snapshot_keys(&self) -> Vec<K> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(
@@ -362,6 +356,25 @@ impl<K: Key, T> StableGenMap<K, T>
 
         Some(value)
     }
+
+    /// Creates a new StableGenMap, with an initial capacity.
+    /// The map will be able to hold at least `capacity` elements before a need to resize
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self{
+            slots: UnsafeCell::new(Vec::with_capacity(capacity)),
+            next_free: Cell::new(None),
+            phantom: PhantomData,
+            num_elements: Cell::new(0),
+        }
+    }
+
+    /// Reserves capacity for at least `additional` more elements to be inserted before a resize occurs
+    #[inline]
+    pub fn reserve(&self, additional: usize){
+        unsafe { &mut *self.slots.get() }.reserve(additional);
+    }
+
     /// Removes an element by key, returning its owned value.
     /// Removes only with &mut self. This is safe because the borrow checker
     /// prevents calling this while any &'_ T derived from &self is alive.

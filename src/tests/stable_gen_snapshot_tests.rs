@@ -67,11 +67,11 @@ const SLOTS: usize = 4;
 
 
     #[test]
-    fn snapshot_ref_only_empty() {
+    fn snapshot_refs_empty() {
         let map = Map::new();
 
-        let refs = map.snapshot_ref_only();
-        let keys = map.snapshot_key_only();
+        let refs = map.snapshot_refs();
+        let keys = map.snapshot_keys();
         let pairs = map.snapshot();
 
         assert_eq!(map.len(), 0);
@@ -81,7 +81,7 @@ const SLOTS: usize = 4;
     }
 
     #[test]
-    fn snapshot_ref_only_contains_all_values() {
+    fn snapshot_refs_contains_all_values() {
         let map = Map::new();
 
         // force multiple slots
@@ -92,7 +92,7 @@ const SLOTS: usize = 4;
         assert_eq!(map.len(), SLOTS * 3 + 1);
 
         let pairs = map.snapshot();
-        let refs = map.snapshot_ref_only();
+        let refs = map.snapshot_refs();
 
         assert_eq!(pairs.len(), map.len());
         assert_eq!(refs.len(), map.len());
@@ -109,13 +109,13 @@ const SLOTS: usize = 4;
 
 
     #[test]
-    fn snapshot_ref_only_ignores_future_inserts() {
+    fn snapshot_refs_ignores_future_inserts() {
         let map = Map::new();
 
         map.insert(10);
         map.insert(20);
 
-        let refs = map.snapshot_ref_only();
+        let refs = map.snapshot_refs();
 
         map.insert(30); // after snapshot
 
@@ -124,7 +124,7 @@ const SLOTS: usize = 4;
     }
 
     #[test]
-    fn snapshot_key_only_contains_all_keys() {
+    fn snapshot_keys_contains_all_keys() {
         let map = Map::new();
 
         let mut inserted_keys = Vec::new();
@@ -134,7 +134,7 @@ const SLOTS: usize = 4;
         }
 
         let pairs = map.snapshot();
-        let keys = map.snapshot_key_only();
+        let keys = map.snapshot_keys();
 
         assert_eq!(pairs.len(), map.len());
         assert_eq!(keys.len(), map.len());
@@ -148,13 +148,13 @@ const SLOTS: usize = 4;
 
 
     #[test]
-    fn snapshot_key_only_ignores_future_inserts() {
+    fn snapshot_keys_ignores_future_inserts() {
         let map = Map::new();
 
         let (k1, _) = map.insert(1);
         let (k2, _) = map.insert(2);
 
-        let keys = map.snapshot_key_only();
+        let keys = map.snapshot_keys();
 
         let (k3, _) = map.insert(3);
 
@@ -167,21 +167,5 @@ const SLOTS: usize = 4;
         assert!(!set.contains(&k3));
     }
     
-    #[test]
-    fn snapshot_iter_matches_snapshot() {
-        let map = Map::new();
 
-        for i in 0..(SLOTS * 2) as i32 {
-            map.insert(i);
-        }
-
-        let via_snapshot = map.snapshot();
-        let via_iter: Vec<_> = map.snapshot_iter().collect();
-
-        assert_eq!(via_snapshot.len(), via_iter.len());
-        for (a, b) in via_snapshot.iter().zip(via_iter.iter()) {
-            assert_eq!(a.0, b.0);
-            assert!(std::ptr::eq::<i32>(a.1, b.1));
-        }
-    }
 

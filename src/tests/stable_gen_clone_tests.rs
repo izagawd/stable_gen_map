@@ -354,7 +354,7 @@ fn clone_handles_reentrant_t_clone() {
     assert_eq!(v2.val, 2);
 
     // cloned keys set should be exactly {k1, k2}
-    let cloned_keys: HashSet<_> = c.snapshot_key_only().into_iter().collect();
+    let cloned_keys: HashSet<_> = c.snapshot_keys().into_iter().collect();
     assert_eq!(cloned_keys.len(), 2);
     assert!(cloned_keys.contains(&k1));
     assert!(cloned_keys.contains(&k2));
@@ -397,7 +397,7 @@ fn clone_handles_reentrant_t_clone_two() {
     assert_eq!(v2.val, 2);
 
     // cloned keys set should be exactly {k1, k2}
-    let cloned_keys: HashSet<_> = c.snapshot_key_only().into_iter().collect();
+    let cloned_keys: HashSet<_> = c.snapshot_keys().into_iter().collect();
     assert_eq!(cloned_keys.len(), 2);
     assert!(cloned_keys.contains(&k1));
     assert!(cloned_keys.contains(&k2));
