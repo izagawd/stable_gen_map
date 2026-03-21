@@ -679,20 +679,9 @@ impl<K: Key, T> StableGenMap<K, T> {
     /// the remaining elements are still removed and dropped.
     #[inline]
     pub fn drain(&mut self) -> Drain<'_, K, T> {
-        unsafe {
-            let slots: &mut Vec<UnsafeCell<Slot<T, K>>> = &mut *self.slots.get();
-            let ptr = slots.as_mut_ptr();
-            let len = slots.len();
-            let end = ptr.add(len);
-
-            Drain {
-                ptr,
-                end,
-                idx: 0,
-                num_elements: &self.num_elements,
-                next_free: &self.next_free,
-                _marker: PhantomData,
-            }
+        Drain {
+            map: self,
+            idx: 0,
         }
     }
 }
@@ -701,71 +690,47 @@ impl<K: Key, T> StableGenMap<K, T> {
 /// Yields all occupied `(K, T)` pairs, removing them from the map.
 /// If dropped before being fully consumed, remaining elements are still removed and dropped.
 pub struct Drain<'a, K: Key, T> {
-    ptr: *mut UnsafeCell<Slot<T, K>>,
-    end: *mut UnsafeCell<Slot<T, K>>,
+    map: &'a mut StableGenMap<K, T>,
     idx: usize,
-    num_elements: &'a Cell<usize>,
-    next_free: &'a Cell<Option<K::Idx>>,
-    _marker: PhantomData<&'a mut T>,
 }
 
 impl<'a, K: Key, T> Iterator for Drain<'a, K, T> {
     type Item = (K, T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            while self.ptr != self.end {
-                let current = self.ptr;
-                self.ptr = self.ptr.add(1);
+        loop {
+            let idx = self.idx;
 
-                let idx = self.idx;
+            let generation = {
+                let slots = self.map.slots.get_mut();
+                if idx >= slots.len() {
+                    return None;
+                }
                 self.idx += 1;
-
-                let slot: &mut Slot<T, K> = &mut *(*current).get();
-
+                let slot = slots[idx].get_mut();
                 if !is_occupied_by_generation(slot.generation) {
                     continue;
                 }
+                slot.generation
+            };
 
-                let value = ManuallyDrop::take(&mut slot.item.occupied);
-
-                let key_idx = K::Idx::from_usize(idx);
-                let key_data = KeyData {
-                    idx: key_idx,
-                    generation: slot.generation,
-                };
-                let key = K::from(key_data);
-
-                self.num_elements.set(self.num_elements.get() - 1);
-
-                match slot.generation.checked_add(&K::Gen::one()) {
-                    Some(new_gen) => {
-                        slot.generation = new_gen;
-                        let old_head = self.next_free.get();
-                        slot.item.vacant = old_head;
-                        self.next_free.set(Some(key_idx));
-                    }
-                    None => {
-                        slot.item.vacant = None;
-                    }
-                }
-
-                return Some((key, value));
-            }
-
-            None
+            let key = K::from(KeyData {
+                idx: K::Idx::from_usize(idx),
+                generation,
+            });
+            let value = unsafe{ self.map.remove(key).unwrap_unchecked() };
+            return Some((key, value));
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.num_elements.get()))
+        (0, Some(self.map.len()))
     }
 }
 
 impl<'a, K: Key, T> Drop for Drain<'a, K, T> {
     fn drop(&mut self) {
-        // Exhaust remaining elements so they are properly removed and dropped.
-        while let Some(_) = self.next() {}
+        while self.next().is_some() {}
     }
 }
 
