@@ -97,14 +97,12 @@ impl<'a, K: Key, C: SlotItem<K>> Drop for FreeGuard<'a, K, C> {
     fn drop(&mut self) {
         unsafe {
             let slots = &mut *self.map.slots.get();
-            let slot = slots
-                .get_unchecked_mut(self.idx.into_usize())
-                .get_mut();
+            let slot = slots.get_unchecked_mut(self.idx.into_usize()).get_mut();
 
             // add by two to maintain evenness (even == vacant)
-            if let Some(checked_add) =
-                slot.generation
-                    .checked_add(&(K::Gen::one() + K::Gen::one()))
+            if let Some(checked_add) = slot
+                .generation
+                .checked_add(&(K::Gen::one() + K::Gen::one()))
             {
                 slot.generation = checked_add;
                 let old_head = self.map.next_free.get();
@@ -220,8 +218,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// identify the inserted element.
     #[inline]
     pub fn insert_with_key(&self, func: impl FnOnce(K) -> C::Stored) -> (K, &C::Output) {
-        self.try_insert_with_key::<()>(|key| Ok(func(key)))
-            .unwrap()
+        self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
     }
 
     /// Like [`insert_with_key`](Self::insert_with_key) but the closure may
@@ -236,9 +233,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
             let (idx, generation) = if let Some(idx) = self.next_free.get() {
                 // reuse a free slot
-                let slot = slots
-                    .get_unchecked_mut(idx.into_usize())
-                    .get_mut();
+                let slot = slots.get_unchecked_mut(idx.into_usize()).get_mut();
 
                 let next = slot.item.get_vacant();
                 self.next_free.set(next);
@@ -327,9 +322,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     pub fn remove(&mut self, k: K) -> Option<C::Stored> {
         let key_data = k.data();
         let slots = self.slots.get_mut();
-        let slot = slots
-            .get_mut(key_data.idx.into_usize())?
-            .get_mut();
+        let slot = slots.get_mut(key_data.idx.into_usize())?.get_mut();
         unsafe {
             Self::remove_split_data::<true>(RemoveArguments {
                 slot,
@@ -431,8 +424,10 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
     pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (K, &C::Output)> {
-        (&*self.slots.get()).iter().enumerate().filter_map(
-            |(idx, slot_cell)| {
+        (&*self.slots.get())
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, slot_cell)| {
                 let slot = &*slot_cell.get();
                 if is_occupied_by_generation(slot.generation) {
                     Some((
@@ -445,8 +440,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                 } else {
                     None
                 }
-            },
-        )
+            })
     }
 
     // ── clone helpers ───────────────────────────────────────────────────
@@ -520,9 +514,7 @@ impl<K: Key, C: SlotItemMutOutput<K>> GenMap<K, C> {
     pub fn get_mut(&mut self, k: K) -> Option<&mut C::Output> {
         let key_data = k.data();
         let slots = self.slots.get_mut();
-        let slot = slots
-            .get_mut(key_data.idx.into_usize())?
-            .get_mut();
+        let slot = slots.get_mut(key_data.idx.into_usize())?.get_mut();
         if slot.generation != key_data.generation {
             return None;
         }
@@ -531,10 +523,7 @@ impl<K: Key, C: SlotItemMutOutput<K>> GenMap<K, C> {
 
     /// Mutable lookup by index only (ignores generation).
     #[inline]
-    pub fn get_by_index_only_mut(
-        &mut self,
-        idx: K::Idx,
-    ) -> Option<(K, &mut C::Output)> {
+    pub fn get_by_index_only_mut(&mut self, idx: K::Idx) -> Option<(K, &mut C::Output)> {
         let slot = self.slots.get_mut().get_mut(idx.into_usize())?.get_mut();
         if is_occupied_by_generation(slot.generation) {
             Some((

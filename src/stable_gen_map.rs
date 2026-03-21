@@ -104,12 +104,10 @@ impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
 
             let num_elements = self.len();
             let next_free = self.next_free.get();
-            let slots_ref: &Vec<UnsafeCell<Slot<BoxedSlot<T, K>, K>>> =
-                &*self.slots.get();
+            let slots_ref: &Vec<UnsafeCell<Slot<BoxedSlot<T, K>, K>>> = &*self.slots.get();
 
             // ── phase 1: snapshot ────────────────────────────────────────
-            let mut snapshot: Vec<(K::Gen, Snap<'_, K, T>)> =
-                Vec::with_capacity(slots_ref.len());
+            let mut snapshot: Vec<(K::Gen, Snap<'_, K, T>)> = Vec::with_capacity(slots_ref.len());
 
             for cell in slots_ref.iter() {
                 let slot: &Slot<BoxedSlot<T, K>, K> = &*cell.get();

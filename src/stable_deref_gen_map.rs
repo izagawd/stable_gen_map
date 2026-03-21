@@ -77,18 +77,14 @@ unsafe impl<D: DerefGenMapPromise, K: Key> SlotItem<K> for DerefSlot<D, K> {
     }
 }
 
-unsafe impl<D: DerefGenMapPromise + DerefMut, K: Key> SlotItemMutOutput<K>
-for DerefSlot<D, K>
-{
+unsafe impl<D: DerefGenMapPromise + DerefMut, K: Key> SlotItemMutOutput<K> for DerefSlot<D, K> {
     #[inline]
     unsafe fn mut_output(&mut self) -> &mut D::Target {
         self.0.occupied.deref_mut().deref_mut()
     }
 }
 
-unsafe impl<D: DerefGenMapPromise + Clone, K: Key> SlotItemClone<K>
-for DerefSlot<D, K>
-{
+unsafe impl<D: DerefGenMapPromise + Clone, K: Key> SlotItemClone<K> for DerefSlot<D, K> {
     #[inline]
     unsafe fn clone_item(&self, is_occupied: bool) -> Self {
         if is_occupied {
@@ -171,7 +167,7 @@ pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
 // ─── Clone (two strategies) ──────────────────────────────────────────────────
 
 impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
-for StableDerefGenMap<K, Derefable>
+    for StableDerefGenMap<K, Derefable>
 {
     fn clone(&self) -> Self {
         unsafe {
@@ -190,8 +186,7 @@ for StableDerefGenMap<K, Derefable>
 
             let num_elements = self.len();
             let next_free = self.next_free.clone();
-            let slots_ref: &Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> =
-                &*self.slots.get();
+            let slots_ref: &Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> = &*self.slots.get();
 
             // ── phase 1: snapshot refs ───────────────────────────────────
             let mut snapshot: Vec<(K::Gen, RefOrNext<'_, K, Derefable::Target>)> =
@@ -210,24 +205,23 @@ for StableDerefGenMap<K, Derefable>
             }
 
             // ── phase 2: rebuild via clone_from_reference ────────────────
-            let new_slots: Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> =
-                snapshot
-                    .into_iter()
-                    .map(|(generation, snap)| {
-                        let data = match snap {
-                            RefOrNext::Ref(the_ref) => SlotData {
-                                occupied: ManuallyDrop::new(
-                                    Derefable::clone_from_reference(the_ref).unwrap(),
-                                ),
-                            },
-                            RefOrNext::Next(next_free) => SlotData { vacant: next_free },
-                        };
-                        UnsafeCell::new(Slot {
-                            generation,
-                            item: DerefSlot(data),
-                        })
+            let new_slots: Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> = snapshot
+                .into_iter()
+                .map(|(generation, snap)| {
+                    let data = match snap {
+                        RefOrNext::Ref(the_ref) => SlotData {
+                            occupied: ManuallyDrop::new(
+                                Derefable::clone_from_reference(the_ref).unwrap(),
+                            ),
+                        },
+                        RefOrNext::Next(next_free) => SlotData { vacant: next_free },
+                    };
+                    UnsafeCell::new(Slot {
+                        generation,
+                        item: DerefSlot(data),
                     })
-                    .collect();
+                })
+                .collect();
 
             GenMap::from_raw_parts(new_slots, next_free.get(), num_elements)
         }
