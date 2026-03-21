@@ -127,17 +127,11 @@ impl<K: Key, T> StableGenMap<K, T>
             })
             .flatten()
     }
-    /// Returns a snapshot of the map at the current moment. it ignores future inserts
-    /// NOTE: this does a heap allocation, and a heap deallocation when the snapshot drops
-    #[inline]
-    pub fn snapshot_iter(&self) -> <Vec<(K, &T)> as IntoIterator>::IntoIter {
-        self.snapshot().into_iter()
-    }
 
     /// Returns a snapshot of the current value references only (no keys).
     /// Future inserts are ignored. Allocates a single `Vec<&T>`.
     #[inline]
-    pub fn snapshot_ref_only(&self) -> Vec<&T> {
+    pub fn snapshot_refs(&self) -> Vec<&T> {
 
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
@@ -153,7 +147,7 @@ impl<K: Key, T> StableGenMap<K, T>
     /// Returns a snapshot of the current keys only (no references).
     /// Future inserts are ignored. Allocates a single `Vec<K>`.
     #[inline]
-    pub fn snapshot_key_only(&self) -> Vec<K> {
+    pub fn snapshot_keys(&self) -> Vec<K> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(

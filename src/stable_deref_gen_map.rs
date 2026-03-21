@@ -412,7 +412,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
     /// Returns a snapshot of the current keys only (no references).
     /// Future inserts are ignored. Allocates a single `Vec<K>`.
     #[inline]
-    pub fn snapshot_key_only(&self) -> Vec<K> {
+    pub fn snapshot_keys(&self) -> Vec<K> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(
@@ -427,7 +427,7 @@ impl<K: Key,Derefable: DerefGenMapPromise> StableDerefGenMap<K,Derefable> {
     /// Iterator over `&T` for a snapshot of the map. Ignores future inserts.
     /// Allocates internally via `snapshot_ref_only`.
     #[inline]
-    pub fn snapshot_ref_only(&self) -> Vec<&Derefable::Target> {
+    pub fn snapshot_refs(&self) -> Vec<&Derefable::Target> {
         unsafe{
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(

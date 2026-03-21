@@ -25,8 +25,8 @@ mod snapshot_stablegen_tests {
 
         assert_eq!(map.len(), 0);
         assert!(map.snapshot().is_empty());
-        assert!(map.snapshot_ref_only().is_empty());
-        assert!(map.snapshot_key_only().is_empty());
+        assert!(map.snapshot_refs().is_empty());
+        assert!(map.snapshot_keys().is_empty());
     }
 
     #[test]
@@ -66,8 +66,8 @@ mod snapshot_stablegen_tests {
         let (k2, _) = map.insert(Box::new(2));
 
         let snap = map.snapshot();
-        let refs = map.snapshot_ref_only();
-        let keys = map.snapshot_key_only();
+        let refs = map.snapshot_refs();
+        let keys = map.snapshot_keys();
 
         let (k3, _) = map.insert(Box::new(3)); // after snapshots
 
