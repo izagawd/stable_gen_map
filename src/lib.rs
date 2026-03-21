@@ -33,5 +33,11 @@ mod tests{
 
     #[cfg(test)]
     mod stable_deref_gen_snapshot_tests;
+
+    #[cfg(test)]
+    mod stable_gen_drain_tests;
+
+    #[cfg(test)]
+    mod stable_deref_gen_drain_tests;
 }
 
