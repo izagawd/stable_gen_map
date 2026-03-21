@@ -26,6 +26,12 @@ mod tests{
     mod stable_gen_map_tests;
 
     #[cfg(test)]
+    mod stable_deref_gen_map_overflow_tests;
+
+    #[cfg(test)]
+    mod stable_gen_map_overflow_tests;
+
+    #[cfg(test)]
     mod key_macro_tests;
 
     #[cfg(test)]
