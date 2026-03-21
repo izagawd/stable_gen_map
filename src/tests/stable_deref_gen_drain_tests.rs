@@ -1,8 +1,85 @@
 use crate::key::{DefaultKey, Key};
 use crate::key_piece::KeyPiece;
 use crate::stable_deref_gen_map::{BoxStableDerefGenMap, StableDerefGenMap};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 type Map = BoxStableDerefGenMap<DefaultKey, i32>;
+
+/// Shared ledger that records exactly which instances have been dropped,
+/// and panics on double-drop so a test failure is immediate rather than
+/// silently producing a wrong count.
+#[derive(Clone)]
+struct DropTracker {
+    /// id → number of times drop was called
+    drops: Rc<RefCell<HashMap<u32, u32>>>,
+    next_id: Rc<RefCell<u32>>,
+}
+
+impl DropTracker {
+    fn new() -> Self {
+        Self {
+            drops: Rc::new(RefCell::new(HashMap::new())),
+            next_id: Rc::new(RefCell::new(0)),
+        }
+    }
+
+    fn make_item(&self) -> Box<DropItem> {
+        let mut next = self.next_id.borrow_mut();
+        let id = *next;
+        *next += 1;
+        Box::new(DropItem {
+            id,
+            drops: self.drops.clone(),
+        })
+    }
+
+    fn total_dropped(&self) -> usize {
+        self.drops.borrow().len()
+    }
+
+    fn assert_all_dropped_exactly_once(&self, n: u32) {
+        let drops = self.drops.borrow();
+        for id in 0..n {
+            let count = drops.get(&id).copied().unwrap_or(0);
+            assert_eq!(
+                count, 1,
+                "instance {id} was dropped {count} times (expected exactly 1)"
+            );
+        }
+        assert_eq!(drops.len(), n as usize);
+    }
+
+    fn assert_none_dropped(&self) {
+        assert!(
+            self.drops.borrow().is_empty(),
+            "expected no drops yet, but {} instances were dropped",
+            self.drops.borrow().len()
+        );
+    }
+}
+
+struct DropItem {
+    id: u32,
+    drops: Rc<RefCell<HashMap<u32, u32>>>,
+}
+
+impl Drop for DropItem {
+    fn drop(&mut self) {
+        let mut map = self.drops.borrow_mut();
+        let count = map.entry(self.id).or_insert(0);
+        *count += 1;
+        assert!(
+            *count <= 1,
+            "DOUBLE DROP on instance {} (dropped {} times)",
+            self.id,
+            *count
+        );
+    }
+}
+
+// ── basic behaviour tests (Box<i32>, no drop tracking needed) ───────
 
 #[test]
 fn drain_empty_map() {
@@ -122,29 +199,99 @@ fn drain_then_insert_works() {
     assert_eq!(*map.get(k).unwrap(), 42);
 }
 
+// ── drop-correctness tests (per-instance tracking) ──────────────────
+
 #[test]
-fn drain_drops_smart_pointers() {
-    use std::cell::Cell;
-    use std::rc::Rc;
+fn drain_zero_consumption_drops_each_exactly_once() {
+    let tracker = DropTracker::new();
 
-    let drop_count = Rc::new(Cell::new(0u32));
+    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    map.insert(tracker.make_item());
+    map.insert(tracker.make_item());
+    map.insert(tracker.make_item());
 
-    struct DropCounter(Rc<Cell<u32>>);
-    impl Drop for DropCounter {
-        fn drop(&mut self) {
-            self.0.set(self.0.get() + 1);
-        }
-    }
-
-    let mut map = StableDerefGenMap::<DefaultKey, Box<DropCounter>>::new();
-    map.insert(Box::new(DropCounter(drop_count.clone())));
-    map.insert(Box::new(DropCounter(drop_count.clone())));
-    map.insert(Box::new(DropCounter(drop_count.clone())));
-
-    assert_eq!(drop_count.get(), 0);
+    tracker.assert_none_dropped();
 
     drop(map.drain());
 
-    assert_eq!(drop_count.get(), 3);
+    tracker.assert_all_dropped_exactly_once(3);
     assert_eq!(map.len(), 0);
+}
+
+#[test]
+fn drain_partial_consumption_drops_each_exactly_once() {
+    let tracker = DropTracker::new();
+
+    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    for _ in 0..5 {
+        map.insert(tracker.make_item());
+    }
+
+    tracker.assert_none_dropped();
+
+    {
+        let mut drain = map.drain();
+        drop(drain.next().unwrap());
+        drop(drain.next().unwrap());
+        assert_eq!(tracker.total_dropped(), 2);
+    }
+
+    tracker.assert_all_dropped_exactly_once(5);
+    assert_eq!(map.len(), 0);
+}
+
+#[test]
+fn drain_full_consumption_drops_each_exactly_once() {
+    let tracker = DropTracker::new();
+
+    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    for _ in 0..4 {
+        map.insert(tracker.make_item());
+    }
+
+    tracker.assert_none_dropped();
+
+    let collected: Vec<_> = map.drain().collect();
+    tracker.assert_none_dropped();
+
+    drop(collected);
+    tracker.assert_all_dropped_exactly_once(4);
+    assert_eq!(map.len(), 0);
+}
+
+#[test]
+fn drain_with_gaps_drops_only_occupied_exactly_once() {
+    let tracker = DropTracker::new();
+
+    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    let (k0, _) = map.insert(tracker.make_item()); // id 0
+    let (_, _) = map.insert(tracker.make_item());   // id 1
+    let (_, _) = map.insert(tracker.make_item());   // id 2
+
+    map.remove(k0);
+    assert_eq!(tracker.total_dropped(), 1);
+
+    drop(map.drain());
+
+    tracker.assert_all_dropped_exactly_once(3);
+    assert_eq!(map.len(), 0);
+}
+
+#[test]
+fn drain_does_not_double_drop_after_map_drop() {
+    let tracker = DropTracker::new();
+
+    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    for _ in 0..3 {
+        map.insert(tracker.make_item());
+    }
+
+    let collected: Vec<_> = map.drain().collect();
+
+    // Dropping the map after drain must NOT re-drop the values.
+    drop(map);
+    tracker.assert_none_dropped();
+
+    drop(collected);
+    tracker.assert_all_dropped_exactly_once(3);
 }
