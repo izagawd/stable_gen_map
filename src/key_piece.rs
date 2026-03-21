@@ -26,7 +26,7 @@ Copy
 
 }
 
-macro_rules! impl_numeric {
+macro_rules! impl_key_piece {
     ($($t:ty)*) => {
         $(
             unsafe impl KeyPiece for $t {
@@ -45,4 +45,4 @@ macro_rules! impl_numeric {
 
     }
 }
-impl_numeric!(usize u8 u16 u32 u64 u128);
+impl_key_piece!(usize u8 u16 u32 u64 u128);
