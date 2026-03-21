@@ -8,7 +8,7 @@
     use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use crate::numeric::KeyPiece;
+    use crate::key_piece::KeyPiece;
     use crate::stable_gen_map::{StableGenMap};
     // try_insert_with_key while iterating with iter()
 

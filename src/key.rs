@@ -1,4 +1,4 @@
-use crate::numeric::KeyPiece;
+use crate::key_piece::KeyPiece;
 
 #[derive(Clone,Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyData<Idx, Generation>{

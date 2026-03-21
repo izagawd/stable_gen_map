@@ -1,5 +1,5 @@
 use crate::key::{is_occupied_by_generation, Key, KeyData};
-use crate::numeric::KeyPiece;
+use crate::key_piece::KeyPiece;
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::cmp::PartialEq;
