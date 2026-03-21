@@ -356,6 +356,13 @@ impl<K: Key, T> StableGenMap<K, T>
 
         Some(value)
     }
+
+    /// Reserves capacity for at least `additional` more elements to be inserted before a resize occurs
+    #[inline]
+    pub fn reserve(&self, additional: usize){
+        unsafe { &mut *self.slots.get() }.reserve(additional);
+    }
+
     /// Removes an element by key, returning its owned value.
     /// Removes only with &mut self. This is safe because the borrow checker
     /// prevents calling this while any &'_ T derived from &self is alive.
