@@ -132,6 +132,80 @@ pub struct IterMut<'a, K: Key, Derefable: DerefGenMapPromise + 'a> {
     _marker: PhantomData<&'a mut Derefable>,
     _key_marker: PhantomData<K>,
 }
+
+/// Draining iterator over a `StableDerefGenMap`. Created by [`StableDerefGenMap::drain`].
+///
+/// Yields all occupied `(K, Derefable)` pairs, removing them from the map.
+/// If dropped before being fully consumed, remaining elements are still removed and dropped.
+pub struct Drain<'a, K: Key, Derefable: DerefGenMapPromise> {
+    ptr: *mut UnsafeCell<Slot<Derefable, K>>,
+    end: *mut UnsafeCell<Slot<Derefable, K>>,
+    idx: usize,
+    num_elements: &'a Cell<usize>,
+    next_free: &'a Cell<Option<K::Idx>>,
+    _marker: PhantomData<&'a mut Derefable>,
+}
+
+impl<'a, K: Key, Derefable: DerefGenMapPromise> Iterator for Drain<'a, K, Derefable> {
+    type Item = (K, Derefable);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            while self.ptr != self.end {
+                let current = self.ptr;
+                self.ptr = self.ptr.add(1);
+
+                let idx = self.idx;
+                self.idx += 1;
+
+                let slot: &mut Slot<Derefable, K> = &mut *(*current).get();
+
+                if !is_occupied_by_generation(slot.generation) {
+                    continue;
+                }
+
+                let value = ManuallyDrop::take(&mut slot.item.occupied);
+
+                let key_idx = K::Idx::from_usize(idx);
+                let key_data = KeyData {
+                    idx: key_idx,
+                    generation: slot.generation,
+                };
+                let key = K::from(key_data);
+
+                self.num_elements.set(self.num_elements.get() - 1);
+
+                match slot.generation.checked_add(&K::Gen::one()) {
+                    Some(new_gen) => {
+                        slot.generation = new_gen;
+                        let old_head = self.next_free.get();
+                        slot.item.vacant = old_head;
+                        self.next_free.set(Some(key_idx));
+                    }
+                    None => {
+                        slot.item.vacant = None;
+                    }
+                }
+
+                return Some((key, value));
+            }
+
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.num_elements.get()))
+    }
+}
+
+impl<'a, K: Key, Derefable: DerefGenMapPromise> Drop for Drain<'a, K, Derefable> {
+    fn drop(&mut self) {
+        // Exhaust remaining elements so they are properly removed and dropped.
+        while let Some(_) = self.next() {}
+    }
+}
+
 pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
 impl<K: Key, Derefable: DerefGenMapPromise> StableDerefGenMap<K, Derefable> where K::Idx : Zero {
     /// Gets a mutable iterator of the map, allowing mutable iteration between all elements
@@ -145,6 +219,28 @@ impl<K: Key, Derefable: DerefGenMapPromise> StableDerefGenMap<K, Derefable> wher
             idx: 0,
             _marker: PhantomData,
             _key_marker: PhantomData,
+        }
+    }
+
+    /// Removes all elements from the map and returns them as an iterator.
+    ///
+    /// The map is left empty but retains its allocated capacity.
+    /// If the returned iterator is dropped before being fully consumed,
+    /// the remaining elements are still removed and dropped.
+    #[inline]
+    pub fn drain(&mut self) -> Drain<'_, K, Derefable> {
+        let slots = self.slots.get_mut();
+        let ptr = slots.as_mut_ptr();
+        let len = slots.len();
+        let end = unsafe { ptr.add(len) };
+
+        Drain {
+            ptr,
+            end,
+            idx: 0,
+            num_elements: &self.num_elements,
+            next_free: &self.next_free,
+            _marker: PhantomData,
         }
     }
 }
