@@ -382,3 +382,110 @@ fn get_by_index_only_returns_occupied() {
     assert_eq!(found_key.key_data().idx, idx);
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
 }
+
+// ─── Clone ─────────────────────────────────────────────────────────────────
+
+type RcMap = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, std::rc::Rc<dyn Any>>;
+
+#[test]
+fn clone_old_key_works_on_both_maps() {
+    let map: RcMap = RcMap::new();
+    let (key, _) = map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
+
+    let cloned = map.clone();
+
+    // old key works on the original
+    let val = map.get(key).unwrap();
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
+
+    // old key works on the clone
+    let val = cloned.get(key).unwrap();
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
+}
+
+#[test]
+fn clone_new_insert_on_clone_not_visible_on_original() {
+    let map: RcMap = RcMap::new();
+    let (old_key, _) = map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
+
+    let cloned = map.clone();
+    let (new_key, _) = cloned.insert(std::rc::Rc::new(99i32) as std::rc::Rc<dyn Any>);
+
+    // new key works on the clone
+    assert!(cloned.get(new_key).is_some());
+
+    // new key does NOT work on the original
+    assert!(map.get(new_key).is_none());
+
+    // old key still works on both
+    assert!(map.get(old_key).is_some());
+    assert!(cloned.get(old_key).is_some());
+}
+
+#[test]
+fn clone_new_insert_on_original_not_visible_on_clone() {
+    let map: RcMap = RcMap::new();
+    let (old_key, _) = map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
+
+    let cloned = map.clone();
+    let (new_key, _) = map.insert(std::rc::Rc::new(77i32) as std::rc::Rc<dyn Any>);
+
+    // new key works on the original
+    assert!(map.get(new_key).is_some());
+
+    // new key does NOT work on the clone
+    assert!(cloned.get(new_key).is_none());
+
+    // old key still works on both
+    assert!(map.get(old_key).is_some());
+    assert!(cloned.get(old_key).is_some());
+}
+
+#[test]
+fn clone_preserves_len() {
+    let map: RcMap = RcMap::new();
+    map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
+    map.insert(std::rc::Rc::new(2i32) as std::rc::Rc<dyn Any>);
+    map.insert(std::rc::Rc::new(3i32) as std::rc::Rc<dyn Any>);
+
+    let cloned = map.clone();
+    assert_eq!(cloned.len(), 3);
+}
+
+#[test]
+fn clone_remove_on_clone_does_not_affect_original() {
+    let map: RcMap = RcMap::new();
+    let (key, _) = map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
+
+    let mut cloned = map.clone();
+    cloned.remove(key);
+
+    // gone from clone
+    assert!(cloned.get(key).is_none());
+    assert_eq!(cloned.len(), 0);
+
+    // still in original
+    assert!(map.get(key).is_some());
+    assert_eq!(map.len(), 1);
+}
+
+#[test]
+fn clone_diverges_after_remove_and_reinsert() {
+    let map: RcMap = RcMap::new();
+    let (key, _) = map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
+
+    let mut cloned = map.clone();
+
+    // remove from clone, reinsert something else (reuses the slot)
+    cloned.remove(key);
+    let (new_key, _) = cloned.insert(std::rc::Rc::new(999i32) as std::rc::Rc<dyn Any>);
+
+    // old key is stale on clone (generation mismatch)
+    assert!(cloned.get(key).is_none());
+
+    // new key from clone doesn't work on original
+    assert!(map.get(new_key).is_none());
+
+    // old key still works on original
+    assert!(map.get(key).is_some());
+}

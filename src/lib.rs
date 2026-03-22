@@ -57,7 +57,7 @@ mod tests {
     mod map_id_tests;
 
     #[cfg(test)]
-    mod key_castable_tests;
+    mod castable_key_tests;
 
     #[cfg(test)]
     mod castable_map_tests;
