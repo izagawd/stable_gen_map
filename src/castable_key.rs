@@ -198,7 +198,12 @@ where
 {
     let metadata = key.metadata();
     unsafe {
-        None
+        let gotten: &dyn Any = &*std::ptr::from_raw_parts(&(), metadata);
+        if gotten.type_id() == std::any::TypeId::of::<Concrete>() {
+            Some(KOut::from_castable_parts(key.key_data(), key.map_id(), ()))
+        } else {
+            None
+        }
     }
 }
 
