@@ -5,7 +5,7 @@
 //! `usize` assigned on first insert). The metadata half is `T`'s pointer
 //! metadata (vtable for `dyn Trait`, `()` for sized types).
 //!
-//! `CastableKey<T>` is **not** a [`Key`](crate::key::Key). The inner
+//! `CastableKey` is **not** a [`Key`](crate::key::Key). The inner
 //! `GenMap` uses a plain identified key; the castable map wrapper converts
 //! at the boundary.
 //!
@@ -28,31 +28,29 @@ use crate::map_id::MapId;
 
 // ─── CastableKey trait ──────────────────────────────────────────────────────
 
-/// A key parameterised over `T: ?Sized` that stores `T`'s pointer metadata
+/// A key parameterised over `RefType: ?Sized` that stores `RefType`'s pointer metadata
 /// alongside a map identifier and generational index.
 ///
 /// This trait is **not** a supertrait of [`Key`](crate::key::Key). The
-/// castable map wrapper handles conversion between `CastableKey<T>` and
+/// castable map wrapper handles conversion between `CastableKey` and
 /// the inner `Key` used by `GenMap`.
 ///
 /// # Safety
 /// `from_castable_parts` must produce a key whose accessors round-trip
 /// correctly.
-pub unsafe trait CastableKey<T: ?Sized + Pointee>: Copy
-where
-    <T as Pointee>::Metadata: Copy,
-{
+pub unsafe trait CastableKey: Copy {
+    type RefType: ?Sized + Pointee<Metadata: Copy>;
     type Idx: KeyPiece;
     type Gen: KeyPiece;
 
     fn key_data(&self) -> KeyData<Self::Idx, Self::Gen>;
     fn map_id(&self) -> MapId;
-    fn metadata(&self) -> <T as Pointee>::Metadata;
+    fn metadata(&self) -> <Self::RefType as Pointee>::Metadata;
 
     fn from_castable_parts(
         data: KeyData<Self::Idx, Self::Gen>,
         map_id: MapId,
-        metadata: <T as Pointee>::Metadata,
+        metadata: <Self::RefType as Pointee>::Metadata,
     ) -> Self;
 }
 
@@ -135,10 +133,11 @@ where
 
 // ── CastableKey impl ───────────────────────────────────────────────────────
 
-unsafe impl<T: ?Sized + Pointee> CastableKey<T> for DefaultCastableKey<T>
+unsafe impl<T: ?Sized + Pointee> CastableKey for DefaultCastableKey<T>
 where
     <T as Pointee>::Metadata: Copy,
 {
+    type RefType = T;
     type Idx = u32;
     type Gen = u32;
 
@@ -290,11 +289,12 @@ macro_rules! __impl_castable_key {
             }
         }
 
-        unsafe impl<T: ?Sized + ::std::ptr::Pointee> $crate::castable_key::CastableKey<T>
+        unsafe impl<T: ?Sized + ::std::ptr::Pointee> $crate::castable_key::CastableKey
             for $name<T>
         where
             <T as ::std::ptr::Pointee>::Metadata: Copy,
         {
+            type RefType = T;
             type Idx = $idx;
             type Gen = $gen;
 

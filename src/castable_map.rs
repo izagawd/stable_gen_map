@@ -1,15 +1,15 @@
-//! Map type that uses a [`CastableKey<T>`] as its user-facing key.
+//! Map type that uses a [`CastableKey`] as its user-facing key.
 //!
 //! Internally, a plain [`CastableInnerKey`] (which implements [`Key`] with
 //! `Extra = MapId`) is used by the `GenMap`. The castable map wrapper
-//! converts between `CastableInnerKey` and `CastableKey<T>` at every
+//! converts between `CastableInnerKey` and `CastableKey` at every
 //! boundary — adding metadata on the way out, stripping it on the way in.
 //!
 //! This means `GenMap` never sees pointer metadata and no `dangling_metadata`
 //! hack is needed.
 
 use std::collections::TryReserveError;
-use std::ops::{CoerceUnsized, Index, IndexMut};
+use std::ops::{Index, IndexMut};
 use std::ptr::Pointee;
 
 use crate::castable_key::CastableKey;
@@ -57,10 +57,7 @@ unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for CastableInnerKey
 
 /// Strip metadata, produce inner key.
 #[inline]
-fn to_inner<T: ?Sized + Pointee, CK>(key: &CK) -> CastableInnerKey<<CK as CastableKey<T>>::Idx, <CK as CastableKey<T>>::Gen>
-where
-    CK: CastableKey<T>,
-    <T as Pointee>::Metadata: Copy,
+fn to_inner<CK: CastableKey>(key: &CK) -> CastableInnerKey<CK::Idx, CK::Gen>
 {
     CastableInnerKey {
         key_data: key.key_data(),
@@ -70,11 +67,10 @@ where
 
 /// Build a castable key from an inner key + metadata from a reference.
 #[inline]
-fn to_castable<CK, D>(inner: CastableInnerKey<<CK as CastableKey<D::Target>>::Idx, <CK as CastableKey<D::Target>>::Gen>, reference: &D::Target) -> CK
+fn to_castable<CK, D>(inner: CastableInnerKey<CK::Idx, CK::Gen>, reference: &D::Target) -> CK
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     let metadata = std::ptr::metadata(reference as *const D::Target);
     CK::from_castable_parts(inner.key_data, inner.map_id, metadata)
@@ -83,22 +79,24 @@ where
 // ─── KeyCastableStableGenMap ────────────────────────────────────────────────
 
 /// A [`StableDerefGenMap`] wrapper that supports typed lookups via
-/// [`CastableKey<T>`].
+/// [`CastableKey`].
 ///
 /// - `CK`: the castable key family, e.g. `DefaultCastableKey<D::Target>`.
 /// - `D`: the smart pointer type, e.g. `Box<dyn Any>`.
-pub struct KeyCastableStableGenMap<CK: CastableKey<D::Target>, D>
+pub struct KeyCastableStableGenMap<CK, D>
 where
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
 {
-    pub(crate) inner: StableDerefGenMap<CastableInnerKey<<CK as CastableKey<D::Target>>::Idx, <CK as CastableKey<D::Target>>::Gen> , D>,
+    pub(crate) inner: StableDerefGenMap<CastableInnerKey<CK::Idx, CK::Gen>, D>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
 // ─── Basic methods ──────────────────────────────────────────────────────────
 
-impl<CK: CastableKey<D::Target>, D> KeyCastableStableGenMap<CK, D>
+impl<CK, D> KeyCastableStableGenMap<CK, D>
 where
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     /// Creates a new, empty map.
@@ -150,13 +148,12 @@ where
     }
 }
 
-// ─── Native operations (CK: CastableKey<D::Target>) ────────────────────────
+// ─── Native operations (CK: CastableKey<T = D::Target>) ──────────────────
 
 impl<CK, D> KeyCastableStableGenMap<CK, D>
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     // ── insert ──────────────────────────────────────────────────────────
 
@@ -364,10 +361,10 @@ where
 
 impl<CK, D> KeyCastableStableGenMap<CK, D>
 where
-    CK: CastableKey<dyn std::any::Any>,
+    CK: CastableKey<RefType= dyn std::any::Any>,
     D: DerefGenMapPromise<Target = dyn std::any::Any> + 'static,
 {
-    /// Attempts to downcast a `CastableKey<dyn Any>` to a `CastableKey<Concrete>`.
+    /// Attempts to downcast a `CastableKey<T = dyn Any>` to a `CastableKey<T = Concrete>`.
     ///
     /// Looks up the actual data to obtain its `TypeId` (no UB). Returns
     /// `None` if the key is stale / wrong map, or the concrete type doesn't match.
@@ -382,7 +379,8 @@ where
     #[inline]
     pub fn downcast_key<Concrete: 'static, KOut>(&self, key: CK) -> Option<KOut>
     where
-        KOut: CastableKey<Concrete, Idx = CK::Idx, Gen = CK::Gen>,
+        KOut: CastableKey<RefType= Concrete, Idx = CK::Idx, Gen = CK::Gen>,
+
     {
         let data: &dyn std::any::Any = self.get(key)?;
         if data.type_id() == std::any::TypeId::of::<Concrete>() {
@@ -398,7 +396,7 @@ where
 impl<CK, D> KeyCastableStableGenMap<CK, D>
 where
     D: DerefGenMapPromise + 'static,
-    CK: CastableKey<<D as std::ops::Deref>::Target>
+    CK: CastableKey<RefType= <D as std::ops::Deref>::Target>
 {
     /// Shared-reference lookup with a key for a *different* type `T`.
     ///
@@ -407,7 +405,7 @@ where
     #[inline]
     pub fn get_as<T: ?Sized + Pointee>(
         &self,
-        key: impl CastableKey<T, Idx = CK::Idx, Gen = CK::Gen>,
+        key: impl CastableKey<RefType= T, Idx = CK::Idx, Gen = CK::Gen>,
     ) -> Option<&T>
     where
         <T as Pointee>::Metadata: Copy,
@@ -422,7 +420,7 @@ where
     #[inline]
     pub fn get_as_mut<T: ?Sized + Pointee>(
         &mut self,
-        key: impl CastableKey<T, Idx = CK::Idx, Gen = CK::Gen>,
+        key: impl CastableKey<RefType= T, Idx = CK::Idx, Gen = CK::Gen>,
     ) -> Option<&mut T>
     where
         <T as Pointee>::Metadata: Copy,
@@ -438,7 +436,7 @@ where
     #[inline]
     pub fn remove_by<T: ?Sized + Pointee>(
         &mut self,
-        key: impl CastableKey<T, Idx = CK::Idx, Gen = CK::Gen>,
+        key: impl CastableKey<RefType= T, Idx = CK::Idx, Gen = CK::Gen>,
     ) -> Option<D>
     where
         <T as Pointee>::Metadata: Copy,
@@ -451,9 +449,8 @@ where
 
 impl<CK, D> Index<CK> for KeyCastableStableGenMap<CK, D>
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     type Output = D::Target;
 
@@ -464,9 +461,8 @@ where
 
 impl<CK, D> IndexMut<CK> for KeyCastableStableGenMap<CK, D>
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static + std::ops::DerefMut,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     fn index_mut(&mut self, key: CK) -> &mut Self::Output {
         self.get_mut(key).unwrap()
@@ -475,17 +471,20 @@ where
 
 // ─── IterMut ────────────────────────────────────────────────────────────────
 
-pub struct IterMut<'a, CK: CastableKey<D::Target>, D: DerefGenMapPromise> {
-    inner: gen_map::IterMut<'a, CastableInnerKey<<CK as CastableKey<D::Target>>::Idx, <CK as CastableKey<D::Target>>::Gen>,
-        DerefSlot<D, CastableInnerKey<<CK as CastableKey<D::Target>>::Idx, <CK as CastableKey<D::Target>>::Gen>>>,
+pub struct IterMut<'a, CK, D>
+where
+    CK: CastableKey<RefType= D::Target>,
+    D: DerefGenMapPromise,
+{
+    inner: gen_map::IterMut<'a, CastableInnerKey<CK::Idx, CK::Gen>,
+        DerefSlot<D, CastableInnerKey<CK::Idx, CK::Gen>>>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
 impl<'a, CK, D> Iterator for IterMut<'a, CK, D>
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     type Item = (CK, &'a mut D);
 
@@ -502,17 +501,20 @@ where
 
 // ─── Drain ──────────────────────────────────────────────────────────────────
 
-pub struct Drain<'a, CK: CastableKey<D::Target>, D: DerefGenMapPromise> {
-    inner: gen_map::Drain<'a, CastableInnerKey<<CK as CastableKey<D::Target>>::Idx, <CK as CastableKey<D::Target>>::Gen>,
-        DerefSlot<D, CastableInnerKey<<CK as CastableKey<D::Target>>::Idx, <CK as CastableKey<D::Target>>::Gen>>>,
+pub struct Drain<'a, CK, D>
+where
+    CK: CastableKey<RefType= D::Target>,
+    D: DerefGenMapPromise,
+{
+    inner: gen_map::Drain<'a, CastableInnerKey<CK::Idx, CK::Gen>,
+        DerefSlot<D, CastableInnerKey<CK::Idx, CK::Gen>>>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
 impl<'a, CK, D> Iterator for Drain<'a, CK, D>
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     type Item = (CK, D);
 
@@ -529,17 +531,20 @@ where
 
 // ─── IntoIter (owning) ─────────────────────────────────────────────────────
 
-pub struct IntoIter<CK: CastableKey<D::Target>, D: DerefGenMapPromise> {
-    inner: gen_map::IntoIter<CastableInnerKey<<CK as CastableKey<D::Target>>::Idx, <CK as CastableKey<D::Target>>::Gen>,
-        DerefSlot<D, CastableInnerKey<<CK as CastableKey<D::Target>>::Idx, <CK as CastableKey<D::Target>>::Gen>>>,
+pub struct IntoIter<CK, D>
+where
+    CK: CastableKey<RefType= D::Target>,
+    D: DerefGenMapPromise,
+{
+    inner: gen_map::IntoIter<CastableInnerKey<CK::Idx, CK::Gen>,
+        DerefSlot<D, CastableInnerKey<CK::Idx, CK::Gen>>>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
 impl<CK, D> Iterator for IntoIter<CK, D>
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     type Item = (CK, D);
 
@@ -556,9 +561,8 @@ where
 
 impl<CK, D> IntoIterator for KeyCastableStableGenMap<CK, D>
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     type Item = (CK, D);
     type IntoIter = IntoIter<CK, D>;
@@ -573,9 +577,8 @@ where
 
 impl<'a, CK, D> IntoIterator for &'a mut KeyCastableStableGenMap<CK, D>
 where
-    CK: CastableKey<D::Target>,
+    CK: CastableKey<RefType= D::Target>,
     D: DerefGenMapPromise + 'static,
-    <D::Target as Pointee>::Metadata: Copy,
 {
     type Item = (CK, &'a mut D);
     type IntoIter = IterMut<'a, CK, D>;
