@@ -8,7 +8,9 @@
 //! This means `GenMap` never sees pointer metadata and no `dangling_metadata`
 //! hack is needed.
 
+use std::any::Any;
 use std::collections::TryReserveError;
+use std::marker::Unsize;
 use std::ops::{Index, IndexMut};
 use std::ptr::Pointee;
 
@@ -175,6 +177,34 @@ where
     CK: CastableKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
+
+    /// Attempts to downcast a `CastableKey<RefType = dyn Any>` to a `CastableKey<RefType = Concrete>`.
+    ///
+    /// Looks up the actual data to obtain its `TypeId` (no UB). Returns
+    /// `None` if the key is stale / wrong map, or the concrete type doesn't match.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let dyn_key: DefaultCastableKey<dyn Any> = key;
+    /// if let Some(concrete) = map.downcast_key::<MyStruct, DefaultCastableKey<MyStruct>>(dyn_key) {
+    ///     // concrete: DefaultCastableKey<MyStruct>
+    /// }
+    /// ```
+    #[inline]
+    pub fn downcast_key<Concrete: 'static, KOut>(&self, key: impl CastableKey<RefType = dyn Any, Idx = CK::Idx, Gen = CK::Gen>) -> Option<KOut>
+    where
+        KOut: CastableKey<RefType = Concrete, Idx = CK::Idx, Gen = CK::Gen>,
+        D::Target: Any + Unsize<dyn Any>
+
+    {
+        let data: &dyn Any = self.inner.get(to_inner(&key))?;
+        if data.type_id() == std::any::TypeId::of::<Concrete>() {
+            Some(KOut::from_castable_parts(key.key_data(), key.map_id(), ()))
+        } else {
+            None
+        }
+    }
+
     // ── insert ──────────────────────────────────────────────────────────
 
     /// Inserts a smart pointer, returning a key (with real metadata) and a
@@ -379,36 +409,6 @@ where
 
 // ─── downcast_key (requires D::Target = dyn Any) ───────────────────────────
 
-impl<CK, D> KeyCastableStableGenMap<CK, D>
-where
-    CK: CastableKey<RefType = dyn std::any::Any>,
-    D: DerefGenMapPromise<Target = dyn std::any::Any> + 'static,
-{
-    /// Attempts to downcast a `CastableKey<RefType = dyn Any>` to a `CastableKey<RefType = Concrete>`.
-    ///
-    /// Looks up the actual data to obtain its `TypeId` (no UB). Returns
-    /// `None` if the key is stale / wrong map, or the concrete type doesn't match.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let dyn_key: DefaultCastableKey<dyn Any> = key;
-    /// if let Some(concrete) = map.downcast_key::<MyStruct, DefaultCastableKey<MyStruct>>(dyn_key) {
-    ///     // concrete: DefaultCastableKey<MyStruct>
-    /// }
-    /// ```
-    #[inline]
-    pub fn downcast_key<Concrete: 'static, KOut>(&self, key: CK) -> Option<KOut>
-    where
-        KOut: CastableKey<RefType = Concrete, Idx = CK::Idx, Gen = CK::Gen>,
-    {
-        let data: &dyn std::any::Any = self.get(key)?;
-        if data.type_id() == std::any::TypeId::of::<Concrete>() {
-            Some(KOut::from_castable_parts(key.key_data(), key.map_id(), ()))
-        } else {
-            None
-        }
-    }
-}
 
 // ─── Cross-typed lookups ────────────────────────────────────────────────────
 
