@@ -10,7 +10,7 @@ use std::ptr::Pointee;
 
 use crate::gen_map;
 use crate::key::Key;
-use crate::key_castable::{CastableKey, DefaultCastableKey};
+use crate::castable_key::{CastableKey, DefaultCastableKey};
 use crate::map_id::MapId;
 use crate::stable_deref_gen_map::{
     DerefGenMapPromise, SmartPtrCloneable, StableDerefGenMap,

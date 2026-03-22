@@ -6,7 +6,7 @@
 pub mod gen_map;
 pub mod castable_map;
 pub mod key;
-pub mod key_castable;
+pub mod castable_key;
 pub mod key_piece;
 pub mod map_id;
 pub mod slot_item;

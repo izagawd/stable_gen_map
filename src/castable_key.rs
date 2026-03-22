@@ -336,7 +336,7 @@ macro_rules! __impl_castable_key {
                     debug_assert!(extra.0 != 0, "cannot construct castable key with null map id");
                     let raw: *mut T = ::std::ptr::from_raw_parts_mut(
                         extra.0 as *mut (),
-                        $crate::key_castable::dangling_metadata(),
+                        $crate::castable_key::dangling_metadata(),
                     );
                     Self {
                         key_data: data,
@@ -346,7 +346,7 @@ macro_rules! __impl_castable_key {
             }
         }
 
-        unsafe impl<T: ?Sized + ::std::ptr::Pointee> $crate::key_castable::CastableKey<T>
+        unsafe impl<T: ?Sized + ::std::ptr::Pointee> $crate::castable_key::CastableKey<T>
             for $name<T>
         where
             <T as ::std::ptr::Pointee>::Metadata: Copy,
