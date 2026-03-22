@@ -1,5 +1,6 @@
 use crate::gen_map::{GenMap, Slot};
-use crate::key::{is_occupied_by_generation, Key, KeyData};
+use crate::key::{is_occupied_by_generation, Key, KeyData, KeyExtra};
+use crate::key_piece::KeyPiece;
 use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
@@ -107,25 +108,27 @@ impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
             let slots_ref: &Vec<UnsafeCell<Slot<BoxedSlot<T, K>, K>>> = &*self.slots.get();
 
             // ── phase 1: snapshot ────────────────────────────────────────
-            let mut snapshot: Vec<(K::Gen, Snap<'_, K, T>)> = Vec::with_capacity(slots_ref.len());
+            let mut snapshot: Vec<(K::Gen, K::Extra, Snap<'_, K, T>)> =
+                Vec::with_capacity(slots_ref.len());
 
             for cell in slots_ref.iter() {
                 let slot: &Slot<BoxedSlot<T, K>, K> = &*cell.get();
                 let gen = slot.generation;
+                let other = slot.other;
 
                 let snap = if is_occupied_by_generation(gen) {
                     Snap::Occupied(slot.item.ref_output())
                 } else {
                     Snap::Vacant(slot.item.get_vacant())
                 };
-                snapshot.push((gen, snap));
+                snapshot.push((gen, other, snap));
             }
 
             // ── phase 2: rebuild ─────────────────────────────────────────
             let mut new_slots: Vec<UnsafeCell<Slot<BoxedSlot<T, K>, K>>> =
                 Vec::with_capacity(snapshot.len());
 
-            for (generation, snap) in snapshot {
+            for (generation, other, snap) in snapshot {
                 let data = match snap {
                     Snap::Occupied(vref) => SlotData {
                         occupied: ManuallyDrop::new(vref.clone()),
@@ -135,6 +138,7 @@ impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
 
                 new_slots.push(UnsafeCell::new(Slot {
                     generation,
+                    other,
                     item: BoxedSlot(Box::new(data)),
                 }));
             }

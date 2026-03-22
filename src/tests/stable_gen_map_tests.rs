@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use crate::new_key_type;
 // try_insert_with_key while iterating with iter()
 
 // iter() inside try_insert_with_key closure
@@ -211,26 +212,12 @@ fn nested_try_insert_with_key_uses_distinct_slots() {
     );
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-struct TestKey {
-    data: KeyData<u32, u32>, // adjust KeyData params if needed
+new_key_type! {
+   struct TestKey(u32,u32);
 }
 
-unsafe impl Key for TestKey {
-    type Idx = u32;
-    type Gen = u32;
 
-    #[inline]
-    fn data(&self) -> KeyData<u32, u32> {
-        self.data
-    }
-}
 
-impl From<KeyData<u32, u32>> for TestKey {
-    fn from(data: KeyData<u32, u32>) -> Self {
-        Self { data }
-    }
-}
 
 #[test]
 fn iter_mut_yields_valid_keys_and_values() {

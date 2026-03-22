@@ -1,5 +1,6 @@
 use crate::gen_map::{GenMap, Slot};
-use crate::key::{is_occupied_by_generation, Key, KeyData};
+use crate::key::{is_occupied_by_generation, Key, KeyData, KeyExtra};
+use crate::key_piece::KeyPiece;
 use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
@@ -189,25 +190,26 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
             let slots_ref: &Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> = &*self.slots.get();
 
             // ── phase 1: snapshot refs ───────────────────────────────────
-            let mut snapshot: Vec<(K::Gen, RefOrNext<'_, K, Derefable::Target>)> =
+            let mut snapshot: Vec<(K::Gen, K::Extra, RefOrNext<'_, K, Derefable::Target>)> =
                 Vec::with_capacity(slots_ref.len());
 
             for cell in slots_ref.iter() {
                 let slot = &*cell.get();
                 let gen = slot.generation;
+                let other = slot.other;
 
                 let snap = if is_occupied_by_generation(gen) {
                     RefOrNext::Ref(slot.item.ref_output())
                 } else {
                     RefOrNext::Next(slot.item.get_vacant())
                 };
-                snapshot.push((gen, snap));
+                snapshot.push((gen, other, snap));
             }
 
             // ── phase 2: rebuild via clone_from_reference ────────────────
             let new_slots: Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> = snapshot
                 .into_iter()
-                .map(|(generation, snap)| {
+                .map(|(generation, other, snap)| {
                     let data = match snap {
                         RefOrNext::Ref(the_ref) => SlotData {
                             occupied: ManuallyDrop::new(
@@ -218,6 +220,7 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
                     };
                     UnsafeCell::new(Slot {
                         generation,
+                        other,
                         item: DerefSlot(data),
                     })
                 })

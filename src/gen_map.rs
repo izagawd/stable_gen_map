@@ -1,4 +1,4 @@
-use crate::key::{is_occupied_by_generation, Key, KeyData};
+use crate::key::{is_occupied_by_generation, Key, KeyData, KeyExtra};
 use crate::key_piece::KeyPiece;
 use crate::slot_item::{SlotItem, SlotItemClone, SlotItemMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
@@ -12,6 +12,7 @@ use std::ops::{Index, IndexMut};
 pub(crate) struct Slot<C: SlotItem<K>, K: Key> {
     pub(crate) item: C,
     pub(crate) generation: K::Gen,
+    pub(crate) other: K::Extra,
 }
 
 impl<C: SlotItem<K>, K: Key> Drop for Slot<C, K> {
@@ -53,6 +54,7 @@ pub struct GenMap<K: Key, C: SlotItem<K>> {
     pub(crate) next_free: Cell<Option<K::Idx>>,
     pub(crate) phantom: PhantomData<fn(K)>,
     pub(crate) num_elements: Cell<usize>,
+    pub(crate) extra_state: <K::Extra as KeyExtra>::MapState,
 }
 
 // ─── Index / IndexMut ────────────────────────────────────────────────────────
@@ -126,6 +128,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             next_free: Cell::new(None),
             phantom: PhantomData,
             num_elements: Cell::new(0),
+            extra_state: K::Extra::EMPTY_MAP_STATE,
         }
     }
 
@@ -137,6 +140,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             next_free: Cell::new(None),
             phantom: PhantomData,
             num_elements: Cell::new(0),
+            extra_state: K::Extra::EMPTY_MAP_STATE,
         }
     }
 
@@ -178,6 +182,9 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             if slot.generation != key_data.generation {
                 return None;
             }
+            if !K::Extra::validate(k.extra(), slot.other) {
+                return None;
+            }
             Some(slot.item.ref_output())
         }
     }
@@ -191,10 +198,13 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             let slot = &*slots.get(idx.into_usize())?.get();
             if is_occupied_by_generation(slot.generation) {
                 Some((
-                    K::from(KeyData {
-                        idx,
-                        generation: slot.generation,
-                    }),
+                    K::from_parts(
+                        KeyData {
+                            idx,
+                            generation: slot.generation,
+                        },
+                        slot.other,
+                    ),
                     slot.item.ref_output(),
                 ))
             } else {
@@ -202,9 +212,6 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             }
         }
     }
-
-    // ── get_mut (requires SlotItemMutOutput) ────────────────────────────
-    // (placed inside a separate impl block below)
 
     // ── insert ──────────────────────────────────────────────────────────
 
@@ -231,6 +238,8 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
         unsafe {
             let slots = &mut *self.slots.get();
 
+            let extra = K::Extra::stamp(&self.extra_state);
+
             let (idx, generation) = if let Some(idx) = self.next_free.get() {
                 // reuse a free slot
                 let slot = slots.get_unchecked_mut(idx.into_usize()).get_mut();
@@ -248,15 +257,19 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                 slots.push(UnsafeCell::new(Slot {
                     generation,
                     item: C::new_vacant(None),
+                    other: K::Extra::vacant_placeholder(),
                 }));
                 (idx, generation)
             };
 
             // key gen is one ahead; only valid after we commit
-            let key = K::from(KeyData {
-                idx,
-                generation: generation.checked_add(&K::Gen::one()).unwrap(),
-            });
+            let key = K::from_parts(
+                KeyData {
+                    idx,
+                    generation: generation.checked_add(&K::Gen::one()).unwrap(),
+                },
+                extra,
+            );
 
             let guard = FreeGuard { map: self, idx };
 
@@ -270,6 +283,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
             slot.item.write_occupied(value);
             slot.generation += K::Gen::one();
+            slot.other = extra;
             self.num_elements.set(self.num_elements.get() + 1);
 
             let value_ref: &C::Output = slot.item.ref_output();
@@ -291,6 +305,9 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
         if DO_GENERATION_CHECK {
             if slot.generation != key_data.generation {
+                return None;
+            }
+            if !K::Extra::validate(args.key.extra(), slot.other) {
                 return None;
             }
         }
@@ -340,17 +357,21 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     pub fn clear(&mut self) {
         let slots_len = self.slots.get_mut().len();
         for idx in 0..slots_len {
-            let generation = unsafe {
+            let slot = unsafe {
                 self.slots
                     .get_mut()
                     .get_unchecked_mut(idx)
                     .get_mut()
-                    .generation
             };
-            let key = K::from(KeyData {
-                idx: K::Idx::from_usize(idx),
-                generation,
-            });
+            let generation = slot.generation;
+            let other = slot.other;
+            let key = K::from_parts(
+                KeyData {
+                    idx: K::Idx::from_usize(idx),
+                    generation,
+                },
+                other,
+            );
             let _ = self.remove(key);
         }
         debug_assert_eq!(self.len(), 0);
@@ -368,11 +389,13 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                 let slot = slot_cell.get_mut();
                 if is_occupied_by_generation(slot.generation) {
                     let value = slot.item.stored_mut();
-                    let key_data = KeyData {
-                        idx: K::Idx::from_usize(idx),
-                        generation: slot.generation,
-                    };
-                    let key = K::from(key_data);
+                    let key = K::from_parts(
+                        KeyData {
+                            idx: K::Idx::from_usize(idx),
+                            generation: slot.generation,
+                        },
+                        slot.other,
+                    );
 
                     if !f(key, value) {
                         Self::remove_split_data::<false>(RemoveArguments {
@@ -431,10 +454,13 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                 let slot = &*slot_cell.get();
                 if is_occupied_by_generation(slot.generation) {
                     Some((
-                        K::from(KeyData {
-                            idx: K::Idx::from_usize(idx),
-                            generation: slot.generation,
-                        }),
+                        K::from_parts(
+                            KeyData {
+                                idx: K::Idx::from_usize(idx),
+                                generation: slot.generation,
+                            },
+                            slot.other,
+                        ),
                         slot.item.ref_output(),
                     ))
                 } else {
@@ -456,6 +482,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             num_elements: self.num_elements.clone(),
             phantom: PhantomData,
             next_free: self.next_free.clone(),
+            extra_state: K::Extra::EMPTY_MAP_STATE,
             slots: UnsafeCell::new(
                 (&*self.slots.get())
                     .iter()
@@ -463,6 +490,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                         let slot = &*slot_cell.get();
                         UnsafeCell::new(Slot {
                             generation: slot.generation,
+                            other: slot.other,
                             item: slot
                                 .item
                                 .clone_item(is_occupied_by_generation(slot.generation)),
@@ -502,6 +530,9 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             next_free: Cell::new(next_free),
             phantom: PhantomData,
             num_elements: Cell::new(num_elements),
+            // Clone targets always get a fresh extra state so new inserts
+            // into the clone produce their own map id.
+            extra_state: K::Extra::EMPTY_MAP_STATE,
         }
     }
 }
@@ -518,6 +549,9 @@ impl<K: Key, C: SlotItemMutOutput<K>> GenMap<K, C> {
         if slot.generation != key_data.generation {
             return None;
         }
+        if !K::Extra::validate(k.extra(), slot.other) {
+            return None;
+        }
         Some(unsafe { slot.item.mut_output() })
     }
 
@@ -527,10 +561,13 @@ impl<K: Key, C: SlotItemMutOutput<K>> GenMap<K, C> {
         let slot = self.slots.get_mut().get_mut(idx.into_usize())?.get_mut();
         if is_occupied_by_generation(slot.generation) {
             Some((
-                K::from(KeyData {
-                    idx,
-                    generation: slot.generation,
-                }),
+                K::from_parts(
+                    KeyData {
+                        idx,
+                        generation: slot.generation,
+                    },
+                    slot.other,
+                ),
                 unsafe { slot.item.mut_output() },
             ))
         } else {
@@ -560,10 +597,13 @@ impl<'a, K: Key, C: SlotItem<K>> Iterator for IterMut<'a, K, C> {
             }
 
             let value: &mut C::Stored = unsafe { slot.item.stored_mut() };
-            let key = K::from(KeyData {
-                idx: K::Idx::from_usize(idx),
-                generation: slot.generation,
-            });
+            let key = K::from_parts(
+                KeyData {
+                    idx: K::Idx::from_usize(idx),
+                    generation: slot.generation,
+                },
+                slot.other,
+            );
             return Some((key, value));
         }
         None
@@ -613,7 +653,7 @@ impl<'a, K: Key, C: SlotItem<K>> Iterator for Drain<'a, K, C> {
         loop {
             let idx = self.idx;
 
-            let generation = {
+            let (generation, other) = {
                 let slots = self.map.slots.get_mut();
                 if idx >= slots.len() {
                     return None;
@@ -623,13 +663,16 @@ impl<'a, K: Key, C: SlotItem<K>> Iterator for Drain<'a, K, C> {
                 if !is_occupied_by_generation(slot.generation) {
                     continue;
                 }
-                slot.generation
+                (slot.generation, slot.other)
             };
 
-            let key = K::from(KeyData {
-                idx: K::Idx::from_usize(idx),
-                generation,
-            });
+            let key = K::from_parts(
+                KeyData {
+                    idx: K::Idx::from_usize(idx),
+                    generation,
+                },
+                other,
+            );
             let value = unsafe { self.map.remove(key).unwrap_unchecked() };
             return Some((key, value));
         }
@@ -682,11 +725,12 @@ impl<K: Key, C: SlotItem<K>> Iterator for IntoIter<K, C> {
                 generation: slot.generation,
                 idx: K::Idx::from_usize(idx),
             };
+            let other = slot.other;
 
             // prevent Slot::drop from double-dropping
             slot.generation = K::Gen::zero();
 
-            let key = K::from(key_data);
+            let key = K::from_parts(key_data, other);
             return Some((key, value));
         }
         None

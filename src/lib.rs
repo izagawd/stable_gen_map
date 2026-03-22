@@ -1,7 +1,9 @@
 #![allow(warnings)]
 pub mod gen_map;
 pub mod key;
+pub mod key_castable;
 pub mod key_piece;
+pub mod map_id;
 pub mod slot_item;
 pub mod stable_deref_gen_map;
 pub mod stable_gen_map;
