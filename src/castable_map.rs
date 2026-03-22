@@ -1,18 +1,18 @@
 //! Map type that uses [`DefaultCastableKey<T>`] as its user-facing key,
-//! storing smart pointers whose deref target is `T`.
+//! storing smart pointers whose deref target is some base trait (e.g. `dyn Any`).
 //!
-//! Only the `StableDerefGenMap` variant makes sense here — the value must
-//! be a trait object behind a smart pointer so the key can carry its metadata.
+//! Only the `StableDerefGenMap` variant exists — the value must be a trait
+//! object behind a smart pointer so the key can carry its metadata.
 //!
 //! # How it works
 //!
-//! The inner `GenMap` is keyed by `DefaultCastableKey<D::Target>`.  GenMap's
-//! `from_parts` produces keys with zeroed metadata; the wrapper patches in
-//! the real metadata (from the stored value's fat pointer) before returning
-//! keys to the user.
+//! The inner `GenMap` is keyed by `DefaultCastableKey<D::Target>` (e.g.
+//! `DefaultCastableKey<dyn Any>`).
 //!
-//! `get` combines the data pointer from the slot with the metadata from
-//! the key to reconstruct `&D::Target`.
+//! `get<T>` accepts a `DefaultCastableKey<T>` for *any* `T: ?Sized`, converts
+//! it to the inner key type (same key_data + map_id), looks up the slot to
+//! get the raw data pointer, then combines that pointer with `key.metadata()`
+//! to reconstruct `&T`.
 
 use std::ptr::Pointee;
 
@@ -23,11 +23,12 @@ use crate::stable_deref_gen_map::{DerefGenMapPromise, StableDerefGenMap};
 // ─── KeyCastableStableDerefGenMap ───────────────────────────────────────────
 
 /// A [`StableDerefGenMap`] wrapper whose keys are
-/// [`DefaultCastableKey<D::Target>`].
+/// [`DefaultCastableKey<T>`].
 ///
 /// `D` is the smart pointer type (e.g. `Box<dyn Any>`, `Rc<dyn Foo>`).
-/// The key carries the pointer metadata for `D::Target`, so a `&D::Target`
-/// can be reconstructed from the key + the stored data pointer.
+/// You insert values as `D`, getting back a `DefaultCastableKey<D::Target>`.
+/// You can then look up with a `DefaultCastableKey<T>` for a *different* `T`
+/// and get back `Option<&T>`, as long as the metadata in the key is valid.
 pub struct KeyCastableStableDerefGenMap<D: DerefGenMapPromise + 'static>
 where
     <D::Target as Pointee>::Metadata: Copy,
@@ -68,7 +69,7 @@ where
         let (raw_key, reference) = self.inner.insert(value);
         // raw_key has zeroed metadata from GenMap's from_parts.
         // Patch it with the real metadata from the stored reference.
-        let metadata = std::ptr::metadata(reference);
+        let metadata = std::ptr::metadata(reference as *const D::Target);
         let patched = DefaultCastableKey::from_castable_parts(
             raw_key.data(),
             raw_key.extra(),
@@ -87,7 +88,7 @@ where
         func: impl FnOnce(DefaultCastableKey<D::Target>) -> D,
     ) -> (DefaultCastableKey<D::Target>, &D::Target) {
         let (raw_key, reference) = self.inner.insert_with_key(func);
-        let metadata = std::ptr::metadata(reference);
+        let metadata = std::ptr::metadata(reference as *const D::Target);
         let patched = DefaultCastableKey::from_castable_parts(
             raw_key.data(),
             raw_key.extra(),
@@ -96,17 +97,50 @@ where
         (patched, reference)
     }
 
-    /// Shared-reference lookup by key.
+    /// Shared-reference lookup returning `&D::Target` (the base trait).
     ///
-    /// The generation and map-id checks happen inside GenMap. The metadata
-    /// in the key is not used here — the stored smart pointer already knows
-    /// its own type.
+    /// Use [`get_as`](Self::get_as) to look up with a differently-typed key.
     #[inline]
     pub fn get(&self, key: DefaultCastableKey<D::Target>) -> Option<&D::Target> {
         self.inner.get(key)
     }
 
-    /// Mutable-reference lookup by key.
+    /// Shared-reference lookup with a key for a *different* type `T`.
+    ///
+    /// Converts the key to the inner key type (same key_data + map_id),
+    /// looks up the slot to get the data pointer, then combines it with
+    /// `key.metadata()` to produce `&T`.
+    ///
+    /// # Safety
+    /// The metadata in `key` must be valid for the concrete type stored
+    /// at this slot. This is the caller's responsibility (or will be
+    /// enforced by the future cross-casting infrastructure).
+    #[inline]
+    pub fn get_as<T: ?Sized + Pointee>(
+        &self,
+        key: DefaultCastableKey<T>,
+    ) -> Option<&T>
+    where
+        <T as Pointee>::Metadata: Copy,
+    {
+        // Build an inner key (DefaultCastableKey<D::Target>) from the
+        // same key_data + map_id. The metadata is irrelevant for lookup —
+        // GenMap only checks idx, generation, and Extra (MapId).
+        let inner_key = DefaultCastableKey::<D::Target>::from_parts(
+            key.data(),
+            key.extra(),
+        );
+        let base_ref: &D::Target = self.inner.get(inner_key)?;
+
+        // Extract the data pointer from the base trait reference.
+        let data_ptr: *const () = (base_ref as *const D::Target).cast();
+
+        // Reconstruct &T using the data pointer + the key's metadata.
+        let fat_ptr: *const T = std::ptr::from_raw_parts(data_ptr, key.metadata());
+        unsafe{ Some(&*fat_ptr) }
+    }
+
+    /// Mutable-reference lookup returning `&mut D::Target`.
     #[inline]
     pub fn get_mut(&mut self, key: DefaultCastableKey<D::Target>) -> Option<&mut D::Target>
     where
@@ -115,10 +149,50 @@ where
         self.inner.get_mut(key)
     }
 
+    /// Mutable-reference lookup with a differently-typed key.
+    ///
+    /// # Safety
+    /// Same as [`get_as`](Self::get_as).
+    #[inline]
+    pub fn get_as_mut<T: ?Sized + Pointee>(
+        &mut self,
+        key: DefaultCastableKey<T>,
+    ) -> Option<&mut T>
+    where
+        <T as Pointee>::Metadata: Copy,
+        D: std::ops::DerefMut,
+    {
+        let inner_key = DefaultCastableKey::<D::Target>::from_parts(
+            key.data(),
+            key.extra(),
+        );
+        let base_ref: &mut D::Target = self.inner.get_mut(inner_key)?;
+
+        let data_ptr: *mut () = (base_ref as *mut D::Target).cast();
+        let fat_ptr: *mut T = std::ptr::from_raw_parts_mut(data_ptr, key.metadata());
+        unsafe{ Some(&mut *fat_ptr) }
+    }
+
     /// Removes an element by key, returning the owned smart pointer.
     #[inline]
     pub fn remove(&mut self, key: DefaultCastableKey<D::Target>) -> Option<D> {
         self.inner.remove(key)
+    }
+
+    /// Removes using a differently-typed key.
+    #[inline]
+    pub fn remove_by<T: ?Sized + Pointee>(
+        &mut self,
+        key: DefaultCastableKey<T>,
+    ) -> Option<D>
+    where
+        <T as Pointee>::Metadata: Copy,
+    {
+        let inner_key = DefaultCastableKey::<D::Target>::from_parts(
+            key.data(),
+            key.extra(),
+        );
+        self.inner.remove(inner_key)
     }
 
     /// Empties the map.
@@ -133,7 +207,7 @@ where
         let raw = self.inner.snapshot();
         raw.into_iter()
             .map(|(raw_key, reference)| {
-                let metadata = std::ptr::metadata(reference);
+                let metadata = std::ptr::metadata(reference as *const D::Target);
                 let patched = DefaultCastableKey::from_castable_parts(
                     raw_key.data(),
                     raw_key.extra(),
