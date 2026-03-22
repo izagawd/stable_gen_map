@@ -17,12 +17,21 @@ pub struct MapId(pub(crate) usize);
 impl MapId {
     /// The placeholder used for vacant slots. Never matches a real id.
     pub(crate) const VACANT: Self = MapId(0);
+
+    /// Requests a fresh, globally unique map id.
+    ///
+    /// Ids start at 1; 0 is reserved as the invalid/vacant sentinel.
+    pub(crate) fn next() -> Self {
+        let raw = NEXT_MAP_ID.fetch_add(1, Ordering::Relaxed);
+        assert!(raw != 0, "MapId counter overflow");
+        MapId(raw)
+    }
 }
 
 /// Per-map state that lazily assigns a [`MapId`] on the first insert.
 ///
 /// A freshly constructed or cloned map starts with `None` and acquires an id
-/// the first time [`KeyExtra::stamp`] is called.
+/// the first time [`ensure_id`](MapIdState::ensure_id) is called.
 pub struct MapIdState {
     id: Cell<Option<MapId>>,
 }
@@ -38,6 +47,21 @@ impl MapIdState {
     pub fn current_id(&self) -> Option<MapId> {
         self.id.get()
     }
+
+    /// Returns the current id, or requests a fresh one from the global
+    /// counter if this state doesn't have one yet.
+    ///
+    /// Once an id is assigned it never changes.
+    pub fn ensure_id(&self) -> MapId {
+        match self.id.get() {
+            Some(id) => id,
+            None => {
+                let id = MapId::next();
+                self.id.set(Some(id));
+                id
+            }
+        }
+    }
 }
 
 unsafe impl KeyExtra for MapId {
@@ -46,19 +70,7 @@ unsafe impl KeyExtra for MapId {
 
     #[inline]
     fn stamp(state: &MapIdState) -> Self {
-        match state.id.get() {
-            Some(id) => id,
-            None => {
-                let raw = NEXT_MAP_ID.fetch_add(1, Ordering::Relaxed);
-                // Overflow past usize::MAX wraps to 0 which is our vacant
-                // sentinel. In practice this is unreachable (would require
-                // creating usize::MAX maps).
-                assert!(raw != 0, "MapId counter overflow");
-                let id = MapId(raw);
-                state.id.set(Some(id));
-                id
-            }
-        }
+        state.ensure_id()
     }
 
     #[inline]

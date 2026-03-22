@@ -7,7 +7,7 @@
 use std::ptr::Pointee;
 
 use crate::key::Key;
-use crate::key_castable::CastableKey;
+use crate::key_castable::{CastableKey, DefaultCastableKey};
 use crate::map_id::MapId;
 use crate::stable_deref_gen_map::{DerefGenMapPromise, StableDerefGenMap};
 
@@ -171,7 +171,7 @@ where
     /// at this slot. This is the caller's responsibility (or will be
     /// enforced by the future cross-casting infrastructure).
     #[inline]
-    pub unsafe fn get_as<T: ?Sized + Pointee, CK>(
+    pub fn get_as<T: ?Sized + Pointee, CK>(
         &self,
         key: CK,
     ) -> Option<&T>
@@ -184,7 +184,7 @@ where
 
         let data_ptr: *const () = (base_ref as *const D::Target).cast();
         let fat_ptr: *const T = std::ptr::from_raw_parts(data_ptr, key.metadata());
-        Some(&*fat_ptr)
+        unsafe{ Some(&*fat_ptr) }
     }
 
     /// Mutable-reference lookup with a differently-typed key.
@@ -192,7 +192,7 @@ where
     /// # Safety
     /// Same as [`get_as`](Self::get_as).
     #[inline]
-    pub unsafe fn get_as_mut<T: ?Sized + Pointee, CK>(
+    pub fn get_as_mut<T: ?Sized + Pointee, CK>(
         &mut self,
         key: CK,
     ) -> Option<&mut T>
@@ -206,7 +206,7 @@ where
 
         let data_ptr: *mut () = (base_ref as *mut D::Target).cast();
         let fat_ptr: *mut T = std::ptr::from_raw_parts_mut(data_ptr, key.metadata());
-        Some(&mut *fat_ptr)
+        unsafe{ Some(&mut *fat_ptr) }
     }
 
     /// Removes using a differently-typed key.
@@ -223,3 +223,10 @@ where
         self.inner.remove(inner_key)
     }
 }
+
+/// Convenience alias: [`KeyCastableStableDerefGenMap`] storing `Box<T>` with
+/// [`DefaultCastableKey<T>`] keys.
+///
+/// Usage: `KeyCastableBoxStableDerefGenMap<DefaultCastableKey<dyn Any>, dyn Any>`
+pub type KeyCastableBoxStableDerefGenMap<K,T> =
+KeyCastableStableDerefGenMap<K, Box<T>>;
