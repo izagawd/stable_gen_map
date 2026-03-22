@@ -16,8 +16,7 @@ use crate::stable_deref_gen_map::{
     DerefGenMapPromise, SmartPtrCloneable, StableDerefGenMap,
 };
 
-// ─── helper: patch a raw key with real metadata ─────────────────────────────
-
+/// helper: patch a raw key with real metadata
 #[inline]
 fn patch_key<K, D>(raw_key: K, reference: &D::Target) -> K
 where
@@ -178,8 +177,7 @@ where
         D: std::ops::DerefMut,
     {
         let (raw_key, reference) = self.inner.get_by_index_only_mut(idx)?;
-        let metadata = std::ptr::metadata(reference as *const D::Target);
-        let patched = K::from_castable_parts(raw_key.data(), raw_key.extra(), metadata);
+        let patched = patch_key::<K, D>(raw_key, reference);
         Some((patched, reference))
     }
 
@@ -199,9 +197,7 @@ where
         F: FnMut(K, &mut D) -> bool,
     {
         self.inner.retain(|raw_key, stored| {
-            let reference: &D::Target = &**stored;
-            let metadata = std::ptr::metadata(reference as *const D::Target);
-            let patched = K::from_castable_parts(raw_key.data(), raw_key.extra(), metadata);
+            let patched = patch_key::<K, D>(raw_key, &**stored);
             f(patched, stored)
         })
     }
@@ -321,9 +317,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let (raw_key, stored) = self.inner.next()?;
-        let reference: &D::Target = &**stored;
-        let metadata = std::ptr::metadata(reference as *const D::Target);
-        let patched = K::from_castable_parts(raw_key.data(), raw_key.extra(), metadata);
+        let patched = patch_key::<K, D>(raw_key, &**stored);
         Some((patched, stored))
     }
 
@@ -348,9 +342,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let (raw_key, value) = self.inner.next()?;
-        let reference: &D::Target = &*value;
-        let metadata = std::ptr::metadata(reference as *const D::Target);
-        let patched = K::from_castable_parts(raw_key.data(), raw_key.extra(), metadata);
+        let patched = patch_key::<K, D>(raw_key, &*value);
         Some((patched, value))
     }
 
@@ -375,9 +367,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let (raw_key, value) = self.inner.next()?;
-        let reference: &D::Target = &*value;
-        let metadata = std::ptr::metadata(reference as *const D::Target);
-        let patched = K::from_castable_parts(raw_key.data(), raw_key.extra(), metadata);
+        let patched = patch_key::<K, D>(raw_key, &*value);
         Some((patched, value))
     }
 
