@@ -20,7 +20,6 @@
 //! - `DefaultCastableKey<SizedType>`: 16 bytes (KeyData + thin NonNull)
 //! - `DefaultCastableKey<dyn Trait>`:  24 bytes (KeyData + fat NonNull)
 
-use std::any::Any;
 use std::ptr::Pointee;
 
 use crate::key::KeyData;
@@ -176,36 +175,7 @@ where
     }
 }
 
-// ─── downcast_key ───────────────────────────────────────────────────────────
 
-/// Attempts to downcast a `CastableKey<dyn Any>` to a `CastableKey<Concrete>`.
-///
-/// Checks the `TypeId` stored in the `dyn Any` vtable at runtime. Returns
-/// `None` if the concrete type doesn't match.
-///
-/// # Example
-/// ```ignore
-/// let dyn_key: DefaultCastableKey<dyn Any> = key;
-/// if let Some(concrete) = downcast_key::<MyStruct, _, DefaultCastableKey<MyStruct>>(dyn_key) {
-///     // concrete: DefaultCastableKey<MyStruct>
-/// }
-/// ```
-#[inline]
-pub fn downcast_key<Concrete: 'static, KIn, KOut>(key: KIn) -> Option<KOut>
-where
-    KIn: CastableKey<dyn Any>,
-    KOut: CastableKey<Concrete, Idx = KIn::Idx, Gen = KIn::Gen>,
-{
-    let metadata = key.metadata();
-    unsafe {
-        let gotten: &dyn Any = &*std::ptr::from_raw_parts(&(), metadata);
-        if gotten.type_id() == std::any::TypeId::of::<Concrete>() {
-            Some(KOut::from_castable_parts(key.key_data(), key.map_id(), ()))
-        } else {
-            None
-        }
-    }
-}
 
 // ─── Macro for custom castable key types ────────────────────────────────────
 

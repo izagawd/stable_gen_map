@@ -13,7 +13,7 @@ use std::ops::{CoerceUnsized, Index, IndexMut};
 use std::ptr::Pointee;
 
 use crate::castable_key::CastableKey;
-use crate::{castable_key, gen_map};
+use crate::gen_map;
 use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
@@ -356,6 +356,39 @@ where
         Drain {
             inner: self.inner.drain(),
             _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+// ─── downcast_key (requires D::Target = dyn Any) ───────────────────────────
+
+impl<CK, D> KeyCastableStableGenMap<CK, D>
+where
+    CK: CastableKey<dyn std::any::Any>,
+    D: DerefGenMapPromise<Target = dyn std::any::Any> + 'static,
+{
+    /// Attempts to downcast a `CastableKey<dyn Any>` to a `CastableKey<Concrete>`.
+    ///
+    /// Looks up the actual data to obtain its `TypeId` (no UB). Returns
+    /// `None` if the key is stale / wrong map, or the concrete type doesn't match.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let dyn_key: DefaultCastableKey<dyn Any> = key;
+    /// if let Some(concrete) = map.downcast_key::<MyStruct, DefaultCastableKey<MyStruct>>(dyn_key) {
+    ///     // concrete: DefaultCastableKey<MyStruct>
+    /// }
+    /// ```
+    #[inline]
+    pub fn downcast_key<Concrete: 'static, KOut>(&self, key: CK) -> Option<KOut>
+    where
+        KOut: CastableKey<Concrete, Idx = CK::Idx, Gen = CK::Gen>,
+    {
+        let data: &dyn std::any::Any = self.get(key)?;
+        if data.type_id() == std::any::TypeId::of::<Concrete>() {
+            Some(KOut::from_castable_parts(key.key_data(), key.map_id(), ()))
+        } else {
+            None
         }
     }
 }
