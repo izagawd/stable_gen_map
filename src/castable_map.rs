@@ -11,7 +11,7 @@ use crate::key_castable::{CastableKey, DefaultCastableKey};
 use crate::map_id::MapId;
 use crate::stable_deref_gen_map::{DerefGenMapPromise, StableDerefGenMap};
 
-// ─── KeyCastableStableDerefGenMap ───────────────────────────────────────────
+// ─── KeyCastableStableGenMap ───────────────────────────────────────────
 
 /// A [`StableDerefGenMap`] wrapper that supports typed lookups via castable
 /// keys.
@@ -23,7 +23,7 @@ use crate::stable_deref_gen_map::{DerefGenMapPromise, StableDerefGenMap};
 /// You insert values as `D`, getting back a `K` (with real metadata patched
 /// in). You can upcast/cross-cast that key to a different `T` and use
 /// [`get_as`](Self::get_as) to get `Option<&T>`.
-pub struct KeyCastableStableDerefGenMap<K, D>
+pub struct KeyCastableStableGenMap<K, D>
 where
     K: Key<Extra = MapId>,
     D: DerefGenMapPromise + 'static,
@@ -31,7 +31,7 @@ where
     inner: StableDerefGenMap<K, D>,
 }
 
-impl<K, D> KeyCastableStableDerefGenMap<K, D>
+impl<K, D> KeyCastableStableGenMap<K, D>
 where
     K: Key<Extra = MapId>,
     D: DerefGenMapPromise + 'static,
@@ -69,7 +69,7 @@ where
 //
 // These are the "native" operations that work with the base trait key.
 
-impl<K, D> KeyCastableStableDerefGenMap<K, D>
+impl<K, D> KeyCastableStableGenMap<K, D>
 where
     K: CastableKey<D::Target>,
     D: DerefGenMapPromise + 'static,
@@ -155,7 +155,7 @@ where
 // These accept any CastableKey with matching Idx/Gen — the key might be
 // parameterised over a *different* T than D::Target.
 
-impl<K, D> KeyCastableStableDerefGenMap<K, D>
+impl<K, D> KeyCastableStableGenMap<K, D>
 where
     K: Key<Extra = MapId>,
     D: DerefGenMapPromise + 'static,
@@ -224,9 +224,9 @@ where
     }
 }
 
-/// Convenience alias: [`KeyCastableStableDerefGenMap`] storing `Box<T>` with
+/// Convenience alias: [`KeyCastableStableGenMap`] storing `Box<T>` with
 /// [`DefaultCastableKey<T>`] keys.
 ///
-/// Usage: `KeyCastableBoxStableDerefGenMap<DefaultCastableKey<dyn Any>, dyn Any>`
-pub type KeyCastableBoxStableDerefGenMap<K,T> =
-KeyCastableStableDerefGenMap<K, Box<T>>;
+/// Usage: `KeyCastableBoxStableGenMap<DefaultCastableKey<dyn Any>, dyn Any>`
+pub type KeyCastableBoxStableGenMap<K,T> =
+KeyCastableStableGenMap<K, Box<T>>;
