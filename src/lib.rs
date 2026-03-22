@@ -1,5 +1,7 @@
 #![allow(warnings)]
+#![feature(ptr_metadata)]
 pub mod gen_map;
+pub mod castable_map;
 pub mod key;
 pub mod key_castable;
 pub mod key_piece;
