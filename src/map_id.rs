@@ -65,11 +65,11 @@ impl MapIdState {
 }
 
 unsafe impl KeyExtra for MapId {
-    type MapState = MapIdState;
-    const EMPTY_MAP_STATE: MapIdState = MapIdState::new();
+    type State = MapIdState;
+    const EMPTY_STATE: MapIdState = MapIdState::new();
 
     #[inline]
-    fn stamp(state: &MapIdState) -> Self {
+    fn produce(state: &MapIdState) -> Self {
         state.ensure_id()
     }
 

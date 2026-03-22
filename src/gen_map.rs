@@ -54,7 +54,7 @@ pub struct GenMap<K: Key, C: SlotItem<K>> {
     pub(crate) next_free: Cell<Option<K::Idx>>,
     pub(crate) phantom: PhantomData<fn(K)>,
     pub(crate) num_elements: Cell<usize>,
-    pub(crate) extra_state: <K::Extra as KeyExtra>::MapState,
+    pub(crate) extra_state: <K::Extra as KeyExtra>::State,
 }
 
 // ─── Index / IndexMut ────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             next_free: Cell::new(None),
             phantom: PhantomData,
             num_elements: Cell::new(0),
-            extra_state: K::Extra::EMPTY_MAP_STATE,
+            extra_state: K::Extra::EMPTY_STATE,
         }
     }
 
@@ -140,7 +140,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             next_free: Cell::new(None),
             phantom: PhantomData,
             num_elements: Cell::new(0),
-            extra_state: K::Extra::EMPTY_MAP_STATE,
+            extra_state: K::Extra::EMPTY_STATE,
         }
     }
 
@@ -238,7 +238,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
         unsafe {
             let slots = &mut *self.slots.get();
 
-            let extra = K::Extra::stamp(&self.extra_state);
+            let extra = K::Extra::produce(&self.extra_state);
 
             let (idx, generation) = if let Some(idx) = self.next_free.get() {
                 // reuse a free slot
@@ -482,7 +482,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             num_elements: self.num_elements.clone(),
             phantom: PhantomData,
             next_free: self.next_free.clone(),
-            extra_state: K::Extra::EMPTY_MAP_STATE,
+            extra_state: K::Extra::EMPTY_STATE,
             slots: UnsafeCell::new(
                 (&*self.slots.get())
                     .iter()
@@ -532,7 +532,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             num_elements: Cell::new(num_elements),
             // Clone targets always get a fresh extra state so new inserts
             // into the clone produce their own map id.
-            extra_state: K::Extra::EMPTY_MAP_STATE,
+            extra_state: K::Extra::EMPTY_STATE,
         }
     }
 }

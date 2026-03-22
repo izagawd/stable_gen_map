@@ -22,18 +22,18 @@ pub(crate) fn is_occupied_by_generation<Num: KeyPiece>(generation: Num) -> bool 
 /// access a slot.  A buggy `validate` that returns `true` incorrectly can
 /// cause the map to hand out references to the wrong data.
 pub unsafe trait KeyExtra: Copy + 'static {
-    /// Per-map state used to produce `Self` values on insert.
-    /// Created once per map; for `()` this is `()`, for `MapId` this is a
-    /// `Cell<usize>` that lazily assigns an id on first insert.
-    type MapState;
+    /// Associated state held by the container, used to produce `Self` values
+    /// on insert. For `()` this is `()`, for `MapId` this is a lazily
+    /// initialised identifier source.
+    type State;
 
-    /// A const-evaluable empty state, used by `GenMap::new()`.
-    const EMPTY_MAP_STATE: Self::MapState;
+    /// A const-evaluable empty state, used at construction time.
+    const EMPTY_STATE: Self::State;
 
-    /// Produce the extra value to stamp on a newly inserted slot+key.
-    fn stamp(state: &Self::MapState) -> Self;
+    /// Produce the extra value for a newly inserted slot+key.
+    fn produce(state: &Self::State) -> Self;
 
-    /// Check a key's extra against a slot's extra. Called during `get`.
+    /// Check a key's extra against a slot's extra. Returns `true` if valid.
     fn validate(key_extra: Self, slot_extra: Self) -> bool;
 
     /// Placeholder value for vacant slots (never validated against).
@@ -43,11 +43,11 @@ pub unsafe trait KeyExtra: Copy + 'static {
 // ─── () implementation (no-op) ──────────────────────────────────────────────
 
 unsafe impl KeyExtra for () {
-    type MapState = ();
-    const EMPTY_MAP_STATE: () = ();
+    type State = ();
+    const EMPTY_STATE: () = ();
 
     #[inline(always)]
-    fn stamp(_state: &()) -> Self {}
+    fn produce(_state: &()) -> Self {}
 
     #[inline(always)]
     fn validate(_key: Self, _slot: Self) -> bool {
