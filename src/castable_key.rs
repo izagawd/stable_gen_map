@@ -47,7 +47,7 @@ pub unsafe trait CastableKey: Copy {
     fn map_id(&self) -> MapId;
     fn metadata(&self) -> <Self::RefType as Pointee>::Metadata;
 
-    fn from_castable_parts(
+    unsafe fn from_castable_parts(
         data: KeyData<Self::Idx, Self::Gen>,
         map_id: MapId,
         metadata: <Self::RefType as Pointee>::Metadata,
@@ -157,7 +157,7 @@ where
     }
 
     #[inline]
-    fn from_castable_parts(
+    unsafe fn from_castable_parts(
         data: KeyData<u32, u32>,
         map_id: MapId,
         metadata: <T as Pointee>::Metadata,

@@ -75,7 +75,7 @@ where
     D: DerefGenMapPromise,
 {
     let metadata = std::ptr::metadata(reference as *const D::Target);
-    CK::from_castable_parts(inner.key_data, inner.map_id, metadata)
+    unsafe{ CK::from_castable_parts(inner.key_data, inner.map_id, metadata) }
 }
 
 // ─── KeyCastableStableGenMap ────────────────────────────────────────────────
@@ -199,7 +199,7 @@ where
     {
         let data: &dyn Any = self.inner.get(to_inner(&key))?;
         if data.type_id() == std::any::TypeId::of::<Concrete>() {
-            Some(KOut::from_castable_parts(key.key_data(), key.map_id(), ()))
+            Some(unsafe{KOut::from_castable_parts(key.key_data(), key.map_id(), ())})
         } else {
             None
         }
