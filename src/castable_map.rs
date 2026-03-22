@@ -372,12 +372,11 @@ where
     /// Looks up the slot via key_data + map_id, gets the data pointer,
     /// then combines it with `key.metadata()` to produce `&T`.
     #[inline]
-    pub fn get_as<T: ?Sized + Pointee, CKIn>(
+    pub fn get_as<T: ?Sized + Pointee>(
         &self,
-        key: CKIn,
+        key: impl CastableKey<T, Idx = CK::Idx, Gen = CK::Gen>,
     ) -> Option<&T>
     where
-        CKIn: CastableKey<T, Idx=CK::Idx, Gen=CK::Gen>,
         <T as Pointee>::Metadata: Copy,
     {
         let base_ref: &D::Target = self.inner.get(to_inner(&key))?;
@@ -388,12 +387,11 @@ where
 
     /// Mutable-reference lookup with a differently-typed key.
     #[inline]
-    pub fn get_as_mut<T: ?Sized + Pointee, CKIn>(
+    pub fn get_as_mut<T: ?Sized + Pointee>(
         &mut self,
-        key: CKIn,
+        key: impl CastableKey<T, Idx = CK::Idx, Gen = CK::Gen>,
     ) -> Option<&mut T>
     where
-        CKIn: CastableKey<T, Idx=CK::Idx, Gen=CK::Gen> + CoerceUnsized<CK>,
         <T as Pointee>::Metadata: Copy,
         D: std::ops::DerefMut,
     {
@@ -405,12 +403,11 @@ where
 
     /// Removes using a differently-typed key.
     #[inline]
-    pub fn remove_by<T: ?Sized + Pointee, CKIn>(
+    pub fn remove_by<T: ?Sized + Pointee>(
         &mut self,
-        key: CKIn,
+        key: impl CastableKey<T, Idx = CK::Idx, Gen = CK::Gen>,
     ) -> Option<D>
     where
-        CKIn: CastableKey<T, Idx=CK::Idx, Gen=CK::Gen>,
         <T as Pointee>::Metadata: Copy,
     {
         self.inner.remove(to_inner(&key))
