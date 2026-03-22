@@ -116,7 +116,7 @@ where
     /// at this slot. This is the caller's responsibility (or will be
     /// enforced by the future cross-casting infrastructure).
     #[inline]
-    pub fn get_as<T: ?Sized + Pointee>(
+    pub unsafe fn get_as<T: ?Sized + Pointee>(
         &self,
         key: DefaultCastableKey<T>,
     ) -> Option<&T>
@@ -137,7 +137,7 @@ where
 
         // Reconstruct &T using the data pointer + the key's metadata.
         let fat_ptr: *const T = std::ptr::from_raw_parts(data_ptr, key.metadata());
-        unsafe{ Some(&*fat_ptr) }
+        Some(&*fat_ptr)
     }
 
     /// Mutable-reference lookup returning `&mut D::Target`.
@@ -154,7 +154,7 @@ where
     /// # Safety
     /// Same as [`get_as`](Self::get_as).
     #[inline]
-    pub fn get_as_mut<T: ?Sized + Pointee>(
+    pub unsafe fn get_as_mut<T: ?Sized + Pointee>(
         &mut self,
         key: DefaultCastableKey<T>,
     ) -> Option<&mut T>
@@ -170,7 +170,7 @@ where
 
         let data_ptr: *mut () = (base_ref as *mut D::Target).cast();
         let fat_ptr: *mut T = std::ptr::from_raw_parts_mut(data_ptr, key.metadata());
-        unsafe{ Some(&mut *fat_ptr) }
+        Some(&mut *fat_ptr)
     }
 
     /// Removes an element by key, returning the owned smart pointer.

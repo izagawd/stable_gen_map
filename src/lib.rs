@@ -1,5 +1,8 @@
 #![allow(warnings)]
 #![feature(ptr_metadata)]
+#![feature(coerce_unsized)]
+#![feature(unsize)]
+
 pub mod gen_map;
 pub mod castable_map;
 pub mod key;
