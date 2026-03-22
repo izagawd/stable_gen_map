@@ -215,62 +215,9 @@ where
         (to_castable::<CK, D>(inner_key, reference), reference)
     }
 
-    /// Inserts via a closure that receives the key.
-    ///
-    /// Note: the key passed to `func` has placeholder metadata since the value
-    /// hasn't been stored yet. The returned key will have correct metadata.
-    #[inline]
-    pub fn insert_with_key(
-        &self,
-        func: impl FnOnce(CK) -> D,
-    ) -> (CK, &D::Target) {
-        // The closure receives a CK, but we only have CastableInnerKey.
-        // We can't build a proper CK without metadata (no value yet).
-        // So we use try_insert_with_key to get the inner key first,
-        // then the user's closure receives it after we patch.
-        //
-        // Actually — the inner GenMap's insert_with_key gives the closure
-        // a CastableInnerKey. We need to wrap it.
-        let (inner_key, reference) = self.inner.insert_with_key(|ik| {
-            // Build a temporary CK. For sized D::Target, metadata is ().
-            // For dyn, we don't have real metadata yet — the user shouldn't
-            // rely on the key's metadata inside the closure anyway.
-            // We use the map_id from the inner key.
-            //
-            // This is only sound because insert_with_key's closure receives
-            // the key for identity purposes (e.g. self-referential), not for
-            // metadata extraction.
-            let temp_ck = unsafe {
-                CK::from_castable_parts(
-                    ik.key_data,
-                    ik.map_id,
-                    std::mem::zeroed(),
-                )
-            };
-            func(temp_ck)
-        });
-        (to_castable::<CK, D>(inner_key, reference), reference)
-    }
 
-    /// Like [`insert_with_key`](Self::insert_with_key) but the closure may
-    /// return `Err`, in which case the slot is released.
-    #[inline]
-    pub fn try_insert_with_key<E>(
-        &self,
-        func: impl FnOnce(CK) -> Result<D, E>,
-    ) -> Result<(CK, &D::Target), E> {
-        let (inner_key, reference) = self.inner.try_insert_with_key(|ik| {
-            let temp_ck = unsafe {
-                CK::from_castable_parts(
-                    ik.key_data,
-                    ik.map_id,
-                    std::mem::zeroed(),
-                )
-            };
-            func(temp_ck)
-        })?;
-        Ok((to_castable::<CK, D>(inner_key, reference), reference))
-    }
+
+
 
     // ── get ─────────────────────────────────────────────────────────────
 

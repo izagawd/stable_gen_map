@@ -267,22 +267,6 @@ fn into_iter_consumes_map() {
     assert_eq!(collected.len(), 2);
 }
 
-#[test]
-fn insert_with_key_temporary_key_get_as_is_ub(){
-    let map = KeyCastableStableGenMap::<DefaultCastableKey<dyn Any>, _>::new();
-    let saved = Cell::new(None);
-
-    let (_real_key, _) = map.insert_with_key(|k| {
-        saved.set(Some(k));
-        Box::new(123_i32) as Box<dyn Any>
-    });
-
-    let bad_key = saved.get().unwrap();
-
-    // key_data + map_id are now live, but metadata is still the zeroed placeholder
-    let _ = map.get_as::<dyn Any>(bad_key); // UB
-}
-
 // ─── iter_mut ───────────────────────────────────────────────────────────────
 
 #[test]
