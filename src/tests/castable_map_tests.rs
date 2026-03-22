@@ -1,7 +1,6 @@
 use std::any::Any;
 use crate::castable_map::{KeyCastableStableGenMap, KeyCastableBoxStableGenMap};
-use crate::key::Key;
-use crate::castable_key::{DefaultCastableKey, downcast_key, CastableKey};
+use crate::castable_key::{DefaultCastableKey, CastableKey};
 
 trait Animal: Any {
     fn speak(&self) -> &'static str;
@@ -101,7 +100,7 @@ fn downcast_key_correct_type_then_get_as() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Buddy".into() }) as Box<dyn Any>);
 
     let dog_key: DefaultCastableKey<Dog> =
-        downcast_key::<Dog, _, DefaultCastableKey<Dog>>(dyn_key).unwrap();
+        map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key).unwrap();
 
     let dog: &Dog = map.get_as(dog_key).unwrap();
     assert_eq!(dog.name, "Buddy");
@@ -113,7 +112,7 @@ fn downcast_key_wrong_type_returns_none() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Fido".into() }) as Box<dyn Any>);
 
     let result: Option<DefaultCastableKey<Parrot>> =
-        downcast_key::<Parrot, _, DefaultCastableKey<Parrot>>(dyn_key);
+        map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key);
     assert!(result.is_none());
 }
 
@@ -130,7 +129,7 @@ fn get_as_with_trait_key() {
 
     // Downcast key to concrete, then upcast to dyn Animal
     let concrete_key: DefaultCastableKey<Parrot> =
-        downcast_key::<Parrot, _, DefaultCastableKey<Parrot>>(dyn_key).unwrap();
+        map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key).unwrap();
     let animal_key: DefaultCastableKey<dyn Animal> = concrete_key;
 
     let animal: &dyn Animal = map.get_as(animal_key).unwrap();
@@ -143,7 +142,7 @@ fn get_as_mut_modifies_value() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
     let dog_key: DefaultCastableKey<Dog> =
-        downcast_key::<Dog, _, DefaultCastableKey<Dog>>(dyn_key).unwrap();
+        map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key).unwrap();
 
     let dog: &mut Dog = map.get_as_mut(dog_key).unwrap();
     dog.name = "New".into();
@@ -340,7 +339,7 @@ fn remove_by_with_concrete_key() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
     let dog_key: DefaultCastableKey<Dog> =
-        downcast_key::<Dog, _, DefaultCastableKey<Dog>>(dyn_key).unwrap();
+        map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key).unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
     assert!(removed.downcast_ref::<Dog>().is_some());

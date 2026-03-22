@@ -1,5 +1,6 @@
 use std::any::Any;
-use crate::castable_key::{downcast_key, CastableKey, DefaultCastableKey};
+use crate::castable_key::{CastableKey, DefaultCastableKey};
+use crate::castable_map::KeyCastableStableGenMap;
 use crate::key::Key;
 use crate::map_id::{MapId, MapIdState};
 
@@ -153,53 +154,43 @@ fn upcast_sized_to_dyn_trait() {
     assert_eq!(flyer_key.map_id(), map_id);
 }
 
-// ─── downcast_key ───────────────────────────────────────────────────────────
+// ─── downcast_key (via map method) ──────────────────────────────────────────
+
+type Map = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, Box<dyn Any>>;
 
 #[test]
 fn downcast_key_succeeds_for_correct_type() {
-    let state = MapIdState::new();
-    let map_id = state.ensure_id();
-    let data = crate::key::KeyData { idx: 42u32, generation: 1u32 };
-
-    let concrete = DefaultCastableKey::<Dog>::from_castable_parts(data, map_id, ());
-    let dyn_key: DefaultCastableKey<dyn Any> = concrete;
+    let map: Map = Map::new();
+    let (dyn_key, _) = map.insert(Box::new(Dog) as Box<dyn Any>);
 
     let result: Option<DefaultCastableKey<Dog>> =
-        downcast_key::<Dog, _, DefaultCastableKey<Dog>>(dyn_key);
+        map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key);
     assert!(result.is_some());
     let back = result.unwrap();
-    assert_eq!(back.key_data().idx, 42);
-    assert_eq!(back.map_id(), map_id);
+    assert_eq!(back.key_data().idx, dyn_key.key_data().idx);
+    assert_eq!(back.map_id(), dyn_key.map_id());
 }
 
 #[test]
 fn downcast_key_fails_for_wrong_type() {
-    let state = MapIdState::new();
-    let map_id = state.ensure_id();
-    let data = crate::key::KeyData { idx: 42u32, generation: 1u32 };
-
-    let concrete = DefaultCastableKey::<Dog>::from_castable_parts(data, map_id, ());
-    let dyn_key: DefaultCastableKey<dyn Any> = concrete;
+    let map: Map = Map::new();
+    let (dyn_key, _) = map.insert(Box::new(Dog) as Box<dyn Any>);
 
     let result: Option<DefaultCastableKey<Parrot>> =
-        downcast_key::<Parrot, _, DefaultCastableKey<Parrot>>(dyn_key);
+        map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key);
     assert!(result.is_none());
 }
 
 #[test]
 fn downcast_key_preserves_key_data_and_map_id() {
-    let state = MapIdState::new();
-    let map_id = state.ensure_id();
-    let data = crate::key::KeyData { idx: 123u32, generation: 77u32 };
-
-    let concrete = DefaultCastableKey::<Parrot>::from_castable_parts(data, map_id, ());
-    let dyn_key: DefaultCastableKey<dyn Any> = concrete;
+    let map: Map = Map::new();
+    let (dyn_key, _) = map.insert(Box::new(Parrot) as Box<dyn Any>);
     let back: DefaultCastableKey<Parrot> =
-        downcast_key::<Parrot, _, DefaultCastableKey<Parrot>>(dyn_key).unwrap();
+        map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key).unwrap();
 
-    assert_eq!(back.key_data().idx, 123);
-    assert_eq!(back.key_data().generation, 77);
-    assert_eq!(back.map_id(), map_id);
+    assert_eq!(back.key_data().idx, dyn_key.key_data().idx);
+    assert_eq!(back.key_data().generation, dyn_key.key_data().generation);
+    assert_eq!(back.map_id(), dyn_key.map_id());
 }
 
 // ─── map_id packing in NonNull ──────────────────────────────────────────────
