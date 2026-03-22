@@ -16,13 +16,31 @@
 //! - `DefaultCastableKey<SizedType>`: 16 bytes (KeyData + thin NonNull)
 //! - `DefaultCastableKey<dyn Trait>`:  24 bytes (KeyData + fat NonNull)
 
-use std::marker::Unsize;
-use std::ops::CoerceUnsized;
-use std::ptr::{NonNull, Pointee};
+use std::ptr::Pointee;
 
 use crate::key::{Key, KeyData};
-use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+/// Produces a placeholder metadata value with all bits set (non-zero).
+///
+/// `DynMetadata<dyn T>` is internally a non-null vtable pointer, so
+/// zero-initialising it is a validity panic. All-ones is non-null and
+/// satisfies the invariant. The value is never dereferenced — it only
+/// exists in keys produced by `from_parts` (which GenMap calls internally)
+/// and gets overwritten with real metadata before the key reaches user code.
+///
+/// For sized `T`, `Metadata = ()` and this reads zero bytes (no-op).
+#[doc(hidden)]
+pub unsafe fn dangling_metadata<M: Copy>() -> M {
+    debug_assert!(
+        std::mem::size_of::<M>() <= std::mem::size_of::<usize>(),
+        "pointer metadata larger than usize"
+    );
+    let dummy: usize = !0;
+    std::mem::transmute_copy::<usize, M>(&dummy)
+}
 
 // ─── CastableKey trait ──────────────────────────────────────────────────────
 
@@ -61,21 +79,17 @@ where
     <T as Pointee>::Metadata: Copy,
 {
     pub(crate) key_data: KeyData<u32, u32>,
-    pub(crate) map_id_and_metadata: NonNull<T>,
+    pub(crate) map_id_and_metadata: std::ptr::NonNull<T>,
 }
 
-// ── CoerceUnsized: enables implicit upcasting ──────────────────────────────
-
-impl<T, U> CoerceUnsized<DefaultCastableKey<U>> for DefaultCastableKey<T>
+impl<T, U> std::ops::CoerceUnsized<DefaultCastableKey<U>> for DefaultCastableKey<T>
 where
-    T: ?Sized + Pointee + Unsize<U>,
+    T: ?Sized + Pointee + std::marker::Unsize<U>,
     U: ?Sized + Pointee,
     <T as Pointee>::Metadata: Copy,
     <U as Pointee>::Metadata: Copy,
 {
 }
-
-// ── Manual trait impls ──────────────────────────────────────────────────────
 
 impl<T: ?Sized + Pointee> Clone for DefaultCastableKey<T>
 where
@@ -120,12 +134,9 @@ where
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.key_data.hash(state);
-        // Hash the map_id (data pointer part), not the metadata
         (self.map_id_and_metadata.as_ptr() as *const () as usize).hash(state);
     }
 }
-
-// ── Key impl ────────────────────────────────────────────────────────────────
 
 unsafe impl<T: ?Sized + Pointee> Key for DefaultCastableKey<T>
 where
@@ -145,25 +156,19 @@ where
         MapId(self.map_id_and_metadata.as_ptr() as *const () as usize)
     }
 
-    /// Constructs a key with zeroed metadata.
-    ///
-    /// GenMap calls this internally for insert/iteration. The castable map
-    /// wrapper patches the metadata before the key reaches user code.
     #[inline]
     fn from_parts(data: KeyData<u32, u32>, extra: MapId) -> Self {
         unsafe {
             debug_assert!(extra.0 != 0, "cannot construct castable key with null map id");
             let raw: *mut T =
-                std::ptr::from_raw_parts_mut(extra.0 as *mut (), std::mem::zeroed());
+                std::ptr::from_raw_parts_mut(extra.0 as *mut (), dangling_metadata());
             Self {
                 key_data: data,
-                map_id_and_metadata: NonNull::new_unchecked(raw),
+                map_id_and_metadata: std::ptr::NonNull::new_unchecked(raw),
             }
         }
     }
 }
-
-// ── CastableKey impl ───────────────────────────────────────────────────────
 
 unsafe impl<T: ?Sized + Pointee> CastableKey<T> for DefaultCastableKey<T>
 where
@@ -186,7 +191,7 @@ where
                 std::ptr::from_raw_parts_mut(map_id.0 as *mut (), metadata);
             Self {
                 key_data: data,
-                map_id_and_metadata: NonNull::new_unchecked(raw),
+                map_id_and_metadata: std::ptr::NonNull::new_unchecked(raw),
             }
         }
     }
@@ -331,7 +336,7 @@ macro_rules! __impl_castable_key {
                     debug_assert!(extra.0 != 0, "cannot construct castable key with null map id");
                     let raw: *mut T = ::std::ptr::from_raw_parts_mut(
                         extra.0 as *mut (),
-                        ::std::mem::zeroed(),
+                        $crate::key_castable::dangling_metadata(),
                     );
                     Self {
                         key_data: data,
