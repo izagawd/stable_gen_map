@@ -12,6 +12,7 @@ static NEXT_MAP_ID: AtomicUsize = AtomicUsize::new(1);
 /// (in which case the *slots* retain the original map's id while the clone's
 /// state produces a fresh id for new inserts).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct MapId(pub(crate) usize);
 
 impl MapId {
