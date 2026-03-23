@@ -10,7 +10,6 @@
 
 use std::any::Any;
 use std::collections::TryReserveError;
-use std::marker::Unsize;
 use std::ops::{Index, IndexMut};
 use std::ptr::Pointee;
 
@@ -175,7 +174,7 @@ where
 impl<CK, D> KeyCastableStableGenMap<CK, D>
 where
     CK: CastableKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise ,
 {
 
     /// Attempts to downcast a `CastableKey<RefType = dyn Any>` to a `CastableKey<RefType = Concrete>`.
@@ -194,11 +193,13 @@ where
     pub fn downcast_key<Concrete: 'static, KOut>(&self, key: impl CastableKey<RefType = dyn Any, Idx = CK::Idx, Gen = CK::Gen>) -> Option<KOut>
     where
         KOut: CastableKey<RefType = Concrete, Idx = CK::Idx, Gen = CK::Gen>,
-        D::Target: Any + Unsize<dyn Any>
 
     {
-        let data: &dyn Any = self.inner.get(to_inner(&key))?;
-        if data.type_id() == std::any::TypeId::of::<Concrete>() {
+        let data: &_ = self.inner.get(to_inner(&key))?;
+        let data_as_any_from_key: &dyn Any = unsafe{
+            &*std::ptr::from_raw_parts(data as *const _ as *const (), key.metadata())
+        };
+        if data_as_any_from_key.type_id() == std::any::TypeId::of::<Concrete>() {
             Some(unsafe{KOut::from_castable_parts(key.key_data(), key.map_id(), ())})
         } else {
             None
