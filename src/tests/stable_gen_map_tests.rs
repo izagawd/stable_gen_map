@@ -1,13 +1,13 @@
 use crate::key::DefaultKey;
 use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
+use crate::new_key_type;
 use crate::stable_gen_map::StableGenMap;
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use crate::new_key_type;
 // try_insert_with_key while iterating with iter()
 
 // iter() inside try_insert_with_key closure
@@ -215,9 +215,6 @@ fn nested_try_insert_with_key_uses_distinct_slots() {
 new_key_type! {
    struct TestKey(u32,u32);
 }
-
-
-
 
 #[test]
 fn iter_mut_yields_valid_keys_and_values() {

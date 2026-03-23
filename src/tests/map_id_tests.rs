@@ -1,5 +1,5 @@
-use crate::map_id::{MapId, MapIdState};
 use crate::key::KeyExtra;
+use crate::map_id::{MapId, MapIdState};
 
 #[test]
 fn map_id_starts_at_none() {

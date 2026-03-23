@@ -164,7 +164,7 @@ pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
 // ─── Clone (two strategies) ──────────────────────────────────────────────────
 
 impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
-for StableDerefGenMap<K, Derefable>
+    for StableDerefGenMap<K, Derefable>
 {
     fn clone(&self) -> Self {
         unsafe {

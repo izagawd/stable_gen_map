@@ -1,7 +1,7 @@
+use crate::castable_key::{CastableKey, DefaultCastableKey};
+use crate::castable_map::{KeyCastableBoxStableGenMap, KeyCastableStableGenMap};
 use std::any::Any;
 use std::cell::Cell;
-use crate::castable_map::{KeyCastableStableGenMap, KeyCastableBoxStableGenMap};
-use crate::castable_key::{DefaultCastableKey, CastableKey};
 
 trait Animal: Any {
     fn speak(&self) -> &'static str;
@@ -16,7 +16,9 @@ struct Dog {
     name: String,
 }
 impl Animal for Dog {
-    fn speak(&self) -> &'static str { "woof" }
+    fn speak(&self) -> &'static str {
+        "woof"
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -24,10 +26,14 @@ struct Parrot {
     color: String,
 }
 impl Animal for Parrot {
-    fn speak(&self) -> &'static str { "squawk" }
+    fn speak(&self) -> &'static str {
+        "squawk"
+    }
 }
 impl Flyer for Parrot {
-    fn max_altitude(&self) -> u32 { 500 }
+    fn max_altitude(&self) -> u32 {
+        500
+    }
 }
 
 type Map = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, Box<dyn Any>>;
@@ -98,10 +104,13 @@ fn insert_concrete_upcast_key_then_get() {
 #[test]
 fn downcast_key_correct_type_then_get() {
     let map: Map = Map::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Buddy".into() }) as Box<dyn Any>);
+    let (dyn_key, _) = map.insert(Box::new(Dog {
+        name: "Buddy".into(),
+    }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastableKey<Dog> =
-        map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key).unwrap();
+    let dog_key: DefaultCastableKey<Dog> = map
+        .downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key)
+        .unwrap();
 
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Buddy");
@@ -110,7 +119,9 @@ fn downcast_key_correct_type_then_get() {
 #[test]
 fn downcast_key_wrong_type_returns_none() {
     let map: Map = Map::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Fido".into() }) as Box<dyn Any>);
+    let (dyn_key, _) = map.insert(Box::new(Dog {
+        name: "Fido".into(),
+    }) as Box<dyn Any>);
 
     let result: Option<DefaultCastableKey<Parrot>> =
         map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key);
@@ -124,13 +135,16 @@ fn get_with_trait_key() {
     type AnimalMap = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, Box<dyn Any>>;
     let map: AnimalMap = AnimalMap::new();
 
-    let parrot = Parrot { color: "green".into() };
+    let parrot = Parrot {
+        color: "green".into(),
+    };
     // Insert as dyn Any
     let (dyn_key, _) = map.insert(Box::new(parrot) as Box<dyn Any>);
 
     // Downcast key to concrete, then upcast to dyn Animal
-    let concrete_key: DefaultCastableKey<Parrot> =
-        map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key).unwrap();
+    let concrete_key: DefaultCastableKey<Parrot> = map
+        .downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key)
+        .unwrap();
     let animal_key: DefaultCastableKey<dyn Animal> = concrete_key;
 
     let animal: &dyn Animal = map.get(animal_key).unwrap();
@@ -142,8 +156,9 @@ fn get_mut_modifies_value() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastableKey<Dog> =
-        map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key).unwrap();
+    let dog_key: DefaultCastableKey<Dog> = map
+        .downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key)
+        .unwrap();
 
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
     dog.name = "New".into();
@@ -339,8 +354,9 @@ fn remove_by_with_concrete_key() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastableKey<Dog> =
-        map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key).unwrap();
+    let dog_key: DefaultCastableKey<Dog> = map
+        .downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key)
+        .unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
     assert!(removed.downcast_ref::<Dog>().is_some());
@@ -365,10 +381,7 @@ fn references_stable_across_inserts() {
     let ptr1_again = ref1_again as *const dyn Any;
 
     // Data pointer should be identical (stable behind Box)
-    assert_eq!(
-        ptr1 as *const () as usize,
-        ptr1_again as *const () as usize
-    );
+    assert_eq!(ptr1 as *const () as usize, ptr1_again as *const () as usize);
 }
 
 // ─── get_by_index_only ─────────────────────────────────────────────────────

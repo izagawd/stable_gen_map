@@ -357,12 +357,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     pub fn clear(&mut self) {
         let slots_len = self.slots.get_mut().len();
         for idx in 0..slots_len {
-            let slot = unsafe {
-                self.slots
-                    .get_mut()
-                    .get_unchecked_mut(idx)
-                    .get_mut()
-            };
+            let slot = unsafe { self.slots.get_mut().get_unchecked_mut(idx).get_mut() };
             let generation = slot.generation;
             let other = slot.other;
             let key = K::from_parts(

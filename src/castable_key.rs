@@ -115,7 +115,7 @@ where
     fn eq(&self, other: &Self) -> bool {
         self.key_data == other.key_data
             && self.map_id_and_metadata.as_ptr() as *const () as usize
-            == other.map_id_and_metadata.as_ptr() as *const () as usize
+                == other.map_id_and_metadata.as_ptr() as *const () as usize
     }
 }
 
@@ -163,9 +163,11 @@ where
         metadata: <T as Pointee>::Metadata,
     ) -> Self {
         unsafe {
-            debug_assert!(map_id.0 != 0, "cannot construct castable key with null map id");
-            let raw: *mut T =
-                std::ptr::from_raw_parts_mut(map_id.0 as *mut (), metadata);
+            debug_assert!(
+                map_id.0 != 0,
+                "cannot construct castable key with null map id"
+            );
+            let raw: *mut T = std::ptr::from_raw_parts_mut(map_id.0 as *mut (), metadata);
             Self {
                 key_data: data,
                 map_id_and_metadata: std::ptr::NonNull::new_unchecked(raw),
@@ -173,8 +175,6 @@ where
         }
     }
 }
-
-
 
 // ─── Macro for custom castable key types ────────────────────────────────────
 
@@ -235,20 +235,23 @@ macro_rules! __impl_castable_key {
             U: ?Sized + ::std::ptr::Pointee,
             <T as ::std::ptr::Pointee>::Metadata: Copy,
             <U as ::std::ptr::Pointee>::Metadata: Copy,
-        {}
+        {
+        }
 
         impl<T: ?Sized + ::std::ptr::Pointee> Clone for $name<T>
         where
             <T as ::std::ptr::Pointee>::Metadata: Copy,
         {
             #[inline]
-            fn clone(&self) -> Self { *self }
+            fn clone(&self) -> Self {
+                *self
+            }
         }
 
-        impl<T: ?Sized + ::std::ptr::Pointee> Copy for $name<T>
-        where
-            <T as ::std::ptr::Pointee>::Metadata: Copy,
-        {}
+        impl<T: ?Sized + ::std::ptr::Pointee> Copy for $name<T> where
+            <T as ::std::ptr::Pointee>::Metadata: Copy
+        {
+        }
 
         impl<T: ?Sized + ::std::ptr::Pointee> ::std::fmt::Debug for $name<T>
         where
@@ -274,10 +277,10 @@ macro_rules! __impl_castable_key {
             }
         }
 
-        impl<T: ?Sized + ::std::ptr::Pointee> Eq for $name<T>
-        where
-            <T as ::std::ptr::Pointee>::Metadata: Copy,
-        {}
+        impl<T: ?Sized + ::std::ptr::Pointee> Eq for $name<T> where
+            <T as ::std::ptr::Pointee>::Metadata: Copy
+        {
+        }
 
         impl<T: ?Sized + ::std::ptr::Pointee> ::std::hash::Hash for $name<T>
         where
@@ -289,8 +292,7 @@ macro_rules! __impl_castable_key {
             }
         }
 
-        unsafe impl<T: ?Sized + ::std::ptr::Pointee> $crate::castable_key::CastableKey
-            for $name<T>
+        unsafe impl<T: ?Sized + ::std::ptr::Pointee> $crate::castable_key::CastableKey for $name<T>
         where
             <T as ::std::ptr::Pointee>::Metadata: Copy,
         {
@@ -320,11 +322,11 @@ macro_rules! __impl_castable_key {
                 metadata: <T as ::std::ptr::Pointee>::Metadata,
             ) -> Self {
                 unsafe {
-                    debug_assert!(map_id.0 != 0, "cannot construct castable key with null map id");
-                    let raw: *mut T = ::std::ptr::from_raw_parts_mut(
-                        map_id.0 as *mut (),
-                        metadata,
+                    debug_assert!(
+                        map_id.0 != 0,
+                        "cannot construct castable key with null map id"
                     );
+                    let raw: *mut T = ::std::ptr::from_raw_parts_mut(map_id.0 as *mut (), metadata);
                     Self {
                         key_data: data,
                         map_id_and_metadata: ::std::ptr::NonNull::new_unchecked(raw),

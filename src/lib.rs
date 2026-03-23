@@ -3,10 +3,10 @@
 #![feature(coerce_unsized)]
 #![feature(unsize)]
 
-pub mod gen_map;
-pub mod castable_map;
-pub mod key;
 pub mod castable_key;
+pub mod castable_map;
+pub mod gen_map;
+pub mod key;
 pub mod key_piece;
 pub mod map_id;
 pub mod slot_item;
