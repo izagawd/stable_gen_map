@@ -22,7 +22,7 @@
 
 use std::ptr::Pointee;
 
-use crate::key::KeyData;
+use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
 
@@ -43,15 +43,64 @@ pub unsafe trait CastableKey: Copy {
     type Idx: KeyPiece;
     type Gen: KeyPiece;
 
+    /// The key type used by the inner `GenMap`, without pointer metadata.
+    /// This is "the castable key minus the `RefType` metadata".
+    type InnerKey: Key<Idx = Self::Idx, Gen = Self::Gen>;
+
     fn key_data(&self) -> KeyData<Self::Idx, Self::Gen>;
     fn map_id(&self) -> MapId;
     fn metadata(&self) -> <Self::RefType as Pointee>::Metadata;
+
+    /// Strip pointer metadata, producing the inner key used by the backing
+    /// `GenMap`.
+    fn inner_key(&self) -> Self::InnerKey;
 
     unsafe fn from_castable_parts(
         data: KeyData<Self::Idx, Self::Gen>,
         map_id: MapId,
         metadata: <Self::RefType as Pointee>::Metadata,
     ) -> Self;
+
+    /// Build a castable key from an inner key and pointer metadata.
+    unsafe fn from_inner_key_and_metadata(
+        inner: Self::InnerKey,
+        metadata: <Self::RefType as Pointee>::Metadata,
+    ) -> Self;
+}
+
+// ─── CastableInnerKey ────────────────────────────────────────────────────────
+//
+// The key type GenMap actually stores. No metadata, just key_data + map_id.
+// This is the default `InnerKey` for castable key types.
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DefaultCastableInnerKey<Idx, Gen> {
+    pub(crate) key_data: KeyData<Idx, Gen>,
+    pub(crate) map_id: MapId,
+}
+
+unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for DefaultCastableInnerKey<Idx, Gen> {
+    type Idx = Idx;
+    type Gen = Gen;
+    type Extra = MapId;
+
+    #[inline]
+    fn data(&self) -> KeyData<Idx, Gen> {
+        self.key_data
+    }
+
+    #[inline]
+    fn extra(&self) -> MapId {
+        self.map_id
+    }
+
+    #[inline]
+    fn from_parts(data: KeyData<Idx, Gen>, extra: MapId) -> Self {
+        Self {
+            key_data: data,
+            map_id: extra,
+        }
+    }
 }
 
 // ─── DefaultCastableKey<T> ──────────────────────────────────────────────────
@@ -115,7 +164,7 @@ where
     fn eq(&self, other: &Self) -> bool {
         self.key_data == other.key_data
             && self.map_id_and_metadata.as_ptr() as *const () as usize
-                == other.map_id_and_metadata.as_ptr() as *const () as usize
+            == other.map_id_and_metadata.as_ptr() as *const () as usize
     }
 }
 
@@ -140,6 +189,7 @@ where
     type RefType = T;
     type Idx = u32;
     type Gen = u32;
+    type InnerKey = DefaultCastableInnerKey<u32, u32>;
 
     #[inline]
     fn key_data(&self) -> KeyData<u32, u32> {
@@ -154,6 +204,14 @@ where
     #[inline]
     fn metadata(&self) -> <T as Pointee>::Metadata {
         std::ptr::metadata(self.map_id_and_metadata.as_ptr() as *const T)
+    }
+
+    #[inline]
+    fn inner_key(&self) -> DefaultCastableInnerKey<u32, u32> {
+        DefaultCastableInnerKey {
+            key_data: self.key_data,
+            map_id: self.map_id(),
+        }
     }
 
     #[inline]
@@ -173,6 +231,14 @@ where
                 map_id_and_metadata: std::ptr::NonNull::new_unchecked(raw),
             }
         }
+    }
+
+    #[inline]
+    unsafe fn from_inner_key_and_metadata(
+        inner: DefaultCastableInnerKey<u32, u32>,
+        metadata: <T as Pointee>::Metadata,
+    ) -> Self {
+        unsafe { Self::from_castable_parts(inner.data(), inner.extra(), metadata) }
     }
 }
 
@@ -299,6 +365,7 @@ macro_rules! __impl_castable_key {
             type RefType = T;
             type Idx = $idx;
             type Gen = $gen;
+            type InnerKey = $crate::castable_key:CastableInnerKeyy<$idx, $gen>;
 
             #[inline]
             fn key_data(&self) -> $crate::key::KeyData<$idx, $gen> {
@@ -313,6 +380,16 @@ macro_rules! __impl_castable_key {
             #[inline]
             fn metadata(&self) -> <T as ::std::ptr::Pointee>::Metadata {
                 ::std::ptr::metadata(self.map_id_and_metadata.as_ptr() as *const T)
+            }
+
+            #[inline]
+            fn inner_key(&self) -> $crate::castable_key:CastableInnerKeyy<$idx, $gen> {
+                use $crate::castable_key::CastableKey;
+                use $crate::key::Key;
+                <$crate::castable_key:CastableInnerKeyy<$idx, $gen> as Key>::from_parts(
+                    self.key_data(),
+                    self.map_id(),
+                )
             }
 
             #[inline]
@@ -332,6 +409,15 @@ macro_rules! __impl_castable_key {
                         map_id_and_metadata: ::std::ptr::NonNull::new_unchecked(raw),
                     }
                 }
+            }
+
+            #[inline]
+            unsafe fn from_inner_key_and_metadata(
+                inner: $crate::castable_key:CastableInnerKeyy<$idx, $gen>,
+                metadata: <T as ::std::ptr::Pointee>::Metadata,
+            ) -> Self {
+                use $crate::key::Key;
+                unsafe { Self::from_castable_parts(inner.data(), inner.extra(), metadata) }
             }
         }
     };

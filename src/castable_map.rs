@@ -15,67 +15,28 @@ use std::ptr::Pointee;
 
 use crate::castable_key::CastableKey;
 use crate::gen_map;
-use crate::key::{Key, KeyData};
-use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
 use crate::stable_deref_gen_map::{
     DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefGenMap,
 };
 
-// ─── CastableInnerKey ───────────────────────────────────────────────────────
-//
-// The key type GenMap actually stores. No metadata, just key_data + map_id.
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct CastableInnerKey<Idx, Gen> {
-    key_data: KeyData<Idx, Gen>,
-    map_id: MapId,
-}
-
-unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for CastableInnerKey<Idx, Gen> {
-    type Idx = Idx;
-    type Gen = Gen;
-    type Extra = MapId;
-
-    #[inline]
-    fn data(&self) -> KeyData<Idx, Gen> {
-        self.key_data
-    }
-
-    #[inline]
-    fn extra(&self) -> MapId {
-        self.map_id
-    }
-
-    #[inline]
-    fn from_parts(data: KeyData<Idx, Gen>, extra: MapId) -> Self {
-        Self {
-            key_data: data,
-            map_id: extra,
-        }
-    }
-}
-
 // ─── Conversion helpers ─────────────────────────────────────────────────────
 
 /// Strip metadata, produce inner key.
 #[inline]
-fn to_inner<CK: CastableKey>(key: &CK) -> CastableInnerKey<CK::Idx, CK::Gen> {
-    CastableInnerKey {
-        key_data: key.key_data(),
-        map_id: key.map_id(),
-    }
+fn to_inner<CK: CastableKey>(key: &CK) -> CK::InnerKey {
+    key.inner_key()
 }
 
 /// Build a castable key from an inner key + metadata from a reference.
 #[inline]
-fn to_castable<CK, D>(inner: CastableInnerKey<CK::Idx, CK::Gen>, reference: &D::Target) -> CK
+fn to_castable<CK, D>(inner: CK::InnerKey, reference: &D::Target) -> CK
 where
     CK: CastableKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
     let metadata = std::ptr::metadata(reference as *const D::Target);
-    unsafe { CK::from_castable_parts(inner.key_data, inner.map_id, metadata) }
+    unsafe { CK::from_inner_key_and_metadata(inner, metadata) }
 }
 
 // ─── KeyCastableStableGenMap ────────────────────────────────────────────────
@@ -90,7 +51,7 @@ where
     CK: CastableKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
-    pub(crate) inner: StableDerefGenMap<CastableInnerKey<CK::Idx, CK::Gen>, D>,
+    pub(crate) inner: StableDerefGenMap<CK::InnerKey, D>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
@@ -192,7 +153,7 @@ where
     #[inline]
     pub fn downcast_key<Concrete: 'static, KOut>(
         &self,
-        key: impl CastableKey<RefType = dyn Any, Idx = CK::Idx, Gen = CK::Gen>,
+        key: impl CastableKey<RefType = dyn Any, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<KOut>
     where
         KOut: CastableKey<RefType = Concrete, Idx = CK::Idx, Gen = CK::Gen>,
@@ -241,6 +202,32 @@ where
     #[inline]
     pub fn remove(&mut self, key: CK) -> Option<D> {
         self.inner.remove(to_inner(&key))
+    }
+
+    // ── inner-key access ────────────────────────────────────────────────
+
+    /// Shared-reference lookup using the inner key (without pointer metadata).
+    ///
+    /// Returns `&D::Target` directly — no castable key is reconstructed,
+    /// so this is slightly cheaper than [`get`](Self::get).
+    #[inline]
+    pub fn get_by_inner_key(&self, key: CK::InnerKey) -> Option<&D::Target> {
+        self.inner.get(key)
+    }
+
+    /// Mutable-reference lookup using the inner key.
+    #[inline]
+    pub fn get_mut_by_inner_key(&mut self, key: CK::InnerKey) -> Option<&mut D::Target>
+    where
+        D: std::ops::DerefMut,
+    {
+        self.inner.get_mut(key)
+    }
+
+    /// Removes an element by inner key, returning the owned smart pointer.
+    #[inline]
+    pub fn remove_by_inner_key(&mut self, key: CK::InnerKey) -> Option<D> {
+        self.inner.remove(key)
     }
 
     // ── retain ──────────────────────────────────────────────────────────
@@ -351,7 +338,7 @@ where
     #[inline]
     pub fn get<T: ?Sized + Pointee>(
         &self,
-        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen>,
+        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<&T>
     where
         <T as Pointee>::Metadata: Copy,
@@ -366,7 +353,7 @@ where
     #[inline]
     pub fn get_mut<T: ?Sized + Pointee>(
         &mut self,
-        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen>,
+        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<&mut T>
     where
         <T as Pointee>::Metadata: Copy,
@@ -382,7 +369,7 @@ where
     #[inline]
     pub fn remove_by<T: ?Sized + Pointee>(
         &mut self,
-        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen>,
+        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<D>
     where
         <T as Pointee>::Metadata: Copy,
@@ -429,8 +416,8 @@ where
 {
     inner: gen_map::IterMut<
         'a,
-        CastableInnerKey<CK::Idx, CK::Gen>,
-        DerefSlot<D, CastableInnerKey<CK::Idx, CK::Gen>>,
+        CK::InnerKey,
+        DerefSlot<D, CK::InnerKey>,
     >,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
@@ -466,8 +453,8 @@ where
 {
     inner: gen_map::Drain<
         'a,
-        CastableInnerKey<CK::Idx, CK::Gen>,
-        DerefSlot<D, CastableInnerKey<CK::Idx, CK::Gen>>,
+        CK::InnerKey,
+        DerefSlot<D, CK::InnerKey>,
     >,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
@@ -500,8 +487,8 @@ where
     D: DerefGenMapPromise,
 {
     inner: gen_map::IntoIter<
-        CastableInnerKey<CK::Idx, CK::Gen>,
-        DerefSlot<D, CastableInnerKey<CK::Idx, CK::Gen>>,
+        CK::InnerKey,
+        DerefSlot<D, CK::InnerKey>,
     >,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
