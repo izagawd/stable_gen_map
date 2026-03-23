@@ -1,10 +1,7 @@
 use crate::gen_map::{GenMap, Slot};
-use crate::key::{is_occupied_by_generation, Key, KeyData, KeyExtra};
-use crate::key_piece::KeyPiece;
+use crate::key::{is_occupied_by_generation, Key};
 use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
-use num_traits::{CheckedAdd, One, Zero};
-use std::cell::{Cell, UnsafeCell};
-use std::marker::PhantomData;
+use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
 
 // ─── BoxedSlot ───────────────────────────────────────────────────────────────
@@ -19,50 +16,49 @@ unsafe impl<T, K: Key> SlotItem<K> for BoxedSlot<T, K> {
 
     #[inline]
     fn new_vacant(next: Option<K::Idx>) -> Self {
-        BoxedSlot(Box::new(SlotData { vacant: next }))
+        BoxedSlot(Box::new(SlotData::new_vacant(next)))
     }
 
     #[inline]
     unsafe fn get_vacant(&self) -> Option<K::Idx> {
-        self.0.vacant
+        self.0.get_vacant()
     }
 
     #[inline]
     unsafe fn set_vacant(&mut self, next: Option<K::Idx>) {
-        self.0.vacant = next;
+        self.0.set_vacant(next);
     }
 
     #[inline]
     unsafe fn write_occupied(&mut self, value: T) {
-        self.0.occupied = ManuallyDrop::new(value);
+        self.0.write_occupied(value);
     }
 
     #[inline]
     unsafe fn take_occupied(&mut self) -> T {
-        let old = std::mem::replace(&mut *self.0, SlotData { vacant: None });
-        ManuallyDrop::into_inner(old.occupied)
+        self.0.take_occupied()
     }
 
     #[inline]
     unsafe fn ref_output(&self) -> &T {
-        &*self.0.occupied
+        self.0.ref_occupied()
     }
 
     #[inline]
     unsafe fn stored_mut(&mut self) -> &mut T {
-        &mut *self.0.occupied
+        self.0.stored_mut()
     }
 
     #[inline]
     unsafe fn drop_occupied(&mut self) {
-        ManuallyDrop::drop(&mut self.0.occupied);
+        self.0.drop_occupied();
     }
 }
 
 unsafe impl<T, K: Key> SlotItemMutOutput<K> for BoxedSlot<T, K> {
     #[inline]
     unsafe fn mut_output(&mut self) -> &mut T {
-        &mut *self.0.occupied
+        self.0.stored_mut()
     }
 }
 
@@ -71,11 +67,11 @@ unsafe impl<T: Clone, K: Key> SlotItemClone<K> for BoxedSlot<T, K> {
     unsafe fn clone_item(&self, is_occupied: bool) -> Self {
         if is_occupied {
             BoxedSlot(Box::new(SlotData {
-                occupied: ManuallyDrop::new((*self.0.occupied).clone()),
+                occupied: ManuallyDrop::new(self.0.ref_occupied().clone()),
             }))
         } else {
             BoxedSlot(Box::new(SlotData {
-                vacant: self.0.vacant,
+                vacant: self.0.get_vacant(),
             }))
         }
     }

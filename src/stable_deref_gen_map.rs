@@ -1,10 +1,7 @@
 use crate::gen_map::{GenMap, Slot};
-use crate::key::{is_occupied_by_generation, Key, KeyData, KeyExtra};
-use crate::key_piece::KeyPiece;
+use crate::key::{is_occupied_by_generation, Key};
 use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
-use num_traits::{CheckedAdd, One, Zero};
-use std::cell::{Cell, UnsafeCell};
-use std::marker::PhantomData;
+use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
@@ -38,50 +35,49 @@ unsafe impl<D: DerefGenMapPromise, K: Key> SlotItem<K> for DerefSlot<D, K> {
 
     #[inline]
     fn new_vacant(next: Option<K::Idx>) -> Self {
-        DerefSlot(SlotData { vacant: next })
+        DerefSlot(SlotData::new_vacant(next))
     }
 
     #[inline]
     unsafe fn get_vacant(&self) -> Option<K::Idx> {
-        self.0.vacant
+        self.0.get_vacant()
     }
 
     #[inline]
     unsafe fn set_vacant(&mut self, next: Option<K::Idx>) {
-        self.0.vacant = next;
+        self.0.set_vacant(next);
     }
 
     #[inline]
     unsafe fn write_occupied(&mut self, value: D) {
-        self.0.occupied = ManuallyDrop::new(value);
+        self.0.write_occupied(value);
     }
 
     #[inline]
     unsafe fn take_occupied(&mut self) -> D {
-        let old = std::mem::replace(&mut self.0, SlotData { vacant: None });
-        ManuallyDrop::into_inner(old.occupied)
+        self.0.take_occupied()
     }
 
     #[inline]
     unsafe fn ref_output(&self) -> &D::Target {
-        self.0.occupied.deref().deref()
+        self.0.ref_occupied().deref()
     }
 
     #[inline]
     unsafe fn stored_mut(&mut self) -> &mut D {
-        &mut *self.0.occupied
+        self.0.stored_mut()
     }
 
     #[inline]
     unsafe fn drop_occupied(&mut self) {
-        ManuallyDrop::drop(&mut self.0.occupied);
+        self.0.drop_occupied();
     }
 }
 
 unsafe impl<D: DerefGenMapPromise + DerefMut, K: Key> SlotItemMutOutput<K> for DerefSlot<D, K> {
     #[inline]
     unsafe fn mut_output(&mut self) -> &mut D::Target {
-        self.0.occupied.deref_mut().deref_mut()
+        self.0.stored_mut().deref_mut()
     }
 }
 
@@ -94,7 +90,7 @@ unsafe impl<D: DerefGenMapPromise + Clone, K: Key> SlotItemClone<K> for DerefSlo
             })
         } else {
             DerefSlot(SlotData {
-                vacant: self.0.vacant,
+                vacant: self.0.get_vacant(),
             })
         }
     }
@@ -168,7 +164,7 @@ pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
 // ─── Clone (two strategies) ──────────────────────────────────────────────────
 
 impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
-    for StableDerefGenMap<K, Derefable>
+for StableDerefGenMap<K, Derefable>
 {
     fn clone(&self) -> Self {
         unsafe {
