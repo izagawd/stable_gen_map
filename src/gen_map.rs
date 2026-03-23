@@ -573,6 +573,9 @@ impl<K: Key, C: SlotItemMutOutput<K>> GenMap<K, C> {
 
 // ─── IterMut ─────────────────────────────────────────────────────────────────
 
+/// Mutable iterator over all occupied elements of a [`GenMap`].
+///
+/// Created by [`GenMap::iter_mut`].
 pub struct IterMut<'a, K: Key, C: SlotItem<K>> {
     inner: std::slice::IterMut<'a, UnsafeCell<Slot<C, K>>>,
     idx: usize,
@@ -695,6 +698,9 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
 // ─── IntoIter (owning) ──────────────────────────────────────────────────────
 
+/// Owning iterator over all occupied elements of a [`GenMap`].
+///
+/// Created by calling `.into_iter()` on a `GenMap`. Consumes the map.
 pub struct IntoIter<K: Key, C: SlotItem<K>> {
     inner: std::vec::IntoIter<UnsafeCell<Slot<C, K>>>,
     idx: usize,

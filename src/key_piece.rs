@@ -2,9 +2,17 @@ use num_traits::{CheckedAdd, Num, WrappingAdd};
 use std::convert::TryFrom;
 use std::ops::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
 
-/// This trait is used to allow conversion between usize and most unsigned number types
-/// This enables a key's Idx and Generation to have a variety of possible types, which enables a lot
-/// of flexibility
+/// Trait for types that can be used as the index or generation component of a
+/// key.
+///
+/// Implemented for `u8`, `u16`, `u32`, `u64`, `u128`, and `usize`. Smaller
+/// types reduce per-key memory at the cost of fewer addressable slots or
+/// generations before overflow.
+///
+/// # Safety
+/// `into_usize` and `from_usize` must round-trip correctly for all values
+/// that the map will actually produce. `from_usize` panics if the value
+/// exceeds the type's range.
 pub unsafe trait KeyPiece:
     Copy
     + Num
@@ -36,7 +44,10 @@ macro_rules! impl_key_piece {
                     // Just bugs, and it will only happen if someone decides to create a key outside insert
                 }
                 fn from_usize(v: usize) -> Self {
-                    Self::try_from(v).unwrap_or_else(|_| panic!("")) // this should panic.
+                    Self::try_from(v).unwrap_or_else(|_| panic!(
+                        "KeyPiece::from_usize: value {} exceeds the maximum for {}",
+                        v, std::any::type_name::<Self>()
+                    )) // this should panic.
                     // if the value of usize is higher than the max value of self, using "as" to cast will cap it to the max value of self, which may cause UB, bugs
                 }
             }

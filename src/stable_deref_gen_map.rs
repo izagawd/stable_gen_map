@@ -98,33 +98,48 @@ unsafe impl<D: DerefGenMapPromise + Clone, K: Key> SlotItemClone<K> for DerefSlo
 
 // ─── SmartPtrKind / SmartPtrCloneable ────────────────────────────────────────
 
-/// NOTE: SELECTING THE WRONG SMART POINTER KIND FOR A SMART POINTER MAY LEAD TO UNDEFINED BEHAVIOUR.<br><br>
-/// EACH SMART POINTER KIND IS DOCUMENTED WITH GUIDELINES TO FOLLOW.<br><br> NOT FOLLOWING THEM MEANS YOU HAVE SELECTED THE WRONG SMART POINTER KIND,
-/// WHICH, AS I SAID, MAY LEAD TO UNDEFINED BEHAVIOUR
+/// Describes the ownership semantics of a smart pointer stored in a
+/// [`StableDerefGenMap`].
+///
+/// Selecting the wrong kind for a smart pointer may lead to **undefined
+/// behaviour** — read the per-variant docs carefully.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SmartPtrKind {
-    /// Meaning the smart pointer owns the type. When the smart pointer is destroyed, so as the type its pointing to. eg `Box`
+    /// The smart pointer owns its pointee exclusively. When the smart pointer
+    /// is dropped, the pointee is dropped too (e.g. `Box`).
     Owned,
 
-    /// Meaning the smart pointer is borrowing a reference to the type, or has shared ownership to the type its pointing to.<br>
-    /// eg `Rc` `Arc` `Ref`.<br><br>
-    /// if the smart pointers is of kind `Shared` and its `Clone` implementation calls the type it is pointing to's `Clone` implementation, you should not be implementing
-    /// `SmartPtrCloneable` for the smart pointer at all.<br> If not, there would be a possibility of Undefined Behavior.
-    /// <br><br>
-    /// If your smart pointer is of kind `Shared` and implements `Clone`, the `Clone` implementation must NOT mutate any shared `Stable Gen Map` (eg with `insert`)
-    /// If not, there would be a possibility of Undefined Behavior
+    /// The smart pointer borrows or shares ownership of its pointee
+    /// (e.g. `Rc`, `Arc`, `&T`).
+    ///
+    /// If the smart pointer's `Clone` implementation clones the *pointee*
+    /// (calls `T::clone`), you must **not** implement [`SmartPtrCloneable`]
+    /// for it — doing so may cause undefined behaviour.
+    ///
+    /// If the smart pointer does implement `Clone`, its `Clone` must **not**
+    /// mutate any shared `StableDerefGenMap` (e.g. via `insert`).
     Shared,
 }
 
+/// Marker trait for smart pointers that can be safely cloned inside a
+/// [`StableDerefGenMap`].
+///
+/// # Safety
+///
+/// Implementors must:
+/// - Choose the correct [`SmartPtrKind`].
+/// - For `Owned` pointers: implement `clone_from_reference` to produce a
+///   new smart pointer from a `&Self::Target` (similar logic to `Clone::clone`).
+/// - For `Shared` pointers: return `None` from `clone_from_reference`.
 pub unsafe trait SmartPtrCloneable: DerefGenMapPromise + Clone {
-    /// BE VERY CAREFUL WHEN SELECTING THE SMART POINTER KIND TO AVOID POSSIBLE UNDEFINED BEHAVIOR
+    /// The ownership kind of this smart pointer.
     const KIND: SmartPtrKind;
 
-    /// NOTE: THIS METHOD MUST BE IMPLEMENTED BY SMART POINTERS WITH KIND `Owned`. IF THE SMART POINTER KIND IS `Shared`, SIMPLY RETURN `None`.
-    /// IF THESE GUIDELINES ARE NOT FOLLOWED, THERE COULD BE BUGS, UNEXPECTED BEHAVIOUR, AND MAYBE UNDEFINED BEHAVIOUR
-    ///<br><br>
-    /// The implementation of this method should have very similar logic to the smart pointer's `Clone::clone` implementation to ensure consistency.
-    /// If still in doubt, you can look at how we implemented `SmartPtrCloneable` for `Box`
+    /// For `Owned` pointers, clone the pointee into a new smart pointer.
+    /// For `Shared` pointers, return `None`.
+    ///
+    /// # Safety
+    /// Must only be called when the slot is known to be occupied.
     unsafe fn clone_from_reference(reference: &Self::Target) -> Option<Self>;
 }
 
@@ -159,6 +174,11 @@ unsafe impl<T: ?Sized> SmartPtrCloneable for Arc<T> {
 /// `Arc`, `&T`, …) directly.  The smart pointer provides pointer stability.
 pub type StableDerefGenMap<K, Derefable> = GenMap<K, DerefSlot<Derefable, K>>;
 
+/// Convenience alias for `StableDerefGenMap<K, Box<T>>`.
+///
+/// Equivalent to [`StableGenMap`](crate::stable_gen_map::StableGenMap) in
+/// behaviour, but stores the `Box` directly rather than wrapping `T` in a
+/// second `Box`. Prefer this when your values are already boxed.
 pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
 
 // ─── Clone (two strategies) ──────────────────────────────────────────────────

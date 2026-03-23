@@ -1,5 +1,7 @@
 use crate::key_piece::KeyPiece;
 
+/// The raw data inside every key: an index into the slot array and a
+/// generation counter.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyData<Idx, Generation> {
     pub(crate) idx: Idx,
@@ -82,6 +84,11 @@ pub unsafe trait Key: Copy {
 
 // ─── DefaultKey ─────────────────────────────────────────────────────────────
 
+/// The default key type, using `u32` for both index and generation and no
+/// extra data (`Extra = ()`).
+///
+/// This is suitable for most use cases. For smaller keys, custom
+/// index/generation types, or map-bound keys, see [`new_key_type!`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DefaultKey {
     pub(crate) key_data: KeyData<u32, u32>,

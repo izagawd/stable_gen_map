@@ -417,6 +417,11 @@ where
 
 // ─── IterMut ────────────────────────────────────────────────────────────────
 
+/// Mutable iterator over all occupied elements of a
+/// [`KeyCastableStableGenMap`]. Yields `(Key, &mut Item)` pairs with properly
+/// patched castable keys.
+///
+/// Created by [`KeyCastableStableGenMap::iter_mut`].
 pub struct IterMut<'a, CK, D>
 where
     CK: CastableKey<RefType = D::Target>,
@@ -450,6 +455,10 @@ where
 
 // ─── Drain ──────────────────────────────────────────────────────────────────
 
+/// Draining iterator over a [`KeyCastableStableGenMap`]. Yields all
+/// occupied `(Key, Item)` pairs, removing them from the map.
+///
+/// Created by [`KeyCastableStableGenMap::drain`].
 pub struct Drain<'a, CK, D>
 where
     CK: CastableKey<RefType = D::Target>,
@@ -483,6 +492,8 @@ where
 
 // ─── IntoIter (owning) ─────────────────────────────────────────────────────
 
+/// Owning iterator over a [`KeyCastableStableGenMap`]. Consumes the map
+/// and yields all occupied `(Key, Item)` pairs.
 pub struct IntoIter<CK, D>
 where
     CK: CastableKey<RefType = D::Target>,
