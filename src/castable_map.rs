@@ -15,7 +15,6 @@ use std::ptr::Pointee;
 
 use crate::castable_key::CastableKey;
 use crate::gen_map;
-use crate::map_id::MapId;
 use crate::stable_deref_gen_map::{
     DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefGenMap,
 };
@@ -414,11 +413,7 @@ where
     CK: CastableKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
-    inner: gen_map::IterMut<
-        'a,
-        CK::InnerKey,
-        DerefSlot<D, CK::InnerKey>,
-    >,
+    inner: gen_map::IterMut<'a, CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
@@ -451,11 +446,7 @@ where
     CK: CastableKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
-    inner: gen_map::Drain<
-        'a,
-        CK::InnerKey,
-        DerefSlot<D, CK::InnerKey>,
-    >,
+    inner: gen_map::Drain<'a, CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
@@ -486,10 +477,7 @@ where
     CK: CastableKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
-    inner: gen_map::IntoIter<
-        CK::InnerKey,
-        DerefSlot<D, CK::InnerKey>,
-    >,
+    inner: gen_map::IntoIter<CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
