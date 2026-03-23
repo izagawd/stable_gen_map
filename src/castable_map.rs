@@ -215,29 +215,6 @@ where
         (to_castable::<CK, D>(inner_key, reference), reference)
     }
 
-
-
-
-
-    // ── get ─────────────────────────────────────────────────────────────
-
-    /// Shared-reference lookup returning `&D::Target` (the base trait).
-    ///
-    /// Use [`get_as`](Self::get_as) to look up with a differently-typed key.
-    #[inline]
-    pub fn get(&self, key: CK) -> Option<&D::Target> {
-        self.inner.get(to_inner(&key))
-    }
-
-    /// Mutable-reference lookup returning `&mut D::Target`.
-    #[inline]
-    pub fn get_mut(&mut self, key: CK) -> Option<&mut D::Target>
-    where
-        D: std::ops::DerefMut,
-    {
-        self.inner.get_mut(to_inner(&key))
-    }
-
     /// Shared-reference lookup by index only (ignores generation).
     #[inline]
     pub fn get_by_index_only(&self, idx: CK::Idx) -> Option<(CK, &D::Target)> {
@@ -364,12 +341,12 @@ where
     D: DerefGenMapPromise + 'static,
     CK: CastableKey<RefType = <D as std::ops::Deref>::Target>
 {
-    /// Shared-reference lookup with a key for a *different* type `T`.
+    /// Shared-reference lookup with a key for a potentially *different* type `T`.
     ///
     /// Looks up the slot via key_data + map_id, gets the data pointer,
     /// then combines it with `key.metadata()` to produce `&T`.
     #[inline]
-    pub fn get_as<T: ?Sized + Pointee>(
+    pub fn get<T: ?Sized + Pointee>(
         &self,
         key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen>,
     ) -> Option<&T>
@@ -382,9 +359,9 @@ where
         unsafe { Some(&*fat_ptr) }
     }
 
-    /// Mutable-reference lookup with a differently-typed key.
+    /// Mutable-reference lookup with a potentially differently-typed key.
     #[inline]
-    pub fn get_as_mut<T: ?Sized + Pointee>(
+    pub fn get_mut<T: ?Sized + Pointee>(
         &mut self,
         key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen>,
     ) -> Option<&mut T>

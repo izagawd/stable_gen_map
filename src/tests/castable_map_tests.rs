@@ -96,14 +96,14 @@ fn insert_concrete_upcast_key_then_get() {
 // ─── downcast_key ───────────────────────────────────────────────────────────
 
 #[test]
-fn downcast_key_correct_type_then_get_as() {
+fn downcast_key_correct_type_then_get() {
     let map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Buddy".into() }) as Box<dyn Any>);
 
     let dog_key: DefaultCastableKey<Dog> =
         map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key).unwrap();
 
-    let dog: &Dog = map.get_as(dog_key).unwrap();
+    let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Buddy");
 }
 
@@ -117,10 +117,10 @@ fn downcast_key_wrong_type_returns_none() {
     assert!(result.is_none());
 }
 
-// ─── get_as with upcast key ─────────────────────────────────────────────────
+// ─── get with upcast key ─────────────────────────────────────────────────
 
 #[test]
-fn get_as_with_trait_key() {
+fn get_with_trait_key() {
     type AnimalMap = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, Box<dyn Any>>;
     let map: AnimalMap = AnimalMap::new();
 
@@ -133,22 +133,22 @@ fn get_as_with_trait_key() {
         map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key).unwrap();
     let animal_key: DefaultCastableKey<dyn Animal> = concrete_key;
 
-    let animal: &dyn Animal = map.get_as(animal_key).unwrap();
+    let animal: &dyn Animal = map.get(animal_key).unwrap();
     assert_eq!(animal.speak(), "squawk");
 }
 
 #[test]
-fn get_as_mut_modifies_value() {
+fn get_mut_modifies_value() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
     let dog_key: DefaultCastableKey<Dog> =
         map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key).unwrap();
 
-    let dog: &mut Dog = map.get_as_mut(dog_key).unwrap();
+    let dog: &mut Dog = map.get_mut(dog_key).unwrap();
     dog.name = "New".into();
 
-    let dog_again: &Dog = map.get_as(dog_key).unwrap();
+    let dog_again: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog_again.name, "New");
 }
 
