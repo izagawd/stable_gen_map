@@ -47,7 +47,7 @@ where
 pub struct StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
 {
     pub(crate) inner: StableDerefMap<CK::InnerKey, D>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
@@ -58,7 +58,7 @@ where
 impl<CK, D> Clone for StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + SmartPtrCloneable + 'static,
+    D: DerefGenMapPromise + SmartPtrCloneable,
 {
     /// Clones the map.
     ///
@@ -78,7 +78,7 @@ where
 impl<CK, D> StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
 {
     /// Creates a new, empty map.
     #[inline]
@@ -379,7 +379,7 @@ where
 
 impl<CK, D> StableCastMap<CK, D>
 where
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
     CK: CastKey<RefType = <D as std::ops::Deref>::Target>,
 {
     /// Shared-reference lookup with a key for a potentially *different* type `T`.
@@ -435,7 +435,7 @@ where
 impl<CK, D> Index<CK::WithRef<CK::RefType>> for StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
 {
     type Output = D::Target;
 
@@ -447,7 +447,7 @@ where
 impl<CK, D> IndexMut<CK::WithRef<CK::RefType>> for StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static + std::ops::DerefMut,
+    D: DerefGenMapPromise + std::ops::DerefMut,
 {
     fn index_mut(&mut self, key: CK::WithRef<CK::RefType>) -> &mut Self::Output {
         self.get_mut(key).unwrap()
@@ -473,7 +473,7 @@ where
 impl<'a, CK, D> Iterator for IterMut<'a, CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
     D: DerefMut,
 {
     type Item = (CK, &'a mut D::Target);
@@ -507,7 +507,7 @@ where
 impl<'a, CK, D> Iterator for Drain<'a, CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
 {
     type Item = (CK, D);
 
@@ -538,7 +538,7 @@ where
 impl<CK, D> Iterator for IntoIter<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
 {
     type Item = (CK, D);
 
@@ -556,7 +556,7 @@ where
 impl<CK, D> IntoIterator for StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
 {
     type Item = (CK, D);
     type IntoIter = IntoIter<CK, D>;
@@ -572,7 +572,7 @@ where
 impl<'a, CK, D> IntoIterator for &'a mut StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise + 'static,
+    D: DerefGenMapPromise,
     D: DerefMut,
 {
     type Item = (CK, &'a mut D::Target);
