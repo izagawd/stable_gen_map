@@ -10,7 +10,7 @@ It's designed for patterns like *graphs, self-referential structures, and arenas
 
 > **Important:** This crate is intentionally single-threaded. The map types are not `Sync`, and are meant to be used from a single thread only.
 
-> **Nightly required:** This crate uses the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize` (needed by the `CastKey` subsystem).
+> **Nightly (optional):** The `CastKey` subsystem (`StableCastMap`, `DefaultCastKey`, `new_castable_key_type!`) is gated behind the **`castable`** cargo feature and requires a nightly toolchain. The core map types (`StableMap`, `StableDerefMap`) work on **stable** Rust out of the box.
 
 ---
 
@@ -26,10 +26,17 @@ Or in `Cargo.toml`:
 
 ```toml
 [dependencies]
-stable_gen_map = "0.11"
+stable_gen_map = "0.12"
 ```
 
-Because the crate enables nightly-only features, you need a **nightly** toolchain:
+With the default features, the crate works on **stable** Rust — no special toolchain needed.
+
+To enable cast keys (requires **nightly**):
+
+```toml
+[dependencies]
+stable_gen_map = { version = "0.12", features = ["castable"] }
+```
 
 ```bash
 rustup override set nightly
@@ -45,7 +52,7 @@ rustup override set nightly
 
 - **`BoxStableDerefMap<K, T>`** — Type alias for `StableDerefMap<K, Box<T>>`. Preferred over `StableMap` if your element needs to be boxed anyway.
 
-- **`StableCastMap<CK, D>`** — A wrapper around `StableDerefMap` that uses `CastKey` for type-erased heterogeneous storage. Supports implicit key upcasting via `CoerceUnsized`, so a `DefaultCastKey<MyStruct>` can be implicitly coerced to `DefaultCastKey<dyn Trait>`. Useful for storing `Box<dyn Any>` and retrieving concrete types.
+- **`StableCastMap<CK, D>`** *(requires the `castable` feature, nightly only)* — A wrapper around `StableDerefMap` that uses `CastKey` for type-erased heterogeneous storage. Supports implicit key upcasting via `CoerceUnsized`, so a `DefaultCastKey<MyStruct>` can be implicitly coerced to `DefaultCastKey<dyn Trait>`. Useful for storing `Box<dyn Any>` and retrieving concrete types.
 
 Keys implement the `Key` trait; you can use the provided `DefaultKey` or define your own with the `new_key_type!` macro (e.g. with smaller index/generation types or map-id checking).
 
@@ -256,7 +263,7 @@ fn main() {
 
 ---
 
-## Cast keys (heterogeneous maps)
+## Cast keys (heterogeneous maps, `castable` feature)
 
 `StableCastMap` lets you store different concrete types in the same map behind `Box<dyn Any>`, and look them up with typed keys. Key upcasting is implicit via `CoerceUnsized`:
 
@@ -271,18 +278,18 @@ struct Cat { name: String }
 struct Dog { name: String }
 
 fn main() {
-    let mut map: StableBoxCastMap<DefaultCastKey<dyn Any>, dyn Any> =
-        StableBoxCastMap::new();
+  let mut map: StableBoxCastMap<DefaultCastKey<dyn Any>, dyn Any> =
+          StableBoxCastMap::new();
 
-    // Insert returns the map's key type: DefaultCastKey<dyn Any>
-    let (dyn_key, _) = map.insert(Box::new(Cat { name: "Whiskers".into() }));
+  // Insert returns the map's key type: DefaultCastKey<dyn Any>
+  let (dyn_key, _) = map.insert(Box::new(Cat { name: "Whiskers".into() }));
 
-    // Downcast the dyn key to a concrete typed key
-    if let Some(cat_key) = map.downcast_key::<Cat, DefaultCastKey<Cat>>(dyn_key) {
-        // Look up with the concrete key — returns &Cat
-        let cat: &Cat = map.get(cat_key).unwrap();
-        assert_eq!(cat.name, "Whiskers");
-    }
+  // Downcast the dyn key to a concrete typed key
+  if let Some(cat_key) = map.downcast_key::<Cat, DefaultCastKey<Cat>>(dyn_key) {
+    // Look up with the concrete key — returns &Cat
+    let cat: &Cat = map.get(cat_key).unwrap();
+    assert_eq!(cat.name, "Whiskers");
+  }
 }
 ```
 

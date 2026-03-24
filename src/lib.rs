@@ -10,8 +10,8 @@
 //!   remove/insert cycles.
 //! - [`StableDerefMap`](stable_deref_map::StableDerefMap) — stores a
 //!   user-supplied smart pointer directly.
-//! - [`StableCastMap`](stable_cast_map::StableCastMap) —
-//!   wraps `StableDerefMap` with [`CastKey`](cast_key::CastKey)
+//! - **`StableCastMap`** *(requires the `castable` feature)* —
+//!   wraps `StableDerefMap` with `CastKey`
 //!   support for type-erased heterogeneous storage (e.g. `Box<dyn Any>`).
 //!
 //! All map types allow `insert(&self)` (shared-reference insertion) while
@@ -19,20 +19,27 @@
 //! `&mut self`, so the borrow checker prevents freeing elements while
 //! outstanding references exist.
 //!
-//! ## Nightly requirement
+//! ## The `castable` feature (nightly only)
 //!
-//! The [`CastKey`](cast_key::CastKey) family and
-//! [`StableCastMap`](stable_cast_map::StableCastMap) rely on
-//! the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize`.
-//! If you don't need cast keys, those features are still required at the
-//! crate level but have no effect on the core map types.
+//! The `CastKey` family and `StableCastMap` rely on the nightly features
+//! `ptr_metadata`, `coerce_unsized`, and `unsize`. They are gated behind
+//! the **`castable`** cargo feature, which is **not** enabled by default.
+//!
+//! To enable cast keys (requires nightly):
+//!
+//! ```toml
+//! [dependencies]
+//! stable_gen_map = { version = "0.12", features = ["castable"] }
+//! ```
 
 #![allow(warnings)]
-#![feature(ptr_metadata)]
-#![feature(coerce_unsized)]
-#![feature(unsize)]
+#![cfg_attr(feature = "castable", feature(ptr_metadata))]
+#![cfg_attr(feature = "castable", feature(coerce_unsized))]
+#![cfg_attr(feature = "castable", feature(unsize))]
 
+#[cfg(feature = "castable")]
 pub mod cast_key;
+#[cfg(feature = "castable")]
 pub mod stable_cast_map;
 pub mod gen_map;
 pub mod key;
@@ -85,12 +92,12 @@ mod tests {
     #[cfg(test)]
     mod map_id_tests;
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "castable"))]
     mod castable_key_tests;
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "castable"))]
     mod castable_map_tests;
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "castable"))]
     mod castable_key_macro_tests;
 }
