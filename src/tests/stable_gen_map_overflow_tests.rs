@@ -1,5 +1,5 @@
 use crate::key::Key;
-use crate::stable_gen_map::StableMap;
+use crate::stable_map::StableMap;
 
 crate::new_key_type! {
     struct TinyGenKey(u8, u8);

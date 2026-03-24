@@ -1,5 +1,5 @@
 use crate::key::Key;
-use crate::stable_deref_gen_map::BoxStableDerefMap;
+use crate::stable_deref_map::BoxStableDerefMap;
 
 crate::new_key_type! {
     struct TinyDerefGenKey(u8, u8);
@@ -7,7 +7,7 @@ crate::new_key_type! {
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use crate::stable_gen_map::StableMap;
+use crate::stable_map::StableMap;
 
 crate::new_key_type! {
     struct TinyGenKey(u8, u8);

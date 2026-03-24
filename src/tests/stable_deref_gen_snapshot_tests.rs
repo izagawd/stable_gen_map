@@ -1,5 +1,5 @@
 use crate::key::DefaultKey;
-use crate::stable_deref_gen_map::BoxStableDerefMap;
+use crate::stable_deref_map::BoxStableDerefMap;
 use std::collections::HashSet;
 
 #[test]
@@ -16,7 +16,7 @@ fn snapshot_on_empty_map_is_empty() {
 mod snapshot_stablegen_tests {
     use super::*;
     use crate::key::DefaultKey;
-    use crate::stable_deref_gen_map::BoxStableDerefMap;
+    use crate::stable_deref_map::BoxStableDerefMap;
     use std::collections::HashSet;
 
     #[test]

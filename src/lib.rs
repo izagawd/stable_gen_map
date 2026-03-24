@@ -5,13 +5,13 @@
 //!
 //! The main types are:
 //!
-//! - [`StableGenMap`](stable_gen_map::StableMap) — stores each value behind
+//! - [`StableGenMap`](stable_map::StableMap) — stores each value behind
 //!   a `Box` for pointer stability. The `Box` allocation is reused across
 //!   remove/insert cycles.
-//! - [`StableDerefGenMap`](stable_deref_gen_map::StableDerefMap) — stores a
+//! - [`StableDerefGenMap`](stable_deref_map::StableDerefMap) — stores a
 //!   user-supplied smart pointer directly.
-//! - [`KeyCastableStableGenMap`](castable_map::StableCastMap) —
-//!   wraps `StableDerefGenMap` with [`CastKey`](castable_key::CastKey)
+//! - [`KeyCastableStableGenMap`](stable_cast_map::StableCastMap) —
+//!   wraps `StableDerefGenMap` with [`CastKey`](cast_key::CastKey)
 //!   support for type-erased heterogeneous storage (e.g. `Box<dyn Any>`).
 //!
 //! All map types allow `insert(&self)` (shared-reference insertion) while
@@ -21,8 +21,8 @@
 //!
 //! ## Nightly requirement
 //!
-//! The [`CastKey`](castable_key::CastKey) family and
-//! [`KeyCastableStableGenMap`](castable_map::StableCastMap) rely on
+//! The [`CastKey`](cast_key::CastKey) family and
+//! [`KeyCastableStableGenMap`](stable_cast_map::StableCastMap) rely on
 //! the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize`.
 //! If you don't need castable keys, those features are still required at the
 //! crate level but have no effect on the core map types.
@@ -32,15 +32,15 @@
 #![feature(coerce_unsized)]
 #![feature(unsize)]
 
-pub mod castable_key;
-pub mod castable_map;
+pub mod cast_key;
+pub mod stable_cast_map;
 pub mod gen_map;
 pub mod key;
 pub mod key_piece;
 pub mod map_id;
 pub mod slot_item;
-pub mod stable_deref_gen_map;
-pub mod stable_gen_map;
+pub mod stable_deref_map;
+pub mod stable_map;
 
 #[cfg(test)]
 mod tests {

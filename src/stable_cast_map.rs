@@ -13,9 +13,9 @@ use std::collections::TryReserveError;
 use std::ops::{Index, IndexMut};
 use std::ptr::Pointee;
 
-use crate::castable_key::CastKey;
+use crate::cast_key::CastKey;
 use crate::gen_map;
-use crate::stable_deref_gen_map::{
+use crate::stable_deref_map::{
     DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap,
 };
 

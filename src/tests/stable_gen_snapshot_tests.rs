@@ -1,6 +1,6 @@
 use crate::key::DefaultKey;
 
-use crate::stable_gen_map::StableMap;
+use crate::stable_map::StableMap;
 use std::collections::HashSet;
 
 const SLOTS: usize = 4;

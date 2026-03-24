@@ -401,7 +401,7 @@ fn stable_try_insert_with_key_panic_reuses_reserved_new_slot() {
 }
 
 use crate::key::DefaultKey;
-use crate::stable_deref_gen_map::{BoxStableDerefMap, StableDerefMap};
+use crate::stable_deref_map::{BoxStableDerefMap, StableDerefMap};
 use std::cell::Cell;
 use std::fmt::Display;
 use std::rc::Rc;
@@ -630,7 +630,7 @@ fn drops_happen_on_remove_and_on_map_drop() {
 mod tests {
     use super::*;
     use crate::key::DefaultKey;
-    use crate::stable_deref_gen_map::BoxStableDerefMap;
+    use crate::stable_deref_map::BoxStableDerefMap;
     use std::collections::HashSet;
 
     /// After clear(), the map must not reuse any key that existed before.

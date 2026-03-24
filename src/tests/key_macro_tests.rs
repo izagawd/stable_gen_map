@@ -1,5 +1,5 @@
 use crate::key::Key;
-use crate::stable_gen_map::StableMap;
+use crate::stable_map::StableMap;
 use std::any::TypeId;
 use std::collections::HashSet;
 

@@ -74,12 +74,12 @@ pub unsafe trait CastKey: Copy {
 // This is the default `InnerKey` for castable key types.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DefaultCastInnerKey<Idx, Gen> {
+pub struct DefaultMapKey<Idx, Gen> {
     pub(crate) key_data: KeyData<Idx, Gen>,
     pub(crate) map_id: MapId,
 }
 
-unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for DefaultCastInnerKey<Idx, Gen> {
+unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for DefaultMapKey<Idx, Gen> {
     type Idx = Idx;
     type Gen = Gen;
     type Extra = MapId;
@@ -189,7 +189,7 @@ where
     type RefType = T;
     type Idx = u32;
     type Gen = u32;
-    type InnerKey = DefaultCastInnerKey<u32, u32>;
+    type InnerKey = DefaultMapKey<u32, u32>;
 
     #[inline]
     fn key_data(&self) -> KeyData<u32, u32> {
@@ -207,8 +207,8 @@ where
     }
 
     #[inline]
-    fn inner_key(&self) -> DefaultCastInnerKey<u32, u32> {
-        DefaultCastInnerKey {
+    fn inner_key(&self) -> DefaultMapKey<u32, u32> {
+        DefaultMapKey {
             key_data: self.key_data,
             map_id: self.map_id(),
         }
@@ -235,7 +235,7 @@ where
 
     #[inline]
     unsafe fn from_inner_key_and_metadata(
-        inner: DefaultCastInnerKey<u32, u32>,
+        inner: DefaultMapKey<u32, u32>,
         metadata: <T as Pointee>::Metadata,
     ) -> Self {
         unsafe { Self::from_castable_parts(inner.data(), inner.extra(), metadata) }
@@ -324,7 +324,7 @@ macro_rules! __impl_castable_key {
             <T as ::std::ptr::Pointee>::Metadata: Copy,
         {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                use $crate::castable_key:CastKeyy;
+                use $crate::cast_key:CastKeyy;
                 f.debug_struct(stringify!($name))
                     .field("key_data", &self.key_data)
                     .field("map_id", &self.map_id().0)
@@ -384,7 +384,7 @@ macro_rules! __impl_castable_key {
 
             #[inline]
             fn inner_key(&self) -> $crate::castable_key:CastableInnerKeyy<$idx, $gen> {
-                use $crate::castable_key::CastKey;
+                use $crate::cast_key::CastKey;
                 use $crate::key::Key;
                 <$crate::castable_key:CastableInnerKeyy<$idx, $gen> as Key>::from_parts(
                     self.key_data(),

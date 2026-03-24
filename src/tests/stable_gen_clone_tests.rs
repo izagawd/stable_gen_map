@@ -1,5 +1,5 @@
 use crate::key::{DefaultKey, Key};
-use crate::stable_gen_map::StableMap;
+use crate::stable_map::StableMap;
 use std::collections::{HashMap, HashSet};
 
 type Map = StableMap<DefaultKey, i32>;
@@ -48,7 +48,7 @@ mod clone_efficiently_tests {
 
     use crate::key::{DefaultKey, Key};
 
-    use crate::stable_gen_map::StableMap;
+    use crate::stable_map::StableMap;
 
     type Map<T> = StableMap<DefaultKey, T>;
 

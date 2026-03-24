@@ -176,7 +176,7 @@ pub type StableDerefMap<K, Derefable> = GenMap<K, DerefSlot<Derefable, K>>;
 
 /// Convenience alias for `StableDerefGenMap<K, Box<T>>`.
 ///
-/// Equivalent to [`StableGenMap`](crate::stable_gen_map::StableMap) in
+/// Equivalent to [`StableGenMap`](crate::stable_map::StableMap) in
 /// behaviour, but stores the `Box` directly rather than wrapping `T` in a
 /// second `Box`. Prefer this when your values are already boxed.
 pub type BoxStableDerefMap<K, T> = StableDerefMap<K, Box<T>>;

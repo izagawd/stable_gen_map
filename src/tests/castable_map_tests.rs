@@ -1,5 +1,5 @@
-use crate::castable_key::{CastKey, DefaultCastKey};
-use crate::castable_map::{StableBoxCastMap, StableCastMap};
+use crate::cast_key::{CastKey, DefaultCastKey};
+use crate::stable_cast_map::{StableBoxCastMap, StableCastMap};
 use std::any::Any;
 use std::cell::Cell;
 

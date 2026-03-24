@@ -1,6 +1,6 @@
 use crate::key::{DefaultKey, Key};
 use crate::key_piece::KeyPiece;
-use crate::stable_gen_map::StableMap;
+use crate::stable_map::StableMap;
 
 type Map = StableMap<DefaultKey, i32>;
 
