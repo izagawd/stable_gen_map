@@ -10,6 +10,58 @@ pub(crate) union SlotData<S, K: Key> {
     pub(crate) vacant: Option<K::Idx>,
 }
 
+// ─── SlotData inherent helpers (shared by BoxedSlot / DerefSlot) ────────────
+
+impl<S, K: Key> SlotData<S, K> {
+    #[inline]
+    pub(crate) fn new_vacant(next: Option<K::Idx>) -> Self {
+        SlotData { vacant: next }
+    }
+
+    /// # Safety: slot must be vacant.
+    #[inline]
+    pub(crate) unsafe fn get_vacant(&self) -> Option<K::Idx> {
+        self.vacant
+    }
+
+    /// # Safety: slot must be vacant.
+    #[inline]
+    pub(crate) unsafe fn set_vacant(&mut self, next: Option<K::Idx>) {
+        self.vacant = next;
+    }
+
+    /// # Safety: slot must be vacant / reserved (not occupied).
+    #[inline]
+    pub(crate) unsafe fn write_occupied(&mut self, value: S) {
+        self.occupied = ManuallyDrop::new(value);
+    }
+
+    /// # Safety: slot must be occupied.
+    #[inline]
+    pub(crate) unsafe fn take_occupied(&mut self) -> S {
+        let old = std::mem::replace(self, SlotData { vacant: None });
+        ManuallyDrop::into_inner(old.occupied)
+    }
+
+    /// # Safety: slot must be occupied.
+    #[inline]
+    pub(crate) unsafe fn ref_occupied(&self) -> &S {
+        &*self.occupied
+    }
+
+    /// # Safety: slot must be occupied.
+    #[inline]
+    pub(crate) unsafe fn stored_mut(&mut self) -> &mut S {
+        &mut *self.occupied
+    }
+
+    /// # Safety: slot must be occupied.
+    #[inline]
+    pub(crate) unsafe fn drop_occupied(&mut self) {
+        ManuallyDrop::drop(&mut self.occupied);
+    }
+}
+
 // ─── trait: SlotItem ─────────────────────────────────────────────────────────
 
 /// Abstracts the per-slot storage strategy.

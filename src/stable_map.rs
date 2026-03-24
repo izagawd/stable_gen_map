@@ -1,9 +1,7 @@
 use crate::gen_map::{GenMap, Slot};
-use crate::key::{is_occupied_by_generation, Key, KeyData};
+use crate::key::{is_occupied_by_generation, Key};
 use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
-use num_traits::{CheckedAdd, One, Zero};
-use std::cell::{Cell, UnsafeCell};
-use std::marker::PhantomData;
+use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
 
 // ─── BoxedSlot ───────────────────────────────────────────────────────────────
@@ -18,50 +16,49 @@ unsafe impl<T, K: Key> SlotItem<K> for BoxedSlot<T, K> {
 
     #[inline]
     fn new_vacant(next: Option<K::Idx>) -> Self {
-        BoxedSlot(Box::new(SlotData { vacant: next }))
+        BoxedSlot(Box::new(SlotData::new_vacant(next)))
     }
 
     #[inline]
     unsafe fn get_vacant(&self) -> Option<K::Idx> {
-        self.0.vacant
+        self.0.get_vacant()
     }
 
     #[inline]
     unsafe fn set_vacant(&mut self, next: Option<K::Idx>) {
-        self.0.vacant = next;
+        self.0.set_vacant(next);
     }
 
     #[inline]
     unsafe fn write_occupied(&mut self, value: T) {
-        self.0.occupied = ManuallyDrop::new(value);
+        self.0.write_occupied(value);
     }
 
     #[inline]
     unsafe fn take_occupied(&mut self) -> T {
-        let old = std::mem::replace(&mut *self.0, SlotData { vacant: None });
-        ManuallyDrop::into_inner(old.occupied)
+        self.0.take_occupied()
     }
 
     #[inline]
     unsafe fn ref_output(&self) -> &T {
-        &*self.0.occupied
+        self.0.ref_occupied()
     }
 
     #[inline]
     unsafe fn stored_mut(&mut self) -> &mut T {
-        &mut *self.0.occupied
+        self.0.stored_mut()
     }
 
     #[inline]
     unsafe fn drop_occupied(&mut self) {
-        ManuallyDrop::drop(&mut self.0.occupied);
+        self.0.drop_occupied();
     }
 }
 
 unsafe impl<T, K: Key> SlotItemMutOutput<K> for BoxedSlot<T, K> {
     #[inline]
     unsafe fn mut_output(&mut self) -> &mut T {
-        &mut *self.0.occupied
+        self.0.stored_mut()
     }
 }
 
@@ -70,23 +67,23 @@ unsafe impl<T: Clone, K: Key> SlotItemClone<K> for BoxedSlot<T, K> {
     unsafe fn clone_item(&self, is_occupied: bool) -> Self {
         if is_occupied {
             BoxedSlot(Box::new(SlotData {
-                occupied: ManuallyDrop::new((*self.0.occupied).clone()),
+                occupied: ManuallyDrop::new(self.0.ref_occupied().clone()),
             }))
         } else {
             BoxedSlot(Box::new(SlotData {
-                vacant: self.0.vacant,
+                vacant: self.0.get_vacant(),
             }))
         }
     }
 }
 
-// ─── StableGenMap (type alias) ───────────────────────────────────────────────
+// ─── StableMap (type alias) ───────────────────────────────────────────────
 
 /// Generational map where each value is stored behind a `Box` for pointer
 /// stability.  The `Box` allocation is **reused** across remove / re-insert
 /// cycles, so a `remove` followed by an `insert` into the same slot incurs
 /// no heap traffic.
-pub type StableGenMap<K, T> = GenMap<K, BoxedSlot<T, K>>;
+pub type StableMap<K, T> = GenMap<K, BoxedSlot<T, K>>;
 
 // ─── Clone (two-phase snapshot) ──────────────────────────────────────────────
 //
@@ -94,7 +91,7 @@ pub type StableGenMap<K, T> = GenMap<K, BoxedSlot<T, K>>;
 // Phase 2: clone each T – this may re-enter the original map via &self,
 //          which is safe because we no longer touch self.slots.
 
-impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
+impl<K: Key, T: Clone> Clone for StableMap<K, T> {
     fn clone(&self) -> Self {
         unsafe {
             enum Snap<'a, K: Key, T> {
@@ -107,25 +104,27 @@ impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
             let slots_ref: &Vec<UnsafeCell<Slot<BoxedSlot<T, K>, K>>> = &*self.slots.get();
 
             // ── phase 1: snapshot ────────────────────────────────────────
-            let mut snapshot: Vec<(K::Gen, Snap<'_, K, T>)> = Vec::with_capacity(slots_ref.len());
+            let mut snapshot: Vec<(K::Gen, K::Extra, Snap<'_, K, T>)> =
+                Vec::with_capacity(slots_ref.len());
 
             for cell in slots_ref.iter() {
                 let slot: &Slot<BoxedSlot<T, K>, K> = &*cell.get();
                 let gen = slot.generation;
+                let other = slot.other;
 
                 let snap = if is_occupied_by_generation(gen) {
                     Snap::Occupied(slot.item.ref_output())
                 } else {
                     Snap::Vacant(slot.item.get_vacant())
                 };
-                snapshot.push((gen, snap));
+                snapshot.push((gen, other, snap));
             }
 
             // ── phase 2: rebuild ─────────────────────────────────────────
             let mut new_slots: Vec<UnsafeCell<Slot<BoxedSlot<T, K>, K>>> =
                 Vec::with_capacity(snapshot.len());
 
-            for (generation, snap) in snapshot {
+            for (generation, other, snap) in snapshot {
                 let data = match snap {
                     Snap::Occupied(vref) => SlotData {
                         occupied: ManuallyDrop::new(vref.clone()),
@@ -135,6 +134,7 @@ impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
 
                 new_slots.push(UnsafeCell::new(Slot {
                     generation,
+                    other,
                     item: BoxedSlot(Box::new(data)),
                 }));
             }

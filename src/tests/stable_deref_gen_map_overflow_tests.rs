@@ -1,5 +1,5 @@
 use crate::key::Key;
-use crate::stable_deref_gen_map::BoxStableDerefGenMap;
+use crate::stable_deref_map::BoxStableDerefMap;
 
 crate::new_key_type! {
     struct TinyDerefGenKey(u8, u8);
@@ -7,7 +7,7 @@ crate::new_key_type! {
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use crate::stable_gen_map::StableGenMap;
+use crate::stable_map::StableMap;
 
 crate::new_key_type! {
     struct TinyGenKey(u8, u8);
@@ -15,7 +15,7 @@ crate::new_key_type! {
 
 #[test]
 fn stable_gen_map_into_iter_handles_max_live_generation_without_panicking() {
-    let mut map = StableGenMap::<TinyGenKey, u32>::new();
+    let mut map = StableMap::<TinyGenKey, u32>::new();
 
     loop {
         let next_value = map.len() as u32;
@@ -45,7 +45,7 @@ fn stable_gen_map_into_iter_handles_max_live_generation_without_panicking() {
 
 #[test]
 fn stale_key_after_generation_overflow_is_not_accepted_stable_deref_gen_map() {
-    let mut map = BoxStableDerefGenMap::<TinyDerefGenKey, u32>::new();
+    let mut map = BoxStableDerefMap::<TinyDerefGenKey, u32>::new();
     let mut next_value;
     let overflow_key = loop {
         next_value = map.len() as u32;

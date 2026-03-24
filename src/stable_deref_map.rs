@@ -1,9 +1,7 @@
 use crate::gen_map::{GenMap, Slot};
-use crate::key::{is_occupied_by_generation, Key, KeyData};
+use crate::key::{is_occupied_by_generation, Key};
 use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
-use num_traits::{CheckedAdd, One, Zero};
-use std::cell::{Cell, UnsafeCell};
-use std::marker::PhantomData;
+use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
@@ -37,50 +35,49 @@ unsafe impl<D: DerefGenMapPromise, K: Key> SlotItem<K> for DerefSlot<D, K> {
 
     #[inline]
     fn new_vacant(next: Option<K::Idx>) -> Self {
-        DerefSlot(SlotData { vacant: next })
+        DerefSlot(SlotData::new_vacant(next))
     }
 
     #[inline]
     unsafe fn get_vacant(&self) -> Option<K::Idx> {
-        self.0.vacant
+        self.0.get_vacant()
     }
 
     #[inline]
     unsafe fn set_vacant(&mut self, next: Option<K::Idx>) {
-        self.0.vacant = next;
+        self.0.set_vacant(next);
     }
 
     #[inline]
     unsafe fn write_occupied(&mut self, value: D) {
-        self.0.occupied = ManuallyDrop::new(value);
+        self.0.write_occupied(value);
     }
 
     #[inline]
     unsafe fn take_occupied(&mut self) -> D {
-        let old = std::mem::replace(&mut self.0, SlotData { vacant: None });
-        ManuallyDrop::into_inner(old.occupied)
+        self.0.take_occupied()
     }
 
     #[inline]
     unsafe fn ref_output(&self) -> &D::Target {
-        self.0.occupied.deref().deref()
+        self.0.ref_occupied().deref()
     }
 
     #[inline]
     unsafe fn stored_mut(&mut self) -> &mut D {
-        &mut *self.0.occupied
+        self.0.stored_mut()
     }
 
     #[inline]
     unsafe fn drop_occupied(&mut self) {
-        ManuallyDrop::drop(&mut self.0.occupied);
+        self.0.drop_occupied();
     }
 }
 
 unsafe impl<D: DerefGenMapPromise + DerefMut, K: Key> SlotItemMutOutput<K> for DerefSlot<D, K> {
     #[inline]
     unsafe fn mut_output(&mut self) -> &mut D::Target {
-        self.0.occupied.deref_mut().deref_mut()
+        self.0.stored_mut().deref_mut()
     }
 }
 
@@ -93,7 +90,7 @@ unsafe impl<D: DerefGenMapPromise + Clone, K: Key> SlotItemClone<K> for DerefSlo
             })
         } else {
             DerefSlot(SlotData {
-                vacant: self.0.vacant,
+                vacant: self.0.get_vacant(),
             })
         }
     }
@@ -101,33 +98,48 @@ unsafe impl<D: DerefGenMapPromise + Clone, K: Key> SlotItemClone<K> for DerefSlo
 
 // ─── SmartPtrKind / SmartPtrCloneable ────────────────────────────────────────
 
-/// NOTE: SELECTING THE WRONG SMART POINTER KIND FOR A SMART POINTER MAY LEAD TO UNDEFINED BEHAVIOUR.<br><br>
-/// EACH SMART POINTER KIND IS DOCUMENTED WITH GUIDELINES TO FOLLOW.<br><br> NOT FOLLOWING THEM MEANS YOU HAVE SELECTED THE WRONG SMART POINTER KIND,
-/// WHICH, AS I SAID, MAY LEAD TO UNDEFINED BEHAVIOUR
+/// Describes the ownership semantics of a smart pointer stored in a
+/// [`StableDerefMap`].
+///
+/// Selecting the wrong kind for a smart pointer may lead to **undefined
+/// behaviour** — read the per-variant docs carefully.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SmartPtrKind {
-    /// Meaning the smart pointer owns the type. When the smart pointer is destroyed, so as the type its pointing to. eg `Box`
+    /// The smart pointer owns its pointee exclusively. When the smart pointer
+    /// is dropped, the pointee is dropped too (e.g. `Box`).
     Owned,
 
-    /// Meaning the smart pointer is borrowing a reference to the type, or has shared ownership to the type its pointing to.<br>
-    /// eg `Rc` `Arc` `Ref`.<br><br>
-    /// if the smart pointers is of kind `Shared` and its `Clone` implementation calls the type it is pointing to's `Clone` implementation, you should not be implementing
-    /// `SmartPtrCloneable` for the smart pointer at all.<br> If not, there would be a possibility of Undefined Behavior.
-    /// <br><br>
-    /// If your smart pointer is of kind `Shared` and implements `Clone`, the `Clone` implementation must NOT mutate any shared `Stable Gen Map` (eg with `insert`)
-    /// If not, there would be a possibility of Undefined Behavior
+    /// The smart pointer borrows or shares ownership of its pointee
+    /// (e.g. `Rc`, `Arc`, `&T`).
+    ///
+    /// If the smart pointer's `Clone` implementation clones the *pointee*
+    /// (calls `T::clone`), you must **not** implement [`SmartPtrCloneable`]
+    /// for it — doing so may cause undefined behaviour.
+    ///
+    /// If the smart pointer does implement `Clone`, its `Clone` must **not**
+    /// mutate any shared `StableDerefMap` (e.g. via `insert`).
     Shared,
 }
 
+/// Marker trait for smart pointers that can be safely cloned inside a
+/// [`StableDerefMap`].
+///
+/// # Safety
+///
+/// Implementors must:
+/// - Choose the correct [`SmartPtrKind`].
+/// - For `Owned` pointers: implement `clone_from_reference` to produce a
+///   new smart pointer from a `&Self::Target` (similar logic to `Clone::clone`).
+/// - For `Shared` pointers: return `None` from `clone_from_reference`.
 pub unsafe trait SmartPtrCloneable: DerefGenMapPromise + Clone {
-    /// BE VERY CAREFUL WHEN SELECTING THE SMART POINTER KIND TO AVOID POSSIBLE UNDEFINED BEHAVIOR
+    /// The ownership kind of this smart pointer.
     const KIND: SmartPtrKind;
 
-    /// NOTE: THIS METHOD MUST BE IMPLEMENTED BY SMART POINTERS WITH KIND `Owned`. IF THE SMART POINTER KIND IS `Shared`, SIMPLY RETURN `None`.
-    /// IF THESE GUIDELINES ARE NOT FOLLOWED, THERE COULD BE BUGS, UNEXPECTED BEHAVIOUR, AND MAYBE UNDEFINED BEHAVIOUR
-    ///<br><br>
-    /// The implementation of this method should have very similar logic to the smart pointer's `Clone::clone` implementation to ensure consistency.
-    /// If still in doubt, you can look at how we implemented `SmartPtrCloneable` for `Box`
+    /// For `Owned` pointers, clone the pointee into a new smart pointer.
+    /// For `Shared` pointers, return `None`.
+    ///
+    /// # Safety
+    /// Must only be called when the slot is known to be occupied.
     unsafe fn clone_from_reference(reference: &Self::Target) -> Option<Self>;
 }
 
@@ -160,14 +172,19 @@ unsafe impl<T: ?Sized> SmartPtrCloneable for Arc<T> {
 
 /// Generational map that stores user-supplied smart pointers (`Box`, `Rc`,
 /// `Arc`, `&T`, …) directly.  The smart pointer provides pointer stability.
-pub type StableDerefGenMap<K, Derefable> = GenMap<K, DerefSlot<Derefable, K>>;
+pub type StableDerefMap<K, Derefable> = GenMap<K, DerefSlot<Derefable, K>>;
 
-pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
+/// Convenience alias for `StableDerefMap<K, Box<T>>`.
+///
+/// Equivalent to [`StableMap`](crate::stable_map::StableMap) in
+/// behaviour, but stores the `Box` directly rather than wrapping `T` in a
+/// second `Box`. Prefer this when your values are already boxed.
+pub type BoxStableDerefMap<K, T> = StableDerefMap<K, Box<T>>;
 
 // ─── Clone (two strategies) ──────────────────────────────────────────────────
 
 impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
-    for StableDerefGenMap<K, Derefable>
+    for StableDerefMap<K, Derefable>
 {
     fn clone(&self) -> Self {
         unsafe {
@@ -189,25 +206,26 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
             let slots_ref: &Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> = &*self.slots.get();
 
             // ── phase 1: snapshot refs ───────────────────────────────────
-            let mut snapshot: Vec<(K::Gen, RefOrNext<'_, K, Derefable::Target>)> =
+            let mut snapshot: Vec<(K::Gen, K::Extra, RefOrNext<'_, K, Derefable::Target>)> =
                 Vec::with_capacity(slots_ref.len());
 
             for cell in slots_ref.iter() {
                 let slot = &*cell.get();
                 let gen = slot.generation;
+                let other = slot.other;
 
                 let snap = if is_occupied_by_generation(gen) {
                     RefOrNext::Ref(slot.item.ref_output())
                 } else {
                     RefOrNext::Next(slot.item.get_vacant())
                 };
-                snapshot.push((gen, snap));
+                snapshot.push((gen, other, snap));
             }
 
             // ── phase 2: rebuild via clone_from_reference ────────────────
             let new_slots: Vec<UnsafeCell<Slot<DerefSlot<Derefable, K>, K>>> = snapshot
                 .into_iter()
-                .map(|(generation, snap)| {
+                .map(|(generation, other, snap)| {
                     let data = match snap {
                         RefOrNext::Ref(the_ref) => SlotData {
                             occupied: ManuallyDrop::new(
@@ -218,6 +236,7 @@ impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
                     };
                     UnsafeCell::new(Slot {
                         generation,
+                        other,
                         item: DerefSlot(data),
                     })
                 })
