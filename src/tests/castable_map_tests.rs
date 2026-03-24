@@ -1,5 +1,5 @@
 use crate::cast_key::{CastKey, DefaultCastKey};
-use crate::stable_cast_map::{StableBoxCastMap, StableCastMap};
+use crate::stable_cast_map::StableCastMap;
 use std::any::Any;
 use std::cell::Cell;
 
@@ -351,7 +351,7 @@ fn remove_by_with_concrete_key() {
 
     let dog_key: DefaultCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
-    let removed = map.remove_by(dog_key).unwrap();
+    let removed = map.remove(dog_key).unwrap();
     assert!(removed.downcast_ref::<Dog>().is_some());
     assert_eq!(map.len(), 0);
 }
@@ -776,7 +776,6 @@ fn cast_key_of_cross_map_returns_none() {
 #[test]
 fn cast_key_of_from_insert_with_key() {
     use crate::cast_key::DefaultMapKey;
-    use crate::key::Key;
     use std::cell::Cell;
 
     let map: Map = Map::new();

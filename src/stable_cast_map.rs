@@ -234,14 +234,6 @@ where
         Some((patched, reference))
     }
 
-    // ── remove ──────────────────────────────────────────────────────────
-
-    /// Removes an element by key, returning the owned smart pointer.
-    #[inline]
-    pub fn remove(&mut self, key: CK::WithRef<CK::RefType>) -> Option<D> {
-        self.inner.remove(to_inner(&key))
-    }
-
     // ── inner-key access ────────────────────────────────────────────────
 
     /// Shared-reference lookup using the inner key (without pointer metadata).
@@ -425,9 +417,9 @@ where
         unsafe { Some(&mut *fat_ptr) }
     }
 
-    /// Removes using a differently-typed key.
+    /// Removes an element
     #[inline]
-    pub fn remove_by<T: ?Sized + Pointee>(
+    pub fn remove<T: ?Sized + Pointee>(
         &mut self,
         key: CK::WithRef<T>,
     ) -> Option<D>

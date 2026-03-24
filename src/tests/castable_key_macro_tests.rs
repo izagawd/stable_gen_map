@@ -580,7 +580,7 @@ fn macro_key_remove_by_with_concrete_key() {
 
     let dog_key: TestCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
-    let removed = map.remove_by(dog_key).unwrap();
+    let removed = map.remove(dog_key).unwrap();
     assert!(removed.downcast_ref::<Dog>().is_some());
     assert_eq!(map.len(), 0);
 }
