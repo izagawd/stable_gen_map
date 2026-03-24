@@ -90,4 +90,7 @@ mod tests {
 
     #[cfg(test)]
     mod castable_map_tests;
+
+    #[cfg(test)]
+    mod castable_key_macro_tests;
 }

@@ -1,7 +1,6 @@
 use crate::cast_key::{CastKey, DefaultCastKey};
+use crate::map_id::MapIdState;
 use crate::stable_cast_map::StableCastMap;
-use crate::key::Key;
-use crate::map_id::{MapId, MapIdState};
 use std::any::Any;
 
 trait Animal: Any {
@@ -31,23 +30,6 @@ impl Flyer for Parrot {
     }
 }
 
-// ─── Size checks ────────────────────────────────────────────────────────────
-
-#[test]
-fn sized_key_is_16_bytes() {
-    assert_eq!(
-        std::mem::size_of::<DefaultCastKey<Dog>>(),
-        16, // KeyData(u32+u32) + NonNull<Dog>(usize)
-    );
-}
-
-#[test]
-fn dyn_key_is_24_bytes() {
-    assert_eq!(
-        std::mem::size_of::<DefaultCastKey<dyn Any>>(),
-        24, // KeyData(u32+u32) + NonNull<dyn Any>(usize+usize)
-    );
-}
 
 // ─── from_castable_parts round-trips ────────────────────────────────────────
 

@@ -393,7 +393,7 @@ macro_rules! __impl_castable_key {
             }
 
             #[inline]
-            fn from_castable_parts(
+            unsafe fn from_castable_parts(
                 data: $crate::key::KeyData<$idx, $gen>,
                 map_id: $crate::map_id::MapId,
                 metadata: <T as ::std::ptr::Pointee>::Metadata,
