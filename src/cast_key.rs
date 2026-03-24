@@ -165,7 +165,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DefaultCastKey")
             .field("key_data", &self.key_data)
-            .field("map_id", &self.map_id().0)
+            .field("map_id", &self.map_id())
             .finish()
     }
 }
@@ -341,7 +341,7 @@ macro_rules! __impl_castable_key {
                 use $crate::cast_key::CastKey;
                 f.debug_struct(stringify!($name))
                     .field("key_data", &self.key_data)
-                    .field("map_id", &self.map_id().0)
+                    .field("map_id", &self.map_id())
                     .finish()
             }
         }
@@ -389,7 +389,7 @@ macro_rules! __impl_castable_key {
 
             #[inline]
             fn map_id(&self) -> $crate::map_id::MapId {
-                $crate::map_id::MapId(self.map_id_and_metadata.as_ptr() as *const () as usize)
+                unsafe { $crate::map_id::MapId::from_usize(self.map_id_and_metadata.as_ptr() as *const () as usize) }
             }
 
             #[inline]
@@ -415,10 +415,10 @@ macro_rules! __impl_castable_key {
             ) -> Self {
                 unsafe {
                     debug_assert!(
-                        map_id.0 != 0,
+                        map_id.get_underlying_usize() != 0,
                         "cannot construct castable key with null map id"
                     );
-                    let raw: *mut T = ::std::ptr::from_raw_parts_mut(map_id.0 as *mut (), metadata);
+                    let raw: *mut T = ::std::ptr::from_raw_parts_mut(map_id.get_underlying_usize() as *mut (), metadata);
                     Self {
                         key_data: data,
                         map_id_and_metadata: ::std::ptr::NonNull::new_unchecked(raw),

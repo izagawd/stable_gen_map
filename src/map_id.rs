@@ -16,6 +16,13 @@ static NEXT_MAP_ID: AtomicUsize = AtomicUsize::new(1);
 pub struct MapId(pub(crate) usize);
 
 impl MapId {
+    
+    pub unsafe fn from_usize(number: usize) -> MapId {
+        MapId(number)
+    }
+    pub fn get_underlying_usize(&self) -> usize {
+        self.0
+    }
     /// The placeholder used for vacant slots. Never matches a real id.
     pub(crate) const VACANT: Self = MapId(0);
 
