@@ -1,5 +1,5 @@
-use crate::castable_key::{CastableKey, DefaultCastableKey};
-use crate::castable_map::KeyCastableStableGenMap;
+use crate::castable_key::{CastKey, DefaultCastKey};
+use crate::castable_map::StableCastMap;
 use crate::key::Key;
 use crate::map_id::{MapId, MapIdState};
 use std::any::Any;
@@ -36,7 +36,7 @@ impl Flyer for Parrot {
 #[test]
 fn sized_key_is_16_bytes() {
     assert_eq!(
-        std::mem::size_of::<DefaultCastableKey<Dog>>(),
+        std::mem::size_of::<DefaultCastKey<Dog>>(),
         16, // KeyData(u32+u32) + NonNull<Dog>(usize)
     );
 }
@@ -44,7 +44,7 @@ fn sized_key_is_16_bytes() {
 #[test]
 fn dyn_key_is_24_bytes() {
     assert_eq!(
-        std::mem::size_of::<DefaultCastableKey<dyn Any>>(),
+        std::mem::size_of::<DefaultCastKey<dyn Any>>(),
         24, // KeyData(u32+u32) + NonNull<dyn Any>(usize+usize)
     );
 }
@@ -60,7 +60,7 @@ fn castable_parts_round_trip_sized() {
         generation: 7u32,
     };
 
-    let key = unsafe { DefaultCastableKey::<Dog>::from_castable_parts(data, map_id, ()) };
+    let key = unsafe { DefaultCastKey::<Dog>::from_castable_parts(data, map_id, ()) };
     assert_eq!(key.key_data().idx, 42);
     assert_eq!(key.key_data().generation, 7);
     assert_eq!(key.map_id(), map_id);
@@ -81,7 +81,7 @@ fn castable_parts_round_trip_dyn() {
     let dog_ref: &dyn Any = &dog;
     let metadata = std::ptr::metadata(dog_ref as *const dyn Any);
 
-    let key = unsafe { DefaultCastableKey::<dyn Any>::from_castable_parts(data, map_id, metadata) };
+    let key = unsafe { DefaultCastKey::<dyn Any>::from_castable_parts(data, map_id, metadata) };
     assert_eq!(key.key_data().idx, 10);
     assert_eq!(key.key_data().generation, 3);
     assert_eq!(key.map_id(), map_id);
@@ -97,7 +97,7 @@ fn castable_key_is_copy() {
         idx: 1u32,
         generation: 1u32,
     };
-    let key = unsafe { DefaultCastableKey::<Dog>::from_castable_parts(data, map_id, ()) };
+    let key = unsafe { DefaultCastKey::<Dog>::from_castable_parts(data, map_id, ()) };
     let copy = key;
     assert_eq!(key, copy);
 }
@@ -116,10 +116,9 @@ fn castable_key_eq_ignores_metadata() {
     let dog_meta = std::ptr::metadata(&dog as &dyn Any as *const dyn Any);
     let parrot_meta = std::ptr::metadata(&parrot as &dyn Any as *const dyn Any);
 
-    let key_a =
-        unsafe { DefaultCastableKey::<dyn Any>::from_castable_parts(data, map_id, dog_meta) };
+    let key_a = unsafe { DefaultCastKey::<dyn Any>::from_castable_parts(data, map_id, dog_meta) };
     let key_b =
-        unsafe { DefaultCastableKey::<dyn Any>::from_castable_parts(data, map_id, parrot_meta) };
+        unsafe { DefaultCastKey::<dyn Any>::from_castable_parts(data, map_id, parrot_meta) };
     // Same key_data + map_id → equal (metadata doesn't affect identity)
     assert_eq!(key_a, key_b);
 }
@@ -137,10 +136,9 @@ fn castable_key_hash_is_consistent_with_eq() {
     let dog_meta = std::ptr::metadata(&Dog as &dyn Any as *const dyn Any);
     let parrot_meta = std::ptr::metadata(&Parrot as &dyn Any as *const dyn Any);
 
-    let key_a =
-        unsafe { DefaultCastableKey::<dyn Any>::from_castable_parts(data, map_id, dog_meta) };
+    let key_a = unsafe { DefaultCastKey::<dyn Any>::from_castable_parts(data, map_id, dog_meta) };
     let key_b =
-        unsafe { DefaultCastableKey::<dyn Any>::from_castable_parts(data, map_id, parrot_meta) };
+        unsafe { DefaultCastKey::<dyn Any>::from_castable_parts(data, map_id, parrot_meta) };
 
     let mut set = HashSet::new();
     set.insert(key_a);
@@ -158,9 +156,9 @@ fn upcast_sized_to_dyn_any() {
         generation: 1u32,
     };
 
-    let concrete_key = unsafe { DefaultCastableKey::<Dog>::from_castable_parts(data, map_id, ()) };
-    // Implicit coercion: Dog: Any, so DefaultCastableKey<Dog> → DefaultCastableKey<dyn Any>
-    let dyn_key: DefaultCastableKey<dyn Any> = concrete_key;
+    let concrete_key = unsafe { DefaultCastKey::<Dog>::from_castable_parts(data, map_id, ()) };
+    // Implicit coercion: Dog: Any, so DefaultCastKey<Dog> → DefaultCastKey<dyn Any>
+    let dyn_key: DefaultCastKey<dyn Any> = concrete_key;
 
     assert_eq!(dyn_key.key_data().idx, 99);
     assert_eq!(dyn_key.map_id(), map_id);
@@ -175,10 +173,9 @@ fn upcast_sized_to_dyn_trait() {
         generation: 5u32,
     };
 
-    let concrete_key =
-        unsafe { DefaultCastableKey::<Parrot>::from_castable_parts(data, map_id, ()) };
-    let animal_key: DefaultCastableKey<dyn Animal> = concrete_key;
-    let flyer_key: DefaultCastableKey<dyn Flyer> = concrete_key;
+    let concrete_key = unsafe { DefaultCastKey::<Parrot>::from_castable_parts(data, map_id, ()) };
+    let animal_key: DefaultCastKey<dyn Animal> = concrete_key;
+    let flyer_key: DefaultCastKey<dyn Flyer> = concrete_key;
 
     assert_eq!(animal_key.key_data().idx, 7);
     assert_eq!(flyer_key.key_data().idx, 7);
@@ -188,15 +185,14 @@ fn upcast_sized_to_dyn_trait() {
 
 // ─── downcast_key (via map method) ──────────────────────────────────────────
 
-type Map = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, Box<dyn Any>>;
+type Map = StableCastMap<DefaultCastKey<dyn Any>, Box<dyn Any>>;
 
 #[test]
 fn downcast_key_succeeds_for_correct_type() {
     let map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog) as Box<dyn Any>);
 
-    let result: Option<DefaultCastableKey<Dog>> =
-        map.downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key);
+    let result: Option<DefaultCastKey<Dog>> = map.downcast_key::<Dog, DefaultCastKey<Dog>>(dyn_key);
     assert!(result.is_some());
     let back = result.unwrap();
     assert_eq!(back.key_data().idx, dyn_key.key_data().idx);
@@ -208,8 +204,8 @@ fn downcast_key_fails_for_wrong_type() {
     let map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog) as Box<dyn Any>);
 
-    let result: Option<DefaultCastableKey<Parrot>> =
-        map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key);
+    let result: Option<DefaultCastKey<Parrot>> =
+        map.downcast_key::<Parrot, DefaultCastKey<Parrot>>(dyn_key);
     assert!(result.is_none());
 }
 
@@ -217,8 +213,8 @@ fn downcast_key_fails_for_wrong_type() {
 fn downcast_key_preserves_key_data_and_map_id() {
     let map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Parrot) as Box<dyn Any>);
-    let back: DefaultCastableKey<Parrot> = map
-        .downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key)
+    let back: DefaultCastKey<Parrot> = map
+        .downcast_key::<Parrot, DefaultCastKey<Parrot>>(dyn_key)
         .unwrap();
 
     assert_eq!(back.key_data().idx, dyn_key.key_data().idx);
@@ -237,8 +233,8 @@ fn map_id_survives_upcast() {
         generation: 1u32,
     };
 
-    let concrete = unsafe { DefaultCastableKey::<Dog>::from_castable_parts(data, map_id, ()) };
-    let dyn_key: DefaultCastableKey<dyn Any> = concrete;
+    let concrete = unsafe { DefaultCastKey::<Dog>::from_castable_parts(data, map_id, ()) };
+    let dyn_key: DefaultCastKey<dyn Any> = concrete;
 
     // The map_id is packed in the data-pointer half of NonNull.
     // It must survive the coercion (which only changes the metadata half).
@@ -254,7 +250,7 @@ fn different_map_ids_produce_unequal_keys() {
         generation: 1u32,
     };
 
-    let key_a = unsafe { DefaultCastableKey::<Dog>::from_castable_parts(data, a.ensure_id(), ()) };
-    let key_b = unsafe { DefaultCastableKey::<Dog>::from_castable_parts(data, b.ensure_id(), ()) };
+    let key_a = unsafe { DefaultCastKey::<Dog>::from_castable_parts(data, a.ensure_id(), ()) };
+    let key_b = unsafe { DefaultCastKey::<Dog>::from_castable_parts(data, b.ensure_id(), ()) };
     assert_ne!(key_a, key_b);
 }

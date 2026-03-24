@@ -1,8 +1,8 @@
-//! Map type that uses a [`CastableKey`] as its user-facing key.
+//! Map type that uses a [`CastKey`] as its user-facing key.
 //!
 //! Internally, a plain [`CastableInnerKey`] (which implements [`Key`] with
 //! `Extra = MapId`) is used by the `GenMap`. The castable map wrapper
-//! converts between `CastableInnerKey` and `CastableKey` at every
+//! converts between `CastableInnerKey` and `CastKey` at every
 //! boundary — adding metadata on the way out, stripping it on the way in.
 //!
 //! This means `GenMap` never sees pointer metadata and no `dangling_metadata`
@@ -13,17 +13,17 @@ use std::collections::TryReserveError;
 use std::ops::{Index, IndexMut};
 use std::ptr::Pointee;
 
-use crate::castable_key::CastableKey;
+use crate::castable_key::CastKey;
 use crate::gen_map;
 use crate::stable_deref_gen_map::{
-    DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefGenMap,
+    DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap,
 };
 
 // ─── Conversion helpers ─────────────────────────────────────────────────────
 
 /// Strip metadata, produce inner key.
 #[inline]
-fn to_inner<CK: CastableKey>(key: &CK) -> CK::InnerKey {
+fn to_inner<CK: CastKey>(key: &CK) -> CK::InnerKey {
     key.inner_key()
 }
 
@@ -31,7 +31,7 @@ fn to_inner<CK: CastableKey>(key: &CK) -> CK::InnerKey {
 #[inline]
 fn to_castable<CK, D>(inner: CK::InnerKey, reference: &D::Target) -> CK
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
     let metadata = std::ptr::metadata(reference as *const D::Target);
@@ -40,25 +40,25 @@ where
 
 // ─── KeyCastableStableGenMap ────────────────────────────────────────────────
 
-/// A [`StableDerefGenMap`] wrapper that supports typed lookups via
-/// [`CastableKey`].
+/// A [`StableDerefMap`] wrapper that supports typed lookups via
+/// [`CastKey`].
 ///
-/// - `CK`: the castable key family, e.g. `DefaultCastableKey<D::Target>`.
+/// - `CK`: the castable key family, e.g. `DefaultCastKey<D::Target>`.
 /// - `D`: the smart pointer type, e.g. `Box<dyn Any>`.
-pub struct KeyCastableStableGenMap<CK, D>
+pub struct StableCastMap<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
-    pub(crate) inner: StableDerefGenMap<CK::InnerKey, D>,
+    pub(crate) inner: StableDerefMap<CK::InnerKey, D>,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
 // ─── Clone ──────────────────────────────────────────────────────────────────
 
-impl<CK, D> Clone for KeyCastableStableGenMap<CK, D>
+impl<CK, D> Clone for StableCastMap<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + SmartPtrCloneable + 'static,
 {
     /// Clones the map.
@@ -76,16 +76,16 @@ where
 
 // ─── Basic methods ──────────────────────────────────────────────────────────
 
-impl<CK, D> KeyCastableStableGenMap<CK, D>
+impl<CK, D> StableCastMap<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     /// Creates a new, empty map.
     #[inline]
     pub const fn new() -> Self {
         Self {
-            inner: StableDerefGenMap::new(),
+            inner: StableDerefMap::new(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -94,7 +94,7 @@ where
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: StableDerefGenMap::with_capacity(capacity),
+            inner: StableDerefMap::with_capacity(capacity),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -130,32 +130,32 @@ where
     }
 }
 
-// ─── Native operations (CK: CastableKey<RefType = D::Target>) ──────────────────
+// ─── Native operations (CK: CastKey<RefType = D::Target>) ──────────────────
 
-impl<CK, D> KeyCastableStableGenMap<CK, D>
+impl<CK, D> StableCastMap<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
-    /// Attempts to downcast a `CastableKey<RefType = dyn Any>` to a `CastableKey<RefType = Concrete>`.
+    /// Attempts to downcast a `CastKey<RefType = dyn Any>` to a `CastKey<RefType = Concrete>`.
     ///
     /// Looks up the actual data to obtain its `TypeId` (no UB). Returns
     /// `None` if the key is stale / wrong map, or the concrete type doesn't match.
     ///
     /// # Example
     /// ```ignore
-    /// let dyn_key: DefaultCastableKey<dyn Any> = key;
-    /// if let Some(concrete) = map.downcast_key::<MyStruct, DefaultCastableKey<MyStruct>>(dyn_key) {
-    ///     // concrete: DefaultCastableKey<MyStruct>
+    /// let dyn_key: DefaultCastKey<dyn Any> = key;
+    /// if let Some(concrete) = map.downcast_key::<MyStruct, DefaultCastKey<MyStruct>>(dyn_key) {
+    ///     // concrete: DefaultCastKey<MyStruct>
     /// }
     /// ```
     #[inline]
     pub fn downcast_key<Concrete: 'static, KOut>(
         &self,
-        key: impl CastableKey<RefType = dyn Any, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
+        key: impl CastKey<RefType = dyn Any, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<KOut>
     where
-        KOut: CastableKey<RefType = Concrete, Idx = CK::Idx, Gen = CK::Gen>,
+        KOut: CastKey<RefType = Concrete, Idx = CK::Idx, Gen = CK::Gen>,
     {
         let data: &_ = self.inner.get(to_inner(&key))?;
         let data_as_any_from_key: &dyn Any =
@@ -325,10 +325,10 @@ where
 
 // ─── Cross-typed lookups ────────────────────────────────────────────────────
 
-impl<CK, D> KeyCastableStableGenMap<CK, D>
+impl<CK, D> StableCastMap<CK, D>
 where
     D: DerefGenMapPromise + 'static,
-    CK: CastableKey<RefType = <D as std::ops::Deref>::Target>,
+    CK: CastKey<RefType = <D as std::ops::Deref>::Target>,
 {
     /// Shared-reference lookup with a key for a potentially *different* type `T`.
     ///
@@ -337,7 +337,7 @@ where
     #[inline]
     pub fn get<T: ?Sized + Pointee>(
         &self,
-        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
+        key: impl CastKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<&T>
     where
         <T as Pointee>::Metadata: Copy,
@@ -352,7 +352,7 @@ where
     #[inline]
     pub fn get_mut<T: ?Sized + Pointee>(
         &mut self,
-        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
+        key: impl CastKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<&mut T>
     where
         <T as Pointee>::Metadata: Copy,
@@ -368,7 +368,7 @@ where
     #[inline]
     pub fn remove_by<T: ?Sized + Pointee>(
         &mut self,
-        key: impl CastableKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
+        key: impl CastKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<D>
     where
         <T as Pointee>::Metadata: Copy,
@@ -379,9 +379,9 @@ where
 
 // ─── Index / IndexMut ───────────────────────────────────────────────────────
 
-impl<CK, D> Index<CK> for KeyCastableStableGenMap<CK, D>
+impl<CK, D> Index<CK> for StableCastMap<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     type Output = D::Target;
@@ -391,9 +391,9 @@ where
     }
 }
 
-impl<CK, D> IndexMut<CK> for KeyCastableStableGenMap<CK, D>
+impl<CK, D> IndexMut<CK> for StableCastMap<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static + std::ops::DerefMut,
 {
     fn index_mut(&mut self, key: CK) -> &mut Self::Output {
@@ -404,13 +404,13 @@ where
 // ─── IterMut ────────────────────────────────────────────────────────────────
 
 /// Mutable iterator over all occupied elements of a
-/// [`KeyCastableStableGenMap`]. Yields `(Key, &mut Item)` pairs with properly
+/// [`StableCastMap`]. Yields `(Key, &mut Item)` pairs with properly
 /// patched castable keys.
 ///
-/// Created by [`KeyCastableStableGenMap::iter_mut`].
+/// Created by [`StableCastMap::iter_mut`].
 pub struct IterMut<'a, CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
     inner: gen_map::IterMut<'a, CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
@@ -419,7 +419,7 @@ where
 
 impl<'a, CK, D> Iterator for IterMut<'a, CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     type Item = (CK, &'a mut D);
@@ -437,13 +437,13 @@ where
 
 // ─── Drain ──────────────────────────────────────────────────────────────────
 
-/// Draining iterator over a [`KeyCastableStableGenMap`]. Yields all
+/// Draining iterator over a [`StableCastMap`]. Yields all
 /// occupied `(Key, Item)` pairs, removing them from the map.
 ///
-/// Created by [`KeyCastableStableGenMap::drain`].
+/// Created by [`StableCastMap::drain`].
 pub struct Drain<'a, CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
     inner: gen_map::Drain<'a, CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
@@ -452,7 +452,7 @@ where
 
 impl<'a, CK, D> Iterator for Drain<'a, CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     type Item = (CK, D);
@@ -470,11 +470,11 @@ where
 
 // ─── IntoIter (owning) ─────────────────────────────────────────────────────
 
-/// Owning iterator over a [`KeyCastableStableGenMap`]. Consumes the map
+/// Owning iterator over a [`StableCastMap`]. Consumes the map
 /// and yields all occupied `(Key, Item)` pairs.
 pub struct IntoIter<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
     inner: gen_map::IntoIter<CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
@@ -483,7 +483,7 @@ where
 
 impl<CK, D> Iterator for IntoIter<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     type Item = (CK, D);
@@ -499,9 +499,9 @@ where
     }
 }
 
-impl<CK, D> IntoIterator for KeyCastableStableGenMap<CK, D>
+impl<CK, D> IntoIterator for StableCastMap<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     type Item = (CK, D);
@@ -515,9 +515,9 @@ where
     }
 }
 
-impl<'a, CK, D> IntoIterator for &'a mut KeyCastableStableGenMap<CK, D>
+impl<'a, CK, D> IntoIterator for &'a mut StableCastMap<CK, D>
 where
-    CK: CastableKey<RefType = D::Target>,
+    CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     type Item = (CK, &'a mut D);
@@ -531,5 +531,5 @@ where
 
 // ─── Type alias ─────────────────────────────────────────────────────────────
 
-/// Convenience alias: [`KeyCastableStableGenMap`] storing `Box<T>`.
-pub type KeyCastableBoxStableGenMap<CK, T: ?Sized> = KeyCastableStableGenMap<CK, Box<T>>;
+/// Convenience alias: [`StableCastMap`] storing `Box<T>`.
+pub type StableBoxCastMap<CK, T: ?Sized> = StableCastMap<CK, Box<T>>;

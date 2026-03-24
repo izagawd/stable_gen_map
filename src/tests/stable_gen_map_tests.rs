@@ -2,7 +2,7 @@ use crate::key::DefaultKey;
 use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
 use crate::new_key_type;
-use crate::stable_gen_map::StableGenMap;
+use crate::stable_gen_map::StableMap;
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// After clear(), the map must not reuse any key that existed before.
 #[test]
 fn clear_does_not_reuse_keys_default_slots() {
-    let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
+    let mut map: StableMap<DefaultKey, i32> = StableMap::new();
 
     const N: usize = 256;
 
@@ -59,7 +59,7 @@ fn clear_does_not_reuse_keys_default_slots() {
 /// Even with removes and reinserts before clear(), no key should be reused after clear().
 #[test]
 fn clear_does_not_reuse_any_previous_key_even_after_prior_removes() {
-    let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
+    let mut map: StableMap<DefaultKey, i32> = StableMap::new();
     const N: usize = 256;
 
     let mut all_keys_before_clear = HashSet::new();
@@ -104,11 +104,11 @@ fn clear_does_not_reuse_any_previous_key_even_after_prior_removes() {
     );
 }
 
-type Map<T> = StableGenMap<DefaultKey, T>;
+type Map<T> = StableMap<DefaultKey, T>;
 
 #[test]
 fn try_insert_with_key_err_reuses_reserved_new_slot() {
-    let map: Map<i32> = StableGenMap::new();
+    let map: Map<i32> = StableMap::new();
 
     // Empty map → allocates first slot, then returns Err.
     let res: Result<(DefaultKey, &i32), &'static str> =
@@ -131,7 +131,7 @@ fn try_insert_with_key_err_reuses_reserved_new_slot() {
 
 #[test]
 fn get_by_index_only_round_trips_index_and_key() {
-    let map = StableGenMap::<DefaultKey, _>::new();
+    let map = StableMap::<DefaultKey, _>::new();
 
     let (k, _) = map.insert(777);
     let idx = k.data().idx;
@@ -143,7 +143,7 @@ fn get_by_index_only_round_trips_index_and_key() {
 
 #[test]
 fn get_by_index_only_returns_none_for_vacant_slot() {
-    let mut map = StableGenMap::<DefaultKey, _>::new();
+    let mut map = StableMap::<DefaultKey, _>::new();
 
     let (k, _) = map.insert(42);
     let idx = k.data().idx;
@@ -156,7 +156,7 @@ fn get_by_index_only_returns_none_for_vacant_slot() {
 // New-slot branch + panic: (idx=0) must be reusable.
 #[test]
 fn try_insert_with_key_panic_reuses_reserved_new_slot() {
-    let map: Map<i32> = StableGenMap::new();
+    let map: Map<i32> = StableMap::new();
 
     // Empty map → "new slot" path, then panic inside func.
     let res = catch_unwind(AssertUnwindSafe(|| {
@@ -181,7 +181,7 @@ fn try_insert_with_key_panic_reuses_reserved_new_slot() {
 fn nested_try_insert_with_key_uses_distinct_slots() {
     use std::cell::Cell;
 
-    let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
+    let map: StableMap<DefaultKey, i32> = StableMap::new();
 
     // Record the inner key created inside the outer try_insert_with_key closure.
     let inner_key_cell: Cell<Option<DefaultKey>> = Cell::new(None);
@@ -218,7 +218,7 @@ new_key_type! {
 
 #[test]
 fn iter_mut_yields_valid_keys_and_values() {
-    let mut map = StableGenMap::<TestKey, i32>::new();
+    let mut map = StableMap::<TestKey, i32>::new();
 
     // Insert enough items to span multiple slots
     let mut expected = Vec::new();
@@ -256,7 +256,7 @@ fn iter_mut_yields_valid_keys_and_values() {
 
 #[test]
 fn remove_reuses_same_slot_with_bumped_generation() {
-    let mut map = StableGenMap::<TestKey, i32>::new();
+    let mut map = StableMap::<TestKey, i32>::new();
 
     let (k1, v1) = map.insert(10);
     assert_eq!(*v1, 10);
@@ -282,7 +282,7 @@ fn remove_reuses_same_slot_with_bumped_generation() {
 
 #[test]
 fn iter_mut_can_modify_all_values() {
-    let mut map: Map<i32> = StableGenMap::new();
+    let mut map: Map<i32> = StableMap::new();
 
     for i in 0..40 {
         let (_k, _) = map.insert(i);
@@ -310,7 +310,7 @@ fn drop_is_called_exactly_once_per_element() {
     let drops = Arc::new(AtomicUsize::new(0));
 
     {
-        let mut map = StableGenMap::<DefaultKey, DropCounter>::new();
+        let mut map = StableMap::<DefaultKey, DropCounter>::new();
 
         // Insert a bunch
         let mut keys = Vec::new();
@@ -342,7 +342,7 @@ fn drop_is_called_exactly_once_per_element() {
 }
 #[test]
 fn into_iter_consumes_and_yields_owned_values() {
-    let mut map: Map<i32> = StableGenMap::new();
+    let mut map: Map<i32> = StableMap::new();
 
     for i in 0..40 {
         let (_k, _) = map.insert(i);
@@ -357,7 +357,7 @@ fn into_iter_consumes_and_yields_owned_values() {
 
 #[test]
 fn try_insert_with_key_ok_path_new_slot() {
-    let normal_map: Map<i32> = StableGenMap::new();
+    let normal_map: Map<i32> = StableMap::new();
 
     // OK path with a brand new map (no free slots, allocate in first slot.
     let (k, v) = normal_map
@@ -370,7 +370,7 @@ fn try_insert_with_key_ok_path_new_slot() {
 
 #[test]
 fn len_tracks_insert_remove_and_clear() {
-    let normal_map: Map<i32> = StableGenMap::new();
+    let normal_map: Map<i32> = StableMap::new();
     assert_eq!(normal_map.len(), 0, "new normal_map map must start empty");
 
     let (k1, _) = normal_map.insert(10);
@@ -411,7 +411,7 @@ fn len_tracks_insert_remove_and_clear() {
 
 #[test]
 fn len_unchanged_on_try_insert_new_slot_err_and_panic() {
-    let normal_map: Map<i32> = StableGenMap::new();
+    let normal_map: Map<i32> = StableMap::new();
     assert_eq!(normal_map.len(), 0);
 
     // No free slots yet → this hits the "add new slot" branch.
@@ -451,7 +451,7 @@ fn len_unchanged_on_try_insert_new_slot_err_and_panic() {
 
 #[test]
 fn try_insert_with_key_error_reuses_free_slot() {
-    let normal_map: Map<i32> = StableGenMap::new();
+    let normal_map: Map<i32> = StableMap::new();
 
     // First insert through the simple insert API so we can remove it.
     let (k1, _) = normal_map.insert(1);
@@ -492,7 +492,7 @@ fn try_insert_with_key_error_reuses_free_slot() {
 
 #[test]
 fn get_mut_respects_generation() {
-    let normal_map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
+    let normal_map: StableMap<DefaultKey, i32> = StableMap::new();
 
     let (k1, _) = normal_map.insert(1);
     let (k2, _) = normal_map.insert(2);
@@ -533,7 +533,7 @@ fn get_mut_respects_generation() {
 //    (Vec<Slot<T>> growth + slot allocations).
 #[test]
 fn stable_ref_survives_many_vec_and_resizes() {
-    let map = StableGenMap::<DefaultKey, String>::new();
+    let map = StableMap::<DefaultKey, String>::new();
 
     let (k, r) = map.insert("root".to_string());
     let p_before = (r as *const String) as usize;
@@ -556,7 +556,7 @@ fn stable_ref_survives_many_vec_and_resizes() {
 //    - get() returns None during construction.
 #[test]
 fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
-    let mut map = StableGenMap::<DefaultKey, i32>::new();
+    let mut map = StableMap::<DefaultKey, i32>::new();
     let (k_old, _) = map.insert(111);
 
     let idx_old = k_old.key_data.idx;
@@ -595,7 +595,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
 //    even if we trigger a lot of resizes while in-flight.
 #[test]
 fn get_returns_none_during_insert_even_while_resizing() {
-    let map = StableGenMap::<DefaultKey, String>::new();
+    let map = StableMap::<DefaultKey, String>::new();
 
     let (_k, r) = map.insert_with_key(|k_self| {
         // During the window where the slot is logically "inserting",
@@ -620,7 +620,7 @@ fn idx_of(k: DefaultKey) -> <DefaultKey as Key>::Idx {
 //    and slot growth that reuse free slots.
 #[test]
 fn remove_then_mass_insert_then_reuse_keeps_old_key_invalid() {
-    let mut map = StableGenMap::<DefaultKey, i32>::new();
+    let mut map = StableMap::<DefaultKey, i32>::new();
 
     let (k1, _) = map.insert(1);
     assert_eq!(map.remove(k1), Some(1));
@@ -646,7 +646,7 @@ fn remove_then_mass_insert_then_reuse_keeps_old_key_invalid() {
 //    values must end up visible afterwards.
 #[test]
 fn get_during_insert_returns_none_and_reentrancy_is_ok() {
-    let map = StableGenMap::<DefaultKey, String>::new();
+    let map = StableMap::<DefaultKey, String>::new();
 
     let mut inner = None;
     let mut inner_ref = None;
@@ -673,7 +673,7 @@ fn get_during_insert_returns_none_and_reentrancy_is_ok() {
 //    with a bumped generation (and the same slot).
 #[test]
 fn remove_invalidates_old_key_and_reuse_bumps_generation() {
-    let mut map = StableGenMap::<DefaultKey, i32>::new();
+    let mut map = StableMap::<DefaultKey, i32>::new();
 
     let (k1, r1) = map.insert(10);
     assert_eq!(*r1, 10);
@@ -703,7 +703,7 @@ fn remove_invalidates_old_key_and_reuse_bumps_generation() {
 // 8. Removing a bogus key (wrong idx or wrong generation) returns None.
 #[test]
 fn remove_nonexistent_returns_none() {
-    let mut map = StableGenMap::<DefaultKey, i32>::new();
+    let mut map = StableMap::<DefaultKey, i32>::new();
 
     // Completely bogus idx.
     let bogus = DefaultKey {
@@ -741,7 +741,7 @@ fn drops_happen_on_remove_and_on_map_drop() {
     let drops = &DROPS;
     DROPS.store(0, Ordering::SeqCst);
 
-    let mut map = StableGenMap::<DefaultKey, CountDrop>::new();
+    let mut map = StableMap::<DefaultKey, CountDrop>::new();
     let (k1, _) = map.insert(CountDrop(drops, 1));
 
     let (_k2, _) = map.insert(CountDrop(drops, 2));
@@ -759,7 +759,7 @@ fn drops_happen_on_remove_and_on_map_drop() {
 // 10. insert() and insert_with() must have consistent semantics.
 #[test]
 fn insert_and_insert_with_match_semantics() {
-    let map = StableGenMap::<DefaultKey, String>::new();
+    let map = StableMap::<DefaultKey, String>::new();
 
     let (k1, r1) = map.insert("X".into());
     let (k2, r2) = map.insert_with_key(|_| "Y".into());
@@ -773,7 +773,7 @@ fn insert_and_insert_with_match_semantics() {
 // 11. Sanity check for the Index<K> impl.
 #[test]
 fn index_operator_works() {
-    let map = StableGenMap::<DefaultKey, String>::new();
+    let map = StableMap::<DefaultKey, String>::new();
 
     let (k1, _) = map.insert("hello".to_string());
     let (k2, _) = map.insert("world".to_string());

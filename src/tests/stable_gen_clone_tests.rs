@@ -1,8 +1,8 @@
 use crate::key::{DefaultKey, Key};
-use crate::stable_gen_map::StableGenMap;
+use crate::stable_gen_map::StableMap;
 use std::collections::{HashMap, HashSet};
 
-type Map = StableGenMap<DefaultKey, i32>;
+type Map = StableMap<DefaultKey, i32>;
 
 #[test]
 fn clone_empty() {
@@ -48,13 +48,13 @@ mod clone_efficiently_tests {
 
     use crate::key::{DefaultKey, Key};
 
-    use crate::stable_gen_map::StableGenMap;
+    use crate::stable_gen_map::StableMap;
 
-    type Map<T> = StableGenMap<DefaultKey, T>;
+    type Map<T> = StableMap<DefaultKey, T>;
 
     #[test]
     fn clone_efficiently_empty_map() {
-        let mut map: Map<String> = StableGenMap::new();
+        let mut map: Map<String> = StableMap::new();
 
         let clone = map.clone_efficiently_mut();
 
@@ -66,7 +66,7 @@ mod clone_efficiently_tests {
 
     #[test]
     fn clone_efficiently_copies_all_live_entries_and_not_aliasing() {
-        let mut map: Map<String> = StableGenMap::new();
+        let mut map: Map<String> = StableMap::new();
 
         // Insert enough elements to resize
         let mut keys = Vec::new();
@@ -125,7 +125,7 @@ mod clone_efficiently_tests {
 
     #[test]
     fn clone_efficiently_preserves_free_list_structure_but_independent() {
-        let mut map: Map<i32> = StableGenMap::new();
+        let mut map: Map<i32> = StableMap::new();
 
         let (k1, _) = map.insert(10);
         let (k2, _) = map.insert(20); // will be freed
@@ -294,7 +294,7 @@ fn clone_into_iter_matches_snapshot() {
 
 // We use a thread-local pointer so Reentrant::clone can find the map.
 thread_local! {
-    static GLOBAL_MAP_PTR: std::cell::Cell<*const StableGenMap<DefaultKey, Reentrant>> =
+    static GLOBAL_MAP_PTR: std::cell::Cell<*const StableMap<DefaultKey, Reentrant>> =
         std::cell::Cell::new(std::ptr::null());
 }
 
@@ -321,11 +321,11 @@ impl Clone for Reentrant {
     }
 }
 
-type MapReentrant = StableGenMap<DefaultKey, Reentrant>;
+type MapReentrant = StableMap<DefaultKey, Reentrant>;
 
 #[test]
 fn clone_handles_reentrant_t_clone() {
-    let m: MapReentrant = StableGenMap::new();
+    let m: MapReentrant = StableMap::new();
 
     // allow Reentrant::clone to find this map
     GLOBAL_MAP_PTR.set(&m as *const _);
@@ -360,7 +360,7 @@ fn clone_handles_reentrant_t_clone() {
 
 #[test]
 fn clone_handles_reentrant_t_clone_two() {
-    let mut m: MapReentrant = StableGenMap::new();
+    let mut m: MapReentrant = StableMap::new();
 
     // allow Reentrant::clone to find this map
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));

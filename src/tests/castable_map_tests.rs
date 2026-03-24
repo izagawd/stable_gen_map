@@ -1,5 +1,5 @@
-use crate::castable_key::{CastableKey, DefaultCastableKey};
-use crate::castable_map::{KeyCastableBoxStableGenMap, KeyCastableStableGenMap};
+use crate::castable_key::{CastKey, DefaultCastKey};
+use crate::castable_map::{StableBoxCastMap, StableCastMap};
 use std::any::Any;
 use std::cell::Cell;
 
@@ -36,7 +36,7 @@ impl Flyer for Parrot {
     }
 }
 
-type Map = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, Box<dyn Any>>;
+type Map = StableCastMap<DefaultCastKey<dyn Any>, Box<dyn Any>>;
 
 // ─── Basic insert / get ─────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ fn insert_concrete_upcast_key_then_get() {
     let map: Map = Map::new();
     let dog = Dog { name: "Rex".into() };
     let (key, _) = map.insert(Box::new(dog) as Box<dyn Any>);
-    // key is DefaultCastableKey<dyn Any>, get works directly
+    // key is DefaultCastKey<dyn Any>, get works directly
     let val = map.get(key).unwrap();
     let dog_ref = val.downcast_ref::<Dog>().unwrap();
     assert_eq!(dog_ref.name, "Rex");
@@ -108,8 +108,8 @@ fn downcast_key_correct_type_then_get() {
         name: "Buddy".into(),
     }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastableKey<Dog> = map
-        .downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key)
+    let dog_key: DefaultCastKey<Dog> = map
+        .downcast_key::<Dog, DefaultCastKey<Dog>>(dyn_key)
         .unwrap();
 
     let dog: &Dog = map.get(dog_key).unwrap();
@@ -123,8 +123,8 @@ fn downcast_key_wrong_type_returns_none() {
         name: "Fido".into(),
     }) as Box<dyn Any>);
 
-    let result: Option<DefaultCastableKey<Parrot>> =
-        map.downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key);
+    let result: Option<DefaultCastKey<Parrot>> =
+        map.downcast_key::<Parrot, DefaultCastKey<Parrot>>(dyn_key);
     assert!(result.is_none());
 }
 
@@ -132,7 +132,7 @@ fn downcast_key_wrong_type_returns_none() {
 
 #[test]
 fn get_with_trait_key() {
-    type AnimalMap = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, Box<dyn Any>>;
+    type AnimalMap = StableCastMap<DefaultCastKey<dyn Any>, Box<dyn Any>>;
     let map: AnimalMap = AnimalMap::new();
 
     let parrot = Parrot {
@@ -142,10 +142,10 @@ fn get_with_trait_key() {
     let (dyn_key, _) = map.insert(Box::new(parrot) as Box<dyn Any>);
 
     // Downcast key to concrete, then upcast to dyn Animal
-    let concrete_key: DefaultCastableKey<Parrot> = map
-        .downcast_key::<Parrot, DefaultCastableKey<Parrot>>(dyn_key)
+    let concrete_key: DefaultCastKey<Parrot> = map
+        .downcast_key::<Parrot, DefaultCastKey<Parrot>>(dyn_key)
         .unwrap();
-    let animal_key: DefaultCastableKey<dyn Animal> = concrete_key;
+    let animal_key: DefaultCastKey<dyn Animal> = concrete_key;
 
     let animal: &dyn Animal = map.get(animal_key).unwrap();
     assert_eq!(animal.speak(), "squawk");
@@ -156,8 +156,8 @@ fn get_mut_modifies_value() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastableKey<Dog> = map
-        .downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key)
+    let dog_key: DefaultCastKey<Dog> = map
+        .downcast_key::<Dog, DefaultCastKey<Dog>>(dyn_key)
         .unwrap();
 
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
@@ -354,8 +354,8 @@ fn remove_by_with_concrete_key() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastableKey<Dog> = map
-        .downcast_key::<Dog, DefaultCastableKey<Dog>>(dyn_key)
+    let dog_key: DefaultCastKey<Dog> = map
+        .downcast_key::<Dog, DefaultCastKey<Dog>>(dyn_key)
         .unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
@@ -399,7 +399,7 @@ fn get_by_index_only_returns_occupied() {
 
 // ─── Clone ─────────────────────────────────────────────────────────────────
 
-type RcMap = KeyCastableStableGenMap<DefaultCastableKey<dyn Any>, std::rc::Rc<dyn Any>>;
+type RcMap = StableCastMap<DefaultCastKey<dyn Any>, std::rc::Rc<dyn Any>>;
 
 #[test]
 fn clone_old_key_works_on_both_maps() {

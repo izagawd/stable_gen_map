@@ -83,7 +83,7 @@ unsafe impl<T: Clone, K: Key> SlotItemClone<K> for BoxedSlot<T, K> {
 /// stability.  The `Box` allocation is **reused** across remove / re-insert
 /// cycles, so a `remove` followed by an `insert` into the same slot incurs
 /// no heap traffic.
-pub type StableGenMap<K, T> = GenMap<K, BoxedSlot<T, K>>;
+pub type StableMap<K, T> = GenMap<K, BoxedSlot<T, K>>;
 
 // ─── Clone (two-phase snapshot) ──────────────────────────────────────────────
 //
@@ -91,7 +91,7 @@ pub type StableGenMap<K, T> = GenMap<K, BoxedSlot<T, K>>;
 // Phase 2: clone each T – this may re-enter the original map via &self,
 //          which is safe because we no longer touch self.slots.
 
-impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
+impl<K: Key, T: Clone> Clone for StableMap<K, T> {
     fn clone(&self) -> Self {
         unsafe {
             enum Snap<'a, K: Key, T> {

@@ -1,11 +1,11 @@
 use crate::key::DefaultKey;
-use crate::stable_deref_gen_map::BoxStableDerefGenMap;
+use crate::stable_deref_gen_map::BoxStableDerefMap;
 use std::cell::Cell;
 use std::collections::HashSet;
 
 #[test]
 fn clone_empty_map() {
-    let m: BoxStableDerefGenMap<DefaultKey, i32> = BoxStableDerefGenMap::new();
+    let m: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
     assert_eq!(m.len(), 0);
 
     let c = m.clone();
@@ -19,7 +19,7 @@ use std::rc::Rc;
 fn clone_preserves_live_entries_and_len_and_allocates_new_boxes() {
     // Use the StableMap alias you already have:
     // type StableMap<T> = BoxStableDerefGenMap<DefaultKey, T>;
-    let mut map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
+    let mut map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
     let (k1, _) = map.insert(Box::new(10));
     let (k2, _) = map.insert(Box::new(20));
@@ -71,7 +71,7 @@ fn clone_with_rc_clones_rc_not_inner_value() {
 
     // Map stores Box<Rc<String>> internally; Clone for the map should
     // clone the Rc (bump refcount), not deep-clone the inner String.
-    let map: BoxStableDerefGenMap<DefaultKey, Rc<String>> = BoxStableDerefGenMap::new();
+    let map: BoxStableDerefMap<DefaultKey, Rc<String>> = BoxStableDerefMap::new();
 
     let (k, _) = map.insert(Box::new(Rc::new("hello".to_string())));
 
@@ -120,7 +120,7 @@ mod clone_efficiently_stable_tests {
     // Sanity: cloning an empty map should give another empty map.
     #[test]
     fn clone_efficiently_empty_map() {
-        let mut map: BoxStableDerefGenMap<DefaultKey, String> = BoxStableDerefGenMap::new();
+        let mut map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
 
         let clone = map.clone_efficiently_mut();
 
@@ -133,7 +133,7 @@ mod clone_efficiently_stable_tests {
     // Basic semantics: contents equal, deep cloned (no alias), len preserved.
     #[test]
     fn clone_efficiently_copies_all_live_entries_and_not_aliasing() {
-        let mut map: BoxStableDerefGenMap<DefaultKey, String> = BoxStableDerefGenMap::new();
+        let mut map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
 
         let (k1, _) = map.insert(Box::new("one".to_owned()));
         let (k2, _) = map.insert(Box::new("two".to_owned()));
@@ -181,7 +181,7 @@ mod clone_efficiently_stable_tests {
     // reuse the same free index, but with independent generations & len.
     #[test]
     fn clone_efficiently_preserves_free_list_structure_but_independent() {
-        let mut map: BoxStableDerefGenMap<DefaultKey, i32> = BoxStableDerefGenMap::new();
+        let mut map: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
 
         let (k1, _) = map.insert(Box::new(10));
         let (k2, _) = map.insert(Box::new(20)); // we'll remove this one
@@ -230,7 +230,7 @@ mod clone_efficiently_stable_tests {
 
 #[test]
 fn clone_basic_contents_equal_but_independent() {
-    let mut m: BoxStableDerefGenMap<DefaultKey, i32> = BoxStableDerefGenMap::new();
+    let mut m: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
 
     let (k1, _) = m.insert(Box::new(10));
     let (k2, _) = m.insert(Box::new(20));
@@ -260,7 +260,7 @@ fn clone_basic_contents_equal_but_independent() {
 
 #[test]
 fn clone_with_holes_preserves_logical_state() {
-    let mut m: BoxStableDerefGenMap<DefaultKey, i32> = BoxStableDerefGenMap::new();
+    let mut m: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
 
     let (k1, _) = m.insert(Box::new(1));
     let (k2, _) = m.insert(Box::new(2));
@@ -289,7 +289,7 @@ fn clone_with_holes_preserves_logical_state() {
 // Thread-local pointer to "the map being cloned".
 // Reentrant::clone will use this to insert into the map.
 thread_local! {
-    static GLOBAL_MAP_PTR: Cell<*const BoxStableDerefGenMap<DefaultKey, Reentrant>> =
+    static GLOBAL_MAP_PTR: Cell<*const BoxStableDerefMap<DefaultKey, Reentrant>> =
         Cell::new(std::ptr::null());
 }
 
@@ -305,7 +305,7 @@ impl Clone for Reentrant {
             let ptr = cell.get();
             {
                 unsafe {
-                    let map: &BoxStableDerefGenMap<DefaultKey, Reentrant> = &*ptr;
+                    let map: &BoxStableDerefMap<DefaultKey, Reentrant> = &*ptr;
                     let _ = map.insert(Box::new(Reentrant {
                         val: self.val + 1000,
                     }));
@@ -317,10 +317,10 @@ impl Clone for Reentrant {
     }
 }
 
-type MapReentrant = BoxStableDerefGenMap<DefaultKey, Reentrant>;
+type MapReentrant = BoxStableDerefMap<DefaultKey, Reentrant>;
 #[test]
 fn stable_clone_handles_reentrant_t_clone_two() {
-    let mut m: MapReentrant = BoxStableDerefGenMap::new();
+    let mut m: MapReentrant = BoxStableDerefMap::new();
 
     // Let Reentrant::clone know which map to mutate.
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
@@ -371,7 +371,7 @@ fn stable_clone_handles_reentrant_t_clone_two() {
 }
 #[test]
 fn stable_clone_handles_reentrant_t_clone() {
-    let m: MapReentrant = BoxStableDerefGenMap::new();
+    let m: MapReentrant = BoxStableDerefMap::new();
 
     // Let Reentrant::clone know which map to mutate.
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));

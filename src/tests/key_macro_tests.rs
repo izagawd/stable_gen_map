@@ -1,5 +1,5 @@
 use crate::key::Key;
-use crate::stable_gen_map::StableGenMap;
+use crate::stable_gen_map::StableMap;
 use std::any::TypeId;
 use std::collections::HashSet;
 
@@ -34,7 +34,7 @@ fn default_key_type_has_correct_assoc_types() {
     assert_eq!(TypeId::of::<<TestKey as Key>::Idx>(), TypeId::of::<u32>());
     assert_eq!(TypeId::of::<<TestKey as Key>::Gen>(), TypeId::of::<u32>());
 
-    let map = StableGenMap::<TestKey, i32>::new();
+    let map = StableMap::<TestKey, i32>::new();
     let (k, _) = map.insert(42);
     let data = k.data();
     let k2 = TestKey::from(data);
@@ -46,7 +46,7 @@ fn custom_key_type_has_correct_assoc_types() {
     assert_eq!(TypeId::of::<<SmallKey as Key>::Idx>(), TypeId::of::<u16>());
     assert_eq!(TypeId::of::<<SmallKey as Key>::Gen>(), TypeId::of::<u16>());
 
-    let map = StableGenMap::<SmallKey, &str>::new();
+    let map = StableMap::<SmallKey, &str>::new();
     let (k, v) = map.insert("hello");
     assert_eq!(*v, "hello");
     assert_eq!(*map.get(k).unwrap(), "hello");
@@ -61,8 +61,8 @@ fn multiple_keys_in_one_invocation() {
     assert_eq!(TypeId::of::<<KeyA as Key>::Idx>(), TypeId::of::<u32>());
     assert_eq!(TypeId::of::<<KeyB as Key>::Idx>(), TypeId::of::<u32>());
 
-    let map_a = StableGenMap::<KeyA, i32>::new();
-    let map_b = StableGenMap::<KeyB, i32>::new();
+    let map_a = StableMap::<KeyA, i32>::new();
+    let map_b = StableMap::<KeyB, i32>::new();
 
     let (ka, _) = map_a.insert(1);
     let (kb, _) = map_b.insert(2);
@@ -85,7 +85,7 @@ fn pub_small_key_has_correct_assoc_types() {
 
 #[test]
 fn macro_key_is_copy_clone_debug_eq_hash() {
-    let map = StableGenMap::<TestKey, i32>::new();
+    let map = StableMap::<TestKey, i32>::new();
     let (k, _) = map.insert(10);
 
     // Copy
@@ -107,7 +107,7 @@ fn macro_key_is_copy_clone_debug_eq_hash() {
 
 #[test]
 fn insert_remove_with_macro_key() {
-    let mut map = StableGenMap::<TestKey, String>::new();
+    let mut map = StableMap::<TestKey, String>::new();
     let (k1, _) = map.insert("one".to_string());
     let (k2, _) = map.insert("two".to_string());
     let (k3, _) = map.insert("three".to_string());
@@ -122,7 +122,7 @@ fn insert_remove_with_macro_key() {
 
 #[test]
 fn insert_remove_with_small_key() {
-    let mut map = StableGenMap::<SmallKey, i32>::new();
+    let mut map = StableMap::<SmallKey, i32>::new();
     let (k1, _) = map.insert(100);
     let (k2, _) = map.insert(200);
 
@@ -142,7 +142,7 @@ fn insert_remove_with_small_key() {
 
 #[test]
 fn stale_key_returns_none() {
-    let mut map = StableGenMap::<TestKey, i32>::new();
+    let mut map = StableMap::<TestKey, i32>::new();
     let (k, _) = map.insert(1);
     map.remove(k);
 
@@ -151,7 +151,7 @@ fn stale_key_returns_none() {
 
 #[test]
 fn snapshot_with_macro_key() {
-    let map = StableGenMap::<TestKey, i32>::new();
+    let map = StableMap::<TestKey, i32>::new();
     map.insert(10);
     map.insert(20);
     map.insert(30);

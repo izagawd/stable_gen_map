@@ -1,5 +1,5 @@
 use crate::key::Key;
-use crate::stable_gen_map::StableGenMap;
+use crate::stable_gen_map::StableMap;
 
 crate::new_key_type! {
     struct TinyGenKey(u8, u8);
@@ -7,7 +7,7 @@ crate::new_key_type! {
 
 #[test]
 fn stale_key_after_generation_overflow_is_not_accepted_stable_gen_map() {
-    let mut map = StableGenMap::<TinyGenKey, u32>::new();
+    let mut map = StableMap::<TinyGenKey, u32>::new();
 
     let mut next_value;
     let overflow_key = loop {

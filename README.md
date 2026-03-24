@@ -10,7 +10,7 @@ It's designed for patterns like *graphs, self-referential structures, and arenas
 
 > **Important:** This crate is intentionally single-threaded. The map types are not `Sync`, and are meant to be used from a single thread only.
 
-> **Nightly required:** This crate uses the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize` (needed by the `CastableKey` subsystem).
+> **Nightly required:** This crate uses the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize` (needed by the `CastKey` subsystem).
 
 ---
 
@@ -45,7 +45,7 @@ rustup override set nightly
 
 - **`BoxStableDerefGenMap<K, T>`** — Type alias for `StableDerefGenMap<K, Box<T>>`. Preferred over `StableGenMap` if your element needs to be boxed anyway.
 
-- **`KeyCastableStableGenMap<CK, D>`** — A wrapper around `StableDerefGenMap` that uses `CastableKey` for type-erased heterogeneous storage. Supports implicit key upcasting via `CoerceUnsized`, so a `DefaultCastableKey<MyStruct>` can be implicitly coerced to `DefaultCastableKey<dyn Trait>`. Useful for storing `Box<dyn Any>` and retrieving concrete types.
+- **`KeyCastableStableGenMap<CK, D>`** — A wrapper around `StableDerefGenMap` that uses `CastKey` for type-erased heterogeneous storage. Supports implicit key upcasting via `CoerceUnsized`, so a `DefaultCastKey<MyStruct>` can be implicitly coerced to `DefaultCastKey<dyn Trait>`. Useful for storing `Box<dyn Any>` and retrieving concrete types.
 
 Keys implement the `Key` trait; you can use the provided `DefaultKey` or define your own with the `new_key_type!` macro (e.g. with smaller index/generation types or map-id checking).
 
@@ -264,21 +264,21 @@ fn main() {
 #![feature(ptr_metadata, coerce_unsized, unsize)]
 
 use std::any::Any;
-use stable_gen_map::castable_key::DefaultCastableKey;
+use stable_gen_map::castable_key::DefaultCastKey;
 use stable_gen_map::castable_map::KeyCastableBoxStableGenMap;
 
 struct Cat { name: String }
 struct Dog { name: String }
 
 fn main() {
-    let mut map: KeyCastableBoxStableGenMap<DefaultCastableKey<dyn Any>, dyn Any> =
+    let mut map: KeyCastableBoxStableGenMap<DefaultCastKey<dyn Any>, dyn Any> =
         KeyCastableBoxStableGenMap::new();
 
-    // Insert returns the map's key type: DefaultCastableKey<dyn Any>
+    // Insert returns the map's key type: DefaultCastKey<dyn Any>
     let (dyn_key, _) = map.insert(Box::new(Cat { name: "Whiskers".into() }));
 
     // Downcast the dyn key to a concrete typed key
-    if let Some(cat_key) = map.downcast_key::<Cat, DefaultCastableKey<Cat>>(dyn_key) {
+    if let Some(cat_key) = map.downcast_key::<Cat, DefaultCastKey<Cat>>(dyn_key) {
         // Look up with the concrete key — returns &Cat
         let cat: &Cat = map.get(cat_key).unwrap();
         assert_eq!(cat.name, "Whiskers");

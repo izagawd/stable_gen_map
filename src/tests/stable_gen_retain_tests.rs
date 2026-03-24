@@ -1,12 +1,12 @@
 use crate::key::{DefaultKey, Key};
 use crate::key_piece::KeyPiece;
-use crate::stable_gen_map::StableGenMap;
+use crate::stable_gen_map::StableMap;
 
-type Map = StableGenMap<DefaultKey, i32>;
+type Map = StableMap<DefaultKey, i32>;
 
 #[test]
 fn retain_keeps_all_in_map() {
-    let mut map: Map = StableGenMap::new();
+    let mut map: Map = StableMap::new();
     let (k1, _) = map.insert(10);
     let (k2, _) = map.insert(20);
 
@@ -22,7 +22,7 @@ fn retain_keeps_all_in_map() {
 
 #[test]
 fn retain_removes_some_in_map() {
-    let mut map: Map = StableGenMap::new();
+    let mut map: Map = StableMap::new();
 
     let (k1, _) = map.insert(1);
     let (k2, _) = map.insert(2);
@@ -38,7 +38,7 @@ fn retain_removes_some_in_map() {
 
 #[test]
 fn retain_reuses_indices_and_bumps_generation_in_map() {
-    let mut map: Map = StableGenMap::new();
+    let mut map: Map = StableMap::new();
 
     let (k1, _) = map.insert(42);
     let k1_data = k1.data();

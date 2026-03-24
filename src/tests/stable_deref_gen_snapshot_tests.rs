@@ -1,10 +1,10 @@
 use crate::key::DefaultKey;
-use crate::stable_deref_gen_map::BoxStableDerefGenMap;
+use crate::stable_deref_gen_map::BoxStableDerefMap;
 use std::collections::HashSet;
 
 #[test]
 fn snapshot_on_empty_map_is_empty() {
-    let map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
+    let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
     let snap = map.snapshot();
 
@@ -16,12 +16,12 @@ fn snapshot_on_empty_map_is_empty() {
 mod snapshot_stablegen_tests {
     use super::*;
     use crate::key::DefaultKey;
-    use crate::stable_deref_gen_map::BoxStableDerefGenMap;
+    use crate::stable_deref_gen_map::BoxStableDerefMap;
     use std::collections::HashSet;
 
     #[test]
     fn snapshot_empty() {
-        let map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
+        let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
         assert_eq!(map.len(), 0);
         assert!(map.snapshot().is_empty());
@@ -31,7 +31,7 @@ mod snapshot_stablegen_tests {
 
     #[test]
     fn snapshot_contains_all_items_and_matches_get() {
-        let map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
+        let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
         let (k1, r1) = map.insert(Box::new(10));
         let (k2, r2) = map.insert(Box::new(20));
@@ -60,7 +60,7 @@ mod snapshot_stablegen_tests {
 
     #[test]
     fn snapshot_ignores_future_inserts() {
-        let map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
+        let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
         let (k1, _) = map.insert(Box::new(1));
         let (k2, _) = map.insert(Box::new(2));
@@ -89,7 +89,7 @@ mod snapshot_stablegen_tests {
 
 #[test]
 fn snapshot_contains_all_items_and_matches_get() {
-    let map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
+    let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
     let (_k1, r1) = map.insert(Box::new(10));
     let (_k2, r2) = map.insert(Box::new(20));
@@ -116,7 +116,7 @@ fn snapshot_contains_all_items_and_matches_get() {
 
 #[test]
 fn snapshot_ignores_future_inserts() {
-    let map = BoxStableDerefGenMap::<DefaultKey, i32>::new();
+    let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
     let (k1, _) = map.insert(Box::new(1));
     let (k2, _) = map.insert(Box::new(2));

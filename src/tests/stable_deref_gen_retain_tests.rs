@@ -1,12 +1,12 @@
 use crate::key::{DefaultKey, Key};
 use crate::key_piece::KeyPiece;
-use crate::stable_deref_gen_map::{BoxStableDerefGenMap, StableDerefGenMap};
+use crate::stable_deref_gen_map::{BoxStableDerefMap, StableDerefMap};
 
-type Map = BoxStableDerefGenMap<DefaultKey, i32>;
+type Map = BoxStableDerefMap<DefaultKey, i32>;
 
 #[test]
 fn retain_keeps_all_and_can_mutate_values() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
 
     let (k1, _) = map.insert(Box::new(10));
     let (k2, _) = map.insert(Box::new(20));
@@ -24,7 +24,7 @@ fn retain_keeps_all_and_can_mutate_values() {
 
 #[test]
 fn retain_removes_some_and_len_tracks() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
 
     let (k1, _) = map.insert(Box::new(1));
     let (k2, _) = map.insert(Box::new(2));
@@ -43,7 +43,7 @@ fn retain_removes_some_and_len_tracks() {
 
 #[test]
 fn retain_respects_generations_and_reuses_indices() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
 
     let (k1, _) = map.insert(Box::new(42));
     let k1_data = k1.data();

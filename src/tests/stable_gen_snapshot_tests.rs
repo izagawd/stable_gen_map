@@ -1,11 +1,11 @@
 use crate::key::DefaultKey;
 
-use crate::stable_gen_map::StableGenMap;
+use crate::stable_gen_map::StableMap;
 use std::collections::HashSet;
 
 const SLOTS: usize = 4;
 
-type Map = StableGenMap<DefaultKey, i32>;
+type Map = StableMap<DefaultKey, i32>;
 
 #[test]
 fn snapshot_on_empty_map_is_empty() {
