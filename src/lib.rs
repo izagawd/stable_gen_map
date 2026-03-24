@@ -5,13 +5,13 @@
 //!
 //! The main types are:
 //!
-//! - [`StableGenMap`](stable_map::StableMap) — stores each value behind
+//! - [`StableMap`](stable_map::StableMap) — stores each value behind
 //!   a `Box` for pointer stability. The `Box` allocation is reused across
 //!   remove/insert cycles.
-//! - [`StableDerefGenMap`](stable_deref_map::StableDerefMap) — stores a
+//! - [`StableDerefMap`](stable_deref_map::StableDerefMap) — stores a
 //!   user-supplied smart pointer directly.
-//! - [`KeyCastableStableGenMap`](stable_cast_map::StableCastMap) —
-//!   wraps `StableDerefGenMap` with [`CastKey`](cast_key::CastKey)
+//! - [`StableCastMap`](stable_cast_map::StableCastMap) —
+//!   wraps `StableDerefMap` with [`CastKey`](cast_key::CastKey)
 //!   support for type-erased heterogeneous storage (e.g. `Box<dyn Any>`).
 //!
 //! All map types allow `insert(&self)` (shared-reference insertion) while
@@ -22,9 +22,9 @@
 //! ## Nightly requirement
 //!
 //! The [`CastKey`](cast_key::CastKey) family and
-//! [`KeyCastableStableGenMap`](stable_cast_map::StableCastMap) rely on
+//! [`StableCastMap`](stable_cast_map::StableCastMap) rely on
 //! the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize`.
-//! If you don't need castable keys, those features are still required at the
+//! If you don't need cast keys, those features are still required at the
 //! crate level but have no effect on the core map types.
 
 #![allow(warnings)]

@@ -39,13 +39,13 @@ rustup override set nightly
 
 ## Core types
 
-- **`StableGenMap<K, T>`** — A stable generational map storing each `T` in a `Box`. The `Box` allocation is **reused** across remove/insert cycles, so a remove followed by an insert into the same slot incurs no heap traffic. This is generally what you want.
+- **`StableMap<K, T>`** — A stable generational map storing each `T` in a `Box`. The `Box` allocation is **reused** across remove/insert cycles, so a remove followed by an insert into the same slot incurs no heap traffic. This is generally what you want.
 
-- **`StableDerefGenMap<K, Derefable>`** — A stable generational map where each element is a smart pointer that implements `DerefGenMapPromise`. You get stable references to `Deref::Target`, even if the underlying `Vec` reallocates. This is the "advanced" variant for `Box<T>`, `Rc<T>`, `Arc<T>`, `&T`, or custom smart pointers.
+- **`StableDerefMap<K, Derefable>`** — A stable generational map where each element is a smart pointer that implements `DerefGenMapPromise`. You get stable references to `Deref::Target`, even if the underlying `Vec` reallocates. This is the "advanced" variant for `Box<T>`, `Rc<T>`, `Arc<T>`, `&T`, or custom smart pointers.
 
-- **`BoxStableDerefGenMap<K, T>`** — Type alias for `StableDerefGenMap<K, Box<T>>`. Preferred over `StableGenMap` if your element needs to be boxed anyway.
+- **`BoxStableDerefMap<K, T>`** — Type alias for `StableDerefMap<K, Box<T>>`. Preferred over `StableMap` if your element needs to be boxed anyway.
 
-- **`KeyCastableStableGenMap<CK, D>`** — A wrapper around `StableDerefGenMap` that uses `CastKey` for type-erased heterogeneous storage. Supports implicit key upcasting via `CoerceUnsized`, so a `DefaultCastKey<MyStruct>` can be implicitly coerced to `DefaultCastKey<dyn Trait>`. Useful for storing `Box<dyn Any>` and retrieving concrete types.
+- **`StableCastMap<CK, D>`** — A wrapper around `StableDerefMap` that uses `CastKey` for type-erased heterogeneous storage. Supports implicit key upcasting via `CoerceUnsized`, so a `DefaultCastKey<MyStruct>` can be implicitly coerced to `DefaultCastKey<dyn Trait>`. Useful for storing `Box<dyn Any>` and retrieving concrete types.
 
 Keys implement the `Key` trait; you can use the provided `DefaultKey` or define your own with the `new_key_type!` macro (e.g. with smaller index/generation types or map-id checking).
 
@@ -149,11 +149,11 @@ The `identified` variant stamps a unique `MapId` into every key and slot, so usi
 
 ## Comparison to other data structures
 
-`StableGenMap` lives in the same space as generational arenas / slot maps, but it's aimed at a slightly different pattern: **inserting with `&self` while keeping existing `&T` references alive**, in a single-threaded setting where you still sometimes remove elements at well-defined points (e.g. end of a videogame frame).
+`StableMap` lives in the same space as generational arenas / slot maps, but it's aimed at a slightly different pattern: **inserting with `&self` while keeping existing `&T` references alive**, in a single-threaded setting where you still sometimes remove elements at well-defined points (e.g. end of a videogame frame).
 
 | Crate | Insert API | Removals | Main focus |
 |---|---|---|---|
-| `stable_gen_map::StableGenMap` | `fn insert(&self, T) -> (K, &T)` | Yes (`&mut self`) | Stable `&T` across growth, single-threaded |
+| `stable_gen_map::StableMap` | `fn insert(&self, T) -> (K, &T)` | Yes (`&mut self`) | Stable `&T` across growth, single-threaded |
 | `slotmap::SlotMap` | `fn insert(&mut self, V) -> K` | Yes (`&mut self`) | General-purpose generational map |
 | `generational_arena::Arena` | `fn insert(&mut self, T) -> Index` | Yes (`&mut self`) | Simple arena with deletion |
 | `slab::Slab` | `fn insert(&mut self, T) -> usize` | Yes (`&mut self`) | Reusable indices, pre-allocated storage |
@@ -177,7 +177,7 @@ If you don't specifically need those properties, you could take a look at `slotm
 
 ---
 
-## Basic example (using `StableGenMap`)
+## Basic example (using `StableMap`)
 
 This shows the main selling point: **insert with `&self`** and indirect references via keys.
 
@@ -185,7 +185,7 @@ This shows the main selling point: **insert with `&self`** and indirect referenc
 use std::cell::{Cell, RefCell};
 
 use stable_gen_map::key::DefaultKey;
-use stable_gen_map::stable_gen_map::StableGenMap;
+use stable_gen_map::stable_map::StableMap;
 
 #[derive(Debug)]
 struct Entity {
@@ -196,11 +196,11 @@ struct Entity {
 }
 
 impl Entity {
-    /// Add a child *from this entity* using only `&self` and `&StableGenMap`.
+    /// Add a child *from this entity* using only `&self` and `&StableMap`.
     /// Returns both the child's key and a stable `&Entity` reference.
     fn add_child<'m>(
         &self,
-        map: &'m StableGenMap<DefaultKey, Entity>,
+        map: &'m StableMap<DefaultKey, Entity>,
         child_name: &str,
     ) -> (DefaultKey, &'m Entity) {
         let parent_key = self.key;
@@ -222,7 +222,7 @@ impl Entity {
 }
 
 fn main() {
-    let mut map: StableGenMap<DefaultKey, Entity> = StableGenMap::new();
+    let mut map: StableMap<DefaultKey, Entity> = StableMap::new();
 
     // Create the root entity. We get an `&Entity`, not `&mut Entity`.
     let (root_key, root) = map.insert_with_key(|k| Entity {
@@ -232,12 +232,12 @@ fn main() {
         children: RefCell::new(Vec::new()),
     });
 
-    // Root spawns a child using only `&self` + `&StableGenMap`.
+    // Root spawns a child using only `&self` + `&StableMap`.
     // An ECS pattern would require a system to do these operations,
-    // but with StableGenMap the instance itself can do the spawning.
+    // but with StableMap the instance itself can do the spawning.
     let (child_key, child) = root.add_child(&map, "child");
 
-    // That child spawns a grandchild, again only `&self` + `&StableGenMap`.
+    // That child spawns a grandchild, again only `&self` + `&StableMap`.
     let (grandchild_key, grandchild) = child.add_child(&map, "grandchild");
 
     // Everything stays wired up via generational keys.
@@ -256,23 +256,23 @@ fn main() {
 
 ---
 
-## Castable keys (heterogeneous maps)
+## Cast keys (heterogeneous maps)
 
-`KeyCastableStableGenMap` lets you store different concrete types in the same map behind `Box<dyn Any>`, and look them up with typed keys. Key upcasting can be implicit with `CoerceUnsized`:
+`StableCastMap` lets you store different concrete types in the same map behind `Box<dyn Any>`, and look them up with typed keys. Key upcasting is implicit via `CoerceUnsized`:
 
 ```rust
 #![feature(ptr_metadata, coerce_unsized, unsize)]
 
 use std::any::Any;
-use stable_gen_map::castable_key::DefaultCastKey;
-use stable_gen_map::castable_map::KeyCastableBoxStableGenMap;
+use stable_gen_map::cast_key::DefaultCastKey;
+use stable_gen_map::stable_cast_map::StableBoxCastMap;
 
 struct Cat { name: String }
 struct Dog { name: String }
 
 fn main() {
-    let mut map: KeyCastableBoxStableGenMap<DefaultCastKey<dyn Any>, dyn Any> =
-        KeyCastableBoxStableGenMap::new();
+    let mut map: StableBoxCastMap<DefaultCastKey<dyn Any>, dyn Any> =
+        StableBoxCastMap::new();
 
     // Insert returns the map's key type: DefaultCastKey<dyn Any>
     let (dyn_key, _) = map.insert(Box::new(Cat { name: "Whiskers".into() }));
@@ -285,6 +285,34 @@ fn main() {
     }
 }
 ```
+
+### Inner keys
+
+Every `CastKey` carries pointer metadata (e.g. a vtable pointer for `dyn Trait`) alongside the generational index and map id. The `CastKey` trait exposes an associated type `InnerKey` — this is the same key but *without* the pointer metadata, i.e. the type of key the backing `GenMap` actually uses. By default this is `DefaultMapKey<Idx, Gen>`.
+
+You can extract the inner key from any cast key with `inner_key()`, and use it to access the map directly without needing pointer metadata:
+
+```rust
+// Insert returns a DefaultCastKey<dyn Any> (fat key with vtable metadata)
+let (cast_key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+
+// Strip the metadata to get a DefaultMapKey<u32, u32> (thin key)
+let inner = cast_key.inner_key();
+
+// Look up using the inner key — returns &dyn Any (the map's stored target)
+let val = map.get_by_inner_key(inner).unwrap();
+assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
+```
+
+The inner key methods on `StableCastMap`:
+
+- `get_by_inner_key(&self, key) -> Option<&D::Target>` — shared lookup, returns the deref target directly
+- `get_mut_by_inner_key(&mut self, key) -> Option<&mut D::Target>` — mutable lookup
+- `remove_by_inner_key(&mut self, key) -> Option<D>` — removal, returns the owned smart pointer
+
+These skip the metadata reconstruction step, so they're slightly cheaper than `get`/`get_mut`/`remove`. They're also useful when you only have the inner key (e.g. stored in a data structure that doesn't need to know about the concrete type behind the pointer).
+
+The `InnerKey` associated type is user-configurable via the `CastKey` trait, so custom cast key types can choose their own inner key type as long as it implements `Key` with matching `Idx` and `Gen` types.
 
 ---
 

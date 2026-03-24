@@ -1,9 +1,10 @@
 //! Map type that uses a [`CastKey`] as its user-facing key.
 //!
-//! Internally, a plain [`CastableInnerKey`] (which implements [`Key`] with
-//! `Extra = MapId`) is used by the `GenMap`. The castable map wrapper
-//! converts between `CastableInnerKey` and `CastKey` at every
-//! boundary — adding metadata on the way out, stripping it on the way in.
+//! Internally, a plain [`DefaultMapKey`](crate::cast_key::DefaultMapKey)
+//! (which implements [`Key`] with `Extra = MapId`) is used by the `GenMap`.
+//! The cast map wrapper converts between the inner key and `CastKey` at
+//! every boundary — adding metadata on the way out, stripping it on the
+//! way in.
 //!
 //! This means `GenMap` never sees pointer metadata and no `dangling_metadata`
 //! hack is needed.
@@ -38,7 +39,7 @@ where
     unsafe { CK::from_inner_key_and_metadata(inner, metadata) }
 }
 
-// ─── KeyCastableStableGenMap ────────────────────────────────────────────────
+// ─── StableCastMap ───────────────────────────────────────────────────────────
 
 /// A [`StableDerefMap`] wrapper that supports typed lookups via
 /// [`CastKey`].

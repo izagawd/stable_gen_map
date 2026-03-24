@@ -77,7 +77,7 @@ unsafe impl<T: Clone, K: Key> SlotItemClone<K> for BoxedSlot<T, K> {
     }
 }
 
-// ─── StableGenMap (type alias) ───────────────────────────────────────────────
+// ─── StableMap (type alias) ───────────────────────────────────────────────
 
 /// Generational map where each value is stored behind a `Box` for pointer
 /// stability.  The `Box` allocation is **reused** across remove / re-insert

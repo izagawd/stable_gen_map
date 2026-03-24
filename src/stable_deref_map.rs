@@ -117,7 +117,7 @@ pub enum SmartPtrKind {
     /// for it — doing so may cause undefined behaviour.
     ///
     /// If the smart pointer does implement `Clone`, its `Clone` must **not**
-    /// mutate any shared `StableDerefGenMap` (e.g. via `insert`).
+    /// mutate any shared `StableDerefMap` (e.g. via `insert`).
     Shared,
 }
 
@@ -174,9 +174,9 @@ unsafe impl<T: ?Sized> SmartPtrCloneable for Arc<T> {
 /// `Arc`, `&T`, …) directly.  The smart pointer provides pointer stability.
 pub type StableDerefMap<K, Derefable> = GenMap<K, DerefSlot<Derefable, K>>;
 
-/// Convenience alias for `StableDerefGenMap<K, Box<T>>`.
+/// Convenience alias for `StableDerefMap<K, Box<T>>`.
 ///
-/// Equivalent to [`StableGenMap`](crate::stable_map::StableMap) in
+/// Equivalent to [`StableMap`](crate::stable_map::StableMap) in
 /// behaviour, but stores the `Box` directly rather than wrapping `T` in a
 /// second `Box`. Prefer this when your values are already boxed.
 pub type BoxStableDerefMap<K, T> = StableDerefMap<K, Box<T>>;
@@ -184,7 +184,7 @@ pub type BoxStableDerefMap<K, T> = StableDerefMap<K, Box<T>>;
 // ─── Clone (two strategies) ──────────────────────────────────────────────────
 
 impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
-    for StableDerefMap<K, Derefable>
+for StableDerefMap<K, Derefable>
 {
     fn clone(&self) -> Self {
         unsafe {
