@@ -238,7 +238,7 @@ where
 
     /// Removes an element by key, returning the owned smart pointer.
     #[inline]
-    pub fn remove(&mut self, key: CK) -> Option<D> {
+    pub fn remove(&mut self, key: CK::WithRef<CK::RefType>) -> Option<D> {
         self.inner.remove(to_inner(&key))
     }
 
@@ -397,10 +397,11 @@ where
     #[inline]
     pub fn get<T: ?Sized + Pointee>(
         &self,
-        key: impl CastKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
+        key: CK::WithRef<T>,
     ) -> Option<&T>
     where
         <T as Pointee>::Metadata: Copy,
+
     {
         let base_ref: &D::Target = self.inner.get(to_inner(&key))?;
         let data_ptr: *const () = (base_ref as *const D::Target).cast();
@@ -412,7 +413,7 @@ where
     #[inline]
     pub fn get_mut<T: ?Sized + Pointee>(
         &mut self,
-        key: impl CastKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
+        key: CK::WithRef<T>,
     ) -> Option<&mut T>
     where
         <T as Pointee>::Metadata: Copy,
@@ -428,7 +429,7 @@ where
     #[inline]
     pub fn remove_by<T: ?Sized + Pointee>(
         &mut self,
-        key: impl CastKey<RefType = T, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
+        key: CK::WithRef<T>,
     ) -> Option<D>
     where
         <T as Pointee>::Metadata: Copy,
@@ -439,24 +440,24 @@ where
 
 // ─── Index / IndexMut ───────────────────────────────────────────────────────
 
-impl<CK, D> Index<CK> for StableCastMap<CK, D>
+impl<CK, D> Index<CK::WithRef<CK::RefType>> for StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
 {
     type Output = D::Target;
 
-    fn index(&self, key: CK) -> &Self::Output {
+    fn index(&self, key: CK::WithRef<CK::RefType>) -> &Self::Output {
         self.get(key).unwrap()
     }
 }
 
-impl<CK, D> IndexMut<CK> for StableCastMap<CK, D>
+impl<CK, D> IndexMut<CK::WithRef<CK::RefType>> for StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static + std::ops::DerefMut,
 {
-    fn index_mut(&mut self, key: CK) -> &mut Self::Output {
+    fn index_mut(&mut self, key: CK::WithRef<CK::RefType>) -> &mut Self::Output {
         self.get_mut(key).unwrap()
     }
 }
