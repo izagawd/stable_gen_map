@@ -12,6 +12,7 @@
 use std::any::Any;
 use std::collections::TryReserveError;
 use std::ops::{Index, IndexMut};
+use std::process::Output;
 use std::ptr::Pointee;
 
 use crate::cast_key::CastKey;
@@ -146,22 +147,23 @@ where
     /// # Example
     /// ```ignore
     /// let dyn_key: DefaultCastKey<dyn Any> = key;
-    /// if let Some(concrete) = map.downcast_key::<MyStruct, DefaultCastKey<MyStruct>>(dyn_key) {
+    /// if let Some(concrete) = map.downcast_key::<DefaultCastKey<MyStruct>>(dyn_key) {
     ///     // concrete: DefaultCastKey<MyStruct>
     /// }
     /// ```
     #[inline]
-    pub fn downcast_key<Concrete: 'static, KOut>(
+    pub fn downcast_key<KOut>(
         &self,
         key: impl CastKey<RefType = dyn Any, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
     ) -> Option<KOut>
     where
-        KOut: CastKey<RefType = Concrete, Idx = CK::Idx, Gen = CK::Gen>,
+        KOut: CastKey<RefType: 'static + Sized, Idx = CK::Idx, Gen = CK::Gen>,
+        KOut::RefType: Pointee<Metadata=()>
     {
         let data: &_ = self.inner.get(to_inner(&key))?;
         let data_as_any_from_key: &dyn Any =
             unsafe { &*std::ptr::from_raw_parts(data as *const _ as *const (), key.metadata()) };
-        if data_as_any_from_key.type_id() == std::any::TypeId::of::<Concrete>() {
+        if data_as_any_from_key.type_id() == std::any::TypeId::of::<KOut::RefType>() {
             Some(unsafe { KOut::from_castable_parts(key.key_data(), key.map_id(), ()) })
         } else {
             None

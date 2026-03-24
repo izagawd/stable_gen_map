@@ -109,7 +109,7 @@ fn downcast_key_correct_type_then_get() {
     }) as Box<dyn Any>);
 
     let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<Dog, DefaultCastKey<Dog>>(dyn_key)
+        .downcast_key::<DefaultCastKey<Dog>>(dyn_key)
         .unwrap();
 
     let dog: &Dog = map.get(dog_key).unwrap();
@@ -124,7 +124,7 @@ fn downcast_key_wrong_type_returns_none() {
     }) as Box<dyn Any>);
 
     let result: Option<DefaultCastKey<Parrot>> =
-        map.downcast_key::<Parrot, DefaultCastKey<Parrot>>(dyn_key);
+        map.downcast_key::<DefaultCastKey<Parrot>>(dyn_key);
     assert!(result.is_none());
 }
 
@@ -143,7 +143,7 @@ fn get_with_trait_key() {
 
     // Downcast key to concrete, then upcast to dyn Animal
     let concrete_key: DefaultCastKey<Parrot> = map
-        .downcast_key::<Parrot, DefaultCastKey<Parrot>>(dyn_key)
+        .downcast_key::<DefaultCastKey<Parrot>>(dyn_key)
         .unwrap();
     let animal_key: DefaultCastKey<dyn Animal> = concrete_key;
 
@@ -157,7 +157,7 @@ fn get_mut_modifies_value() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
     let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<Dog, DefaultCastKey<Dog>>(dyn_key)
+        .downcast_key::<DefaultCastKey<Dog>>(dyn_key)
         .unwrap();
 
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
@@ -355,7 +355,7 @@ fn remove_by_with_concrete_key() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
     let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<Dog, DefaultCastKey<Dog>>(dyn_key)
+        .downcast_key::<DefaultCastKey<Dog>>(dyn_key)
         .unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
@@ -808,7 +808,7 @@ fn cast_key_of_downcast_round_trip() {
 
     let recovered_dyn = map.cast_key_of(inner).unwrap();
     let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<Dog, DefaultCastKey<Dog>>(recovered_dyn)
+        .downcast_key::<DefaultCastKey<Dog>>(recovered_dyn)
         .unwrap();
 
     let dog: &Dog = map.get(dog_key).unwrap();

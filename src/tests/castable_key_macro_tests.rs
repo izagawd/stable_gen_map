@@ -372,7 +372,7 @@ fn macro_key_downcast_key_correct_type() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
     let dog_key: Option<TestCastKey<Dog>> =
-        map.downcast_key::<Dog, TestCastKey<Dog>>(dyn_key);
+        map.downcast_key::<TestCastKey<Dog>>(dyn_key);
     assert!(dog_key.is_some());
 
     let dog: &Dog = map.get(dog_key.unwrap()).unwrap();
@@ -385,7 +385,7 @@ fn macro_key_downcast_key_wrong_type() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
     let cat_key: Option<TestCastKey<Cat>> =
-        map.downcast_key::<Cat, TestCastKey<Cat>>(dyn_key);
+        map.downcast_key::<TestCastKey<Cat>>(dyn_key);
     assert!(cat_key.is_none());
 }
 
@@ -397,7 +397,7 @@ fn macro_key_get_with_trait_key() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Buddy".into() }) as Box<dyn Any>);
 
     let dog_key: TestCastKey<Dog> = map
-        .downcast_key::<Dog, TestCastKey<Dog>>(dyn_key)
+        .downcast_key::<TestCastKey<Dog>>(dyn_key)
         .unwrap();
     let animal_key: TestCastKey<dyn Animal> = dog_key;
 
@@ -411,7 +411,7 @@ fn macro_key_get_mut_with_concrete_key() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
     let dog_key: TestCastKey<Dog> = map
-        .downcast_key::<Dog, TestCastKey<Dog>>(dyn_key)
+        .downcast_key::<TestCastKey<Dog>>(dyn_key)
         .unwrap();
 
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
@@ -507,7 +507,7 @@ fn small_cast_key_downcast_and_get() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Tiny".into() }) as Box<dyn Any>);
 
     let dog_key: SmallCastKey<Dog> = map
-        .downcast_key::<Dog, SmallCastKey<Dog>>(dyn_key)
+        .downcast_key::<SmallCastKey<Dog>>(dyn_key)
         .unwrap();
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Tiny");
@@ -583,7 +583,7 @@ fn macro_key_remove_by_with_concrete_key() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
     let dog_key: TestCastKey<Dog> = map
-        .downcast_key::<Dog, TestCastKey<Dog>>(dyn_key)
+        .downcast_key::<TestCastKey<Dog>>(dyn_key)
         .unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
