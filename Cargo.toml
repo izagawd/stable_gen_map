@@ -13,7 +13,7 @@ description = "This crate provides Single-threaded generational maps with insert
 homepage = "https://github.com/izagawd/stable_gen_map"
 
 [features]
-default = ["castable"]
+default = []
 ## Enables `CastKey`, `StableCastMap`, and the `new_castable_key_type!` macro.
 ## Requires a **nightly** toolchain (`ptr_metadata`, `coerce_unsized`, `unsize`).
 castable = []
