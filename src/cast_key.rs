@@ -164,7 +164,7 @@ where
     fn eq(&self, other: &Self) -> bool {
         self.key_data == other.key_data
             && self.map_id_and_metadata.as_ptr() as *const () as usize
-            == other.map_id_and_metadata.as_ptr() as *const () as usize
+                == other.map_id_and_metadata.as_ptr() as *const () as usize
     }
 }
 

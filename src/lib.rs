@@ -39,13 +39,13 @@
 
 #[cfg(feature = "castable")]
 pub mod cast_key;
-#[cfg(feature = "castable")]
-pub mod stable_cast_map;
 pub mod gen_map;
 pub mod key;
 pub mod key_piece;
 pub mod map_id;
 pub mod slot_item;
+#[cfg(feature = "castable")]
+pub mod stable_cast_map;
 pub mod stable_deref_map;
 pub mod stable_map;
 

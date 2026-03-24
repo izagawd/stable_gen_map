@@ -108,9 +108,7 @@ fn downcast_key_correct_type_then_get() {
         name: "Buddy".into(),
     }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<DefaultCastKey<Dog>>(dyn_key)
-        .unwrap();
+    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<DefaultCastKey<Dog>>(dyn_key).unwrap();
 
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Buddy");
@@ -142,9 +140,8 @@ fn get_with_trait_key() {
     let (dyn_key, _) = map.insert(Box::new(parrot) as Box<dyn Any>);
 
     // Downcast key to concrete, then upcast to dyn Animal
-    let concrete_key: DefaultCastKey<Parrot> = map
-        .downcast_key::<DefaultCastKey<Parrot>>(dyn_key)
-        .unwrap();
+    let concrete_key: DefaultCastKey<Parrot> =
+        map.downcast_key::<DefaultCastKey<Parrot>>(dyn_key).unwrap();
     let animal_key: DefaultCastKey<dyn Animal> = concrete_key;
 
     let animal: &dyn Animal = map.get(animal_key).unwrap();
@@ -156,9 +153,7 @@ fn get_mut_modifies_value() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<DefaultCastKey<Dog>>(dyn_key)
-        .unwrap();
+    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<DefaultCastKey<Dog>>(dyn_key).unwrap();
 
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
     dog.name = "New".into();
@@ -354,9 +349,7 @@ fn remove_by_with_concrete_key() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<DefaultCastKey<Dog>>(dyn_key)
-        .unwrap();
+    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<DefaultCastKey<Dog>>(dyn_key).unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
     assert!(removed.downcast_ref::<Dog>().is_some());
@@ -509,9 +502,7 @@ fn clone_diverges_after_remove_and_reinsert() {
 #[test]
 fn insert_with_key_returns_valid_cast_key() {
     let map: Map = Map::new();
-    let (cast_key, val) = map.insert_with_key(|_inner_key| {
-        Box::new(42i32) as Box<dyn Any>
-    });
+    let (cast_key, val) = map.insert_with_key(|_inner_key| Box::new(42i32) as Box<dyn Any>);
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
     assert_eq!(
         *map.get(cast_key).unwrap().downcast_ref::<i32>().unwrap(),
@@ -638,9 +629,8 @@ fn insert_with_key_pointer_stability() {
 #[test]
 fn try_insert_with_key_ok() {
     let map: Map = Map::new();
-    let result = map.try_insert_with_key::<String>(|_inner_key| {
-        Ok(Box::new(42i32) as Box<dyn Any>)
-    });
+    let result =
+        map.try_insert_with_key::<String>(|_inner_key| Ok(Box::new(42i32) as Box<dyn Any>));
     assert!(result.is_ok());
 
     let (cast_key, val) = result.unwrap();
@@ -655,9 +645,8 @@ fn try_insert_with_key_ok() {
 #[test]
 fn try_insert_with_key_err_does_not_insert() {
     let map: Map = Map::new();
-    let result = map.try_insert_with_key::<String>(|_inner_key| {
-        Err("something went wrong".to_string())
-    });
+    let result =
+        map.try_insert_with_key::<String>(|_inner_key| Err("something went wrong".to_string()));
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), "something went wrong");
     assert_eq!(map.len(), 0);
@@ -671,9 +660,9 @@ fn try_insert_with_key_err_slot_is_reusable() {
     let _ = map.try_insert_with_key::<()>(|_| Err(()));
 
     // Successful insert should reuse the slot
-    let (key, val) = map.try_insert_with_key::<()>(|_| {
-        Ok(Box::new(99i32) as Box<dyn Any>)
-    }).unwrap();
+    let (key, val) = map
+        .try_insert_with_key::<()>(|_| Ok(Box::new(99i32) as Box<dyn Any>))
+        .unwrap();
 
     assert_eq!(map.len(), 1);
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 99);
@@ -689,10 +678,12 @@ fn try_insert_with_key_inner_key_matches() {
     let map: Map = Map::new();
     let captured_inner = Cell::new(None::<DefaultMapKey<u32, u32>>);
 
-    let (cast_key, _) = map.try_insert_with_key::<()>(|inner_key| {
-        captured_inner.set(Some(inner_key));
-        Ok(Box::new(55i32) as Box<dyn Any>)
-    }).unwrap();
+    let (cast_key, _) = map
+        .try_insert_with_key::<()>(|inner_key| {
+            captured_inner.set(Some(inner_key));
+            Ok(Box::new(55i32) as Box<dyn Any>)
+        })
+        .unwrap();
 
     let captured = captured_inner.get().unwrap();
     let from_cast = cast_key.inner_key();
@@ -705,9 +696,9 @@ fn try_insert_with_key_inner_key_matches() {
 fn try_insert_with_key_ok_then_err_preserves_first() {
     let map: Map = Map::new();
 
-    let (k1, _) = map.try_insert_with_key::<()>(|_| {
-        Ok(Box::new(1i32) as Box<dyn Any>)
-    }).unwrap();
+    let (k1, _) = map
+        .try_insert_with_key::<()>(|_| Ok(Box::new(1i32) as Box<dyn Any>))
+        .unwrap();
 
     let _ = map.try_insert_with_key::<()>(|_| Err(()));
 
@@ -720,11 +711,13 @@ fn try_insert_with_key_can_insert_during_closure() {
     // The closure can insert other elements (since insert takes &self)
     let map: Map = Map::new();
 
-    let (outer_key, _) = map.try_insert_with_key::<()>(|_inner_key| {
-        // Insert another element from within the closure
-        map.insert(Box::new(100i32) as Box<dyn Any>);
-        Ok(Box::new(200i32) as Box<dyn Any>)
-    }).unwrap();
+    let (outer_key, _) = map
+        .try_insert_with_key::<()>(|_inner_key| {
+            // Insert another element from within the closure
+            map.insert(Box::new(100i32) as Box<dyn Any>);
+            Ok(Box::new(200i32) as Box<dyn Any>)
+        })
+        .unwrap();
 
     assert_eq!(map.len(), 2);
     assert_eq!(
@@ -803,7 +796,9 @@ fn cast_key_of_from_insert_with_key() {
 fn cast_key_of_downcast_round_trip() {
     // cast_key_of → downcast_key → get with concrete key
     let map: Map = Map::new();
-    let (cast_key, _) = map.insert(Box::new(Dog { name: "Buddy".into() }) as Box<dyn Any>);
+    let (cast_key, _) = map.insert(Box::new(Dog {
+        name: "Buddy".into(),
+    }) as Box<dyn Any>);
     let inner = cast_key.inner_key();
 
     let recovered_dyn = map.cast_key_of(inner).unwrap();

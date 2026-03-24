@@ -99,8 +99,6 @@ fn inner_key_type_is_default_map_key() {
     );
 }
 
-
-
 // ─── Copy / Clone / Debug / Eq / Hash ─────────────────────────────────────
 
 #[test]
@@ -232,8 +230,7 @@ fn macro_key_from_inner_key_and_metadata_round_trips() {
 
     let original = unsafe { TestCastKey::<Dog>::from_castable_parts(data, map_id, ()) };
     let inner = original.inner_key();
-    let reconstructed =
-        unsafe { TestCastKey::<Dog>::from_inner_key_and_metadata(inner, ()) };
+    let reconstructed = unsafe { TestCastKey::<Dog>::from_inner_key_and_metadata(inner, ()) };
 
     assert_eq!(original, reconstructed);
     assert_eq!(reconstructed.key_data().idx, 7);
@@ -258,7 +255,10 @@ fn macro_key_inner_key_matches_default_cast_key_inner_key() {
     let default_inner = default_key.inner_key();
 
     assert_eq!(macro_inner.data().idx, default_inner.data().idx);
-    assert_eq!(macro_inner.data().generation, default_inner.data().generation);
+    assert_eq!(
+        macro_inner.data().generation,
+        default_inner.data().generation
+    );
     assert_eq!(macro_inner.extra(), default_inner.extra());
 }
 
@@ -371,8 +371,7 @@ fn macro_key_downcast_key_correct_type() {
     let map: MacroMap = MacroMap::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let dog_key: Option<TestCastKey<Dog>> =
-        map.downcast_key::<TestCastKey<Dog>>(dyn_key);
+    let dog_key: Option<TestCastKey<Dog>> = map.downcast_key::<TestCastKey<Dog>>(dyn_key);
     assert!(dog_key.is_some());
 
     let dog: &Dog = map.get(dog_key.unwrap()).unwrap();
@@ -384,8 +383,7 @@ fn macro_key_downcast_key_wrong_type() {
     let map: MacroMap = MacroMap::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let cat_key: Option<TestCastKey<Cat>> =
-        map.downcast_key::<TestCastKey<Cat>>(dyn_key);
+    let cat_key: Option<TestCastKey<Cat>> = map.downcast_key::<TestCastKey<Cat>>(dyn_key);
     assert!(cat_key.is_none());
 }
 
@@ -394,11 +392,11 @@ fn macro_key_downcast_key_wrong_type() {
 #[test]
 fn macro_key_get_with_trait_key() {
     let map: MacroMap = MacroMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Buddy".into() }) as Box<dyn Any>);
+    let (dyn_key, _) = map.insert(Box::new(Dog {
+        name: "Buddy".into(),
+    }) as Box<dyn Any>);
 
-    let dog_key: TestCastKey<Dog> = map
-        .downcast_key::<TestCastKey<Dog>>(dyn_key)
-        .unwrap();
+    let dog_key: TestCastKey<Dog> = map.downcast_key::<TestCastKey<Dog>>(dyn_key).unwrap();
     let animal_key: TestCastKey<dyn Animal> = dog_key;
 
     let animal: &dyn Animal = map.get(animal_key).unwrap();
@@ -410,9 +408,7 @@ fn macro_key_get_mut_with_concrete_key() {
     let mut map: MacroMap = MacroMap::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
-    let dog_key: TestCastKey<Dog> = map
-        .downcast_key::<TestCastKey<Dog>>(dyn_key)
-        .unwrap();
+    let dog_key: TestCastKey<Dog> = map.downcast_key::<TestCastKey<Dog>>(dyn_key).unwrap();
 
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
     dog.name = "New".into();
@@ -504,11 +500,11 @@ fn small_cast_key_inner_key_round_trips() {
 #[test]
 fn small_cast_key_downcast_and_get() {
     let map: SmallMap = SmallMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Tiny".into() }) as Box<dyn Any>);
+    let (dyn_key, _) = map.insert(Box::new(Dog {
+        name: "Tiny".into(),
+    }) as Box<dyn Any>);
 
-    let dog_key: SmallCastKey<Dog> = map
-        .downcast_key::<SmallCastKey<Dog>>(dyn_key)
-        .unwrap();
+    let dog_key: SmallCastKey<Dog> = map.downcast_key::<SmallCastKey<Dog>>(dyn_key).unwrap();
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Tiny");
 }
@@ -582,9 +578,7 @@ fn macro_key_remove_by_with_concrete_key() {
     let mut map: MacroMap = MacroMap::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let dog_key: TestCastKey<Dog> = map
-        .downcast_key::<TestCastKey<Dog>>(dyn_key)
-        .unwrap();
+    let dog_key: TestCastKey<Dog> = map.downcast_key::<TestCastKey<Dog>>(dyn_key).unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
     assert!(removed.downcast_ref::<Dog>().is_some());
@@ -608,9 +602,7 @@ fn macro_key_works_with_box_alias() {
 #[test]
 fn macro_key_insert_with_key() {
     let map: MacroMap = MacroMap::new();
-    let (cast_key, val) = map.insert_with_key(|_inner_key| {
-        Box::new(42i32) as Box<dyn Any>
-    });
+    let (cast_key, val) = map.insert_with_key(|_inner_key| Box::new(42i32) as Box<dyn Any>);
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
     assert!(map.get(cast_key).is_some());
 }
@@ -633,9 +625,7 @@ fn macro_key_insert_with_key_inner_key_round_trips() {
 #[test]
 fn macro_key_try_insert_with_key_ok() {
     let map: MacroMap = MacroMap::new();
-    let result = map.try_insert_with_key::<()>(|_| {
-        Ok(Box::new(10i32) as Box<dyn Any>)
-    });
+    let result = map.try_insert_with_key::<()>(|_| Ok(Box::new(10i32) as Box<dyn Any>));
     assert!(result.is_ok());
     assert_eq!(map.len(), 1);
 }
@@ -651,9 +641,7 @@ fn macro_key_try_insert_with_key_err() {
 #[test]
 fn small_cast_key_insert_with_key() {
     let map: SmallMap = SmallMap::new();
-    let (key, val) = map.insert_with_key(|_inner_key| {
-        Box::new(55i32) as Box<dyn Any>
-    });
+    let (key, val) = map.insert_with_key(|_inner_key| Box::new(55i32) as Box<dyn Any>);
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 55);
     assert!(map.get(key).is_some());
 }

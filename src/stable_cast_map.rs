@@ -11,15 +11,13 @@
 
 use std::any::Any;
 use std::collections::TryReserveError;
-use std::ops::{Index, IndexMut};
+use std::ops::{DerefMut, Index, IndexMut};
 use std::process::Output;
 use std::ptr::Pointee;
 
 use crate::cast_key::CastKey;
 use crate::gen_map;
-use crate::stable_deref_map::{
-    DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap,
-};
+use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap};
 
 // ─── Conversion helpers ─────────────────────────────────────────────────────
 
@@ -158,7 +156,7 @@ where
     ) -> Option<KOut>
     where
         KOut: CastKey<RefType: 'static + Sized, Idx = CK::Idx, Gen = CK::Gen>,
-        KOut::RefType: Pointee<Metadata=()>
+        KOut::RefType: Pointee<Metadata = ()>,
     {
         let data: &_ = self.inner.get(to_inner(&key))?;
         let data_as_any_from_key: &dyn Any =
@@ -190,10 +188,7 @@ where
     /// The full `CastKey` is returned alongside the reference once the
     /// insertion is complete.
     #[inline]
-    pub fn insert_with_key(
-        &self,
-        func: impl FnOnce(CK::InnerKey) -> D,
-    ) -> (CK, &D::Target) {
+    pub fn insert_with_key(&self, func: impl FnOnce(CK::InnerKey) -> D) -> (CK, &D::Target) {
         let (inner_key, reference) = self.inner.insert_with_key(func);
         (to_castable::<CK, D>(inner_key, reference), reference)
     }
@@ -288,12 +283,13 @@ where
     #[inline]
     pub fn retain<F>(&mut self, mut f: F)
     where
-        F: FnMut(CK, &mut D) -> bool,
+        F: FnMut(CK, &mut D::Target) -> bool,
+        D: DerefMut,
     {
-        self.inner.retain(|inner_key, stored| {
+        self.inner.retain(|inner_key, mut stored| {
             let reference: &D::Target = &**stored;
             let patched = to_castable::<CK, D>(inner_key, reference);
-            f(patched, stored)
+            f(patched, stored.deref_mut())
         })
     }
 
@@ -474,13 +470,14 @@ impl<'a, CK, D> Iterator for IterMut<'a, CK, D>
 where
     CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
+    D: DerefMut,
 {
-    type Item = (CK, &'a mut D);
+    type Item = (CK, &'a mut D::Target);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (inner_key, stored) = self.inner.next()?;
+        let (inner_key, mut stored) = self.inner.next()?;
         let patched = to_castable::<CK, D>(inner_key, &**stored);
-        Some((patched, stored))
+        Some((patched, stored.deref_mut()))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -572,8 +569,9 @@ impl<'a, CK, D> IntoIterator for &'a mut StableCastMap<CK, D>
 where
     CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise + 'static,
+    D: DerefMut,
 {
-    type Item = (CK, &'a mut D);
+    type Item = (CK, &'a mut D::Target);
     type IntoIter = IterMut<'a, CK, D>;
 
     #[inline]

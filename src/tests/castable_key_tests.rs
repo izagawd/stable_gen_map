@@ -30,7 +30,6 @@ impl Flyer for Parrot {
     }
 }
 
-
 // ─── from_castable_parts round-trips ────────────────────────────────────────
 
 #[test]
@@ -195,9 +194,7 @@ fn downcast_key_fails_for_wrong_type() {
 fn downcast_key_preserves_key_data_and_map_id() {
     let map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Parrot) as Box<dyn Any>);
-    let back: DefaultCastKey<Parrot> = map
-        .downcast_key::<DefaultCastKey<Parrot>>(dyn_key)
-        .unwrap();
+    let back: DefaultCastKey<Parrot> = map.downcast_key::<DefaultCastKey<Parrot>>(dyn_key).unwrap();
 
     assert_eq!(back.key_data().idx, dyn_key.key_data().idx);
     assert_eq!(back.key_data().generation, dyn_key.key_data().generation);
