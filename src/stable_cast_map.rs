@@ -12,7 +12,6 @@
 use std::any::Any;
 use std::collections::TryReserveError;
 use std::ops::{DerefMut, Index, IndexMut};
-use std::process::Output;
 use std::ptr::Pointee;
 
 use crate::cast_key::CastKey;
@@ -137,32 +136,44 @@ where
     CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
-    /// Attempts to downcast a `CastKey<RefType = dyn Any>` to a `CastKey<RefType = Concrete>`.
+    /// Attempts to downcast a `CK` (e.g. `DefaultCastKey<dyn Any>`) to a
+    /// concrete-typed key from the same family (e.g. `DefaultCastKey<Dog>`).
     ///
-    /// Looks up the actual data to obtain its `TypeId` (no UB). Returns
-    /// `None` if the key is stale / wrong map, or the concrete type doesn't match.
+    /// Only one generic parameter is needed — the concrete type. The output
+    /// key type is derived automatically via [`CastKey::WithRef`].
+    ///
+    /// The input `key` must be the map's own key type `CK`, so a
+    /// `CustomCastKey<dyn Any>` cannot be passed to a map that uses
+    /// `DefaultCastKey<dyn Any>`.
+    ///
+    /// Returns `None` if the key is stale / wrong map, or the concrete type
+    /// doesn't match.
     ///
     /// # Example
     /// ```ignore
-    /// let dyn_key: DefaultCastKey<dyn Any> = key;
-    /// if let Some(concrete) = map.downcast_key::<DefaultCastKey<MyStruct>>(dyn_key) {
-    ///     // concrete: DefaultCastKey<MyStruct>
+    /// let dyn_key: DefaultCastKey<dyn Any> = map.insert(Box::new(dog) as _).0;
+    /// if let Some(dog_key) = map.downcast_key::<Dog>(dyn_key) {
+    ///     // dog_key: DefaultCastKey<Dog>
+    ///     let dog: &Dog = map.get(dog_key).unwrap();
     /// }
     /// ```
     #[inline]
-    pub fn downcast_key<KOut>(
+    pub fn downcast_key<Concrete: 'static>(
         &self,
-        key: impl CastKey<RefType = dyn Any, Idx = CK::Idx, Gen = CK::Gen, InnerKey = CK::InnerKey>,
-    ) -> Option<KOut>
-    where
-        KOut: CastKey<RefType: 'static + Sized, Idx = CK::Idx, Gen = CK::Gen>,
-        KOut::RefType: Pointee<Metadata = ()>,
+        key: CK::WithRef<dyn Any>,
+    ) -> Option<CK::WithRef<Concrete>>
     {
-        let data: &_ = self.inner.get(to_inner(&key))?;
-        let data_as_any_from_key: &dyn Any =
-            unsafe { &*std::ptr::from_raw_parts(data as *const _ as *const (), key.metadata()) };
-        if data_as_any_from_key.type_id() == std::any::TypeId::of::<KOut::RefType>() {
-            Some(unsafe { KOut::from_castable_parts(key.key_data(), key.map_id(), ()) })
+        let data = self.inner.get(key.inner_key())?;
+        let data_as_any: &dyn Any = unsafe {
+            &*std::ptr::from_raw_parts(data as *const _ as  *const (), key.metadata())
+        };
+        if data_as_any.type_id() == std::any::TypeId::of::<Concrete>() {
+            Some(unsafe {
+                <CK::WithRef<Concrete> as CastKey>::from_inner_key_and_metadata(
+                    key.inner_key(),
+                    (),
+                )
+            })
         } else {
             None
         }

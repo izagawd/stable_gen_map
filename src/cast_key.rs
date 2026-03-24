@@ -47,6 +47,19 @@ pub unsafe trait CastKey: Copy {
     /// This is "the castable key minus the `RefType` metadata".
     type InnerKey: Key<Idx = Self::Idx, Gen = Self::Gen>;
 
+    /// The same key family re-parameterized over a different (sized) `RefType`.
+    ///
+    /// For `DefaultCastKey<T>`, `WithRef<U> = DefaultCastKey<U>`.
+    /// This is used by [`StableCastMap::downcast_key`] so that only one
+    /// generic parameter (the concrete type) is needed, and the output key
+    /// type is derived automatically from the map's own key family.
+    type WithRef<U: ?Sized>: CastKey<
+        RefType = U,
+        Idx = Self::Idx,
+        Gen = Self::Gen,
+        InnerKey = Self::InnerKey,
+    >;
+
     fn key_data(&self) -> KeyData<Self::Idx, Self::Gen>;
     fn map_id(&self) -> MapId;
     fn metadata(&self) -> <Self::RefType as Pointee>::Metadata;
@@ -164,7 +177,7 @@ where
     fn eq(&self, other: &Self) -> bool {
         self.key_data == other.key_data
             && self.map_id_and_metadata.as_ptr() as *const () as usize
-                == other.map_id_and_metadata.as_ptr() as *const () as usize
+            == other.map_id_and_metadata.as_ptr() as *const () as usize
     }
 }
 
@@ -190,6 +203,7 @@ where
     type Idx = u32;
     type Gen = u32;
     type InnerKey = DefaultMapKey<u32, u32>;
+    type WithRef<U: ?Sized> = DefaultCastKey<U>;
 
     #[inline]
     fn key_data(&self) -> KeyData<u32, u32> {
@@ -366,6 +380,7 @@ macro_rules! __impl_castable_key {
             type Idx = $idx;
             type Gen = $gen;
             type InnerKey = $crate::cast_key::DefaultMapKey<$idx, $gen>;
+            type WithRef<U: ?Sized> = $name<U>;
 
             #[inline]
             fn key_data(&self) -> $crate::key::KeyData<$idx, $gen> {

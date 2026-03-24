@@ -173,7 +173,7 @@ fn downcast_key_succeeds_for_correct_type() {
     let map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog) as Box<dyn Any>);
 
-    let result: Option<DefaultCastKey<Dog>> = map.downcast_key::<DefaultCastKey<Dog>>(dyn_key);
+    let result: Option<DefaultCastKey<Dog>> = map.downcast_key::<Dog>(dyn_key);
     assert!(result.is_some());
     let back = result.unwrap();
     assert_eq!(back.key_data().idx, dyn_key.key_data().idx);
@@ -186,7 +186,7 @@ fn downcast_key_fails_for_wrong_type() {
     let (dyn_key, _) = map.insert(Box::new(Dog) as Box<dyn Any>);
 
     let result: Option<DefaultCastKey<Parrot>> =
-        map.downcast_key::<DefaultCastKey<Parrot>>(dyn_key);
+        map.downcast_key::<Parrot>(dyn_key);
     assert!(result.is_none());
 }
 
@@ -194,7 +194,7 @@ fn downcast_key_fails_for_wrong_type() {
 fn downcast_key_preserves_key_data_and_map_id() {
     let map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Parrot) as Box<dyn Any>);
-    let back: DefaultCastKey<Parrot> = map.downcast_key::<DefaultCastKey<Parrot>>(dyn_key).unwrap();
+    let back: DefaultCastKey<Parrot> = map.downcast_key::<Parrot>(dyn_key).unwrap();
 
     assert_eq!(back.key_data().idx, dyn_key.key_data().idx);
     assert_eq!(back.key_data().generation, dyn_key.key_data().generation);

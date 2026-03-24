@@ -371,7 +371,7 @@ fn macro_key_downcast_key_correct_type() {
     let map: MacroMap = MacroMap::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let dog_key: Option<TestCastKey<Dog>> = map.downcast_key::<TestCastKey<Dog>>(dyn_key);
+    let dog_key: Option<TestCastKey<Dog>> = map.downcast_key::<Dog>(dyn_key);
     assert!(dog_key.is_some());
 
     let dog: &Dog = map.get(dog_key.unwrap()).unwrap();
@@ -383,7 +383,7 @@ fn macro_key_downcast_key_wrong_type() {
     let map: MacroMap = MacroMap::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let cat_key: Option<TestCastKey<Cat>> = map.downcast_key::<TestCastKey<Cat>>(dyn_key);
+    let cat_key: Option<TestCastKey<Cat>> = map.downcast_key::<Cat>(dyn_key);
     assert!(cat_key.is_none());
 }
 
@@ -396,7 +396,7 @@ fn macro_key_get_with_trait_key() {
         name: "Buddy".into(),
     }) as Box<dyn Any>);
 
-    let dog_key: TestCastKey<Dog> = map.downcast_key::<TestCastKey<Dog>>(dyn_key).unwrap();
+    let dog_key: TestCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
     let animal_key: TestCastKey<dyn Animal> = dog_key;
 
     let animal: &dyn Animal = map.get(animal_key).unwrap();
@@ -408,7 +408,7 @@ fn macro_key_get_mut_with_concrete_key() {
     let mut map: MacroMap = MacroMap::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
-    let dog_key: TestCastKey<Dog> = map.downcast_key::<TestCastKey<Dog>>(dyn_key).unwrap();
+    let dog_key: TestCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
     dog.name = "New".into();
@@ -504,7 +504,7 @@ fn small_cast_key_downcast_and_get() {
         name: "Tiny".into(),
     }) as Box<dyn Any>);
 
-    let dog_key: SmallCastKey<Dog> = map.downcast_key::<SmallCastKey<Dog>>(dyn_key).unwrap();
+    let dog_key: SmallCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Tiny");
 }
@@ -578,7 +578,7 @@ fn macro_key_remove_by_with_concrete_key() {
     let mut map: MacroMap = MacroMap::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let dog_key: TestCastKey<Dog> = map.downcast_key::<TestCastKey<Dog>>(dyn_key).unwrap();
+    let dog_key: TestCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
     assert!(removed.downcast_ref::<Dog>().is_some());

@@ -108,7 +108,7 @@ fn downcast_key_correct_type_then_get() {
         name: "Buddy".into(),
     }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<DefaultCastKey<Dog>>(dyn_key).unwrap();
+    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Buddy");
@@ -122,7 +122,7 @@ fn downcast_key_wrong_type_returns_none() {
     }) as Box<dyn Any>);
 
     let result: Option<DefaultCastKey<Parrot>> =
-        map.downcast_key::<DefaultCastKey<Parrot>>(dyn_key);
+        map.downcast_key::<Parrot>(dyn_key);
     assert!(result.is_none());
 }
 
@@ -141,7 +141,7 @@ fn get_with_trait_key() {
 
     // Downcast key to concrete, then upcast to dyn Animal
     let concrete_key: DefaultCastKey<Parrot> =
-        map.downcast_key::<DefaultCastKey<Parrot>>(dyn_key).unwrap();
+        map.downcast_key::<Parrot>(dyn_key).unwrap();
     let animal_key: DefaultCastKey<dyn Animal> = concrete_key;
 
     let animal: &dyn Animal = map.get(animal_key).unwrap();
@@ -153,7 +153,7 @@ fn get_mut_modifies_value() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<DefaultCastKey<Dog>>(dyn_key).unwrap();
+    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
     dog.name = "New".into();
@@ -349,7 +349,7 @@ fn remove_by_with_concrete_key() {
     let mut map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
 
-    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<DefaultCastKey<Dog>>(dyn_key).unwrap();
+    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
     let removed = map.remove_by(dog_key).unwrap();
     assert!(removed.downcast_ref::<Dog>().is_some());
@@ -803,7 +803,7 @@ fn cast_key_of_downcast_round_trip() {
 
     let recovered_dyn = map.cast_key_of(inner).unwrap();
     let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<DefaultCastKey<Dog>>(recovered_dyn)
+        .downcast_key::<Dog>(recovered_dyn)
         .unwrap();
 
     let dog: &Dog = map.get(dog_key).unwrap();
