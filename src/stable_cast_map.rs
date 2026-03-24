@@ -587,4 +587,4 @@ where
 // ─── Type alias ─────────────────────────────────────────────────────────────
 
 /// Convenience alias: [`StableCastMap`] storing `Box<T>`.
-pub type StableBoxCastMap<CK, T: ?Sized> = StableCastMap<CK, Box<T>>;
+pub type StableBoxCastMap<CK: CastKey> = StableCastMap<CK, Box<CK::RefType>>;

@@ -589,7 +589,7 @@ fn macro_key_remove_by_with_concrete_key() {
 
 #[test]
 fn macro_key_works_with_box_alias() {
-    type BoxMap = StableBoxCastMap<TestCastKey<dyn Any>, dyn Any>;
+    type BoxMap = StableBoxCastMap<TestCastKey<dyn Any>>;
     let map: BoxMap = BoxMap::new();
 
     let (key, _) = map.insert(Box::new(123i32) as Box<dyn Any>);
