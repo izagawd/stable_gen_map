@@ -278,7 +278,7 @@ struct Cat { name: String }
 struct Dog { name: String }
 
 fn main() {
-  let mut map: StableBoxCastMap<DefaultCastKey<dyn Any>, dyn Any> =
+  let mut map: StableBoxCastMap<DefaultCastKey<dyn Any>> =
           StableBoxCastMap::new();
 
   // Insert returns the map's key type: DefaultCastKey<dyn Any>
