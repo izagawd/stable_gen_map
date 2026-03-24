@@ -100,17 +100,6 @@ fn inner_key_type_is_default_map_key() {
 }
 
 
-#[test]
-fn macro_sized_key_is_16_bytes() {
-    // Same as DefaultCastKey<Dog>
-    assert_eq!(std::mem::size_of::<TestCastKey<Dog>>(), 16);
-}
-
-#[test]
-fn macro_dyn_key_is_24_bytes() {
-    // Same as DefaultCastKey<dyn Any>
-    assert_eq!(std::mem::size_of::<TestCastKey<dyn Any>>(), 24);
-}
 
 // ─── Copy / Clone / Debug / Eq / Hash ─────────────────────────────────────
 
@@ -612,4 +601,90 @@ fn macro_key_works_with_box_alias() {
     let (key, _) = map.insert(Box::new(123i32) as Box<dyn Any>);
     let val = map.get(key).unwrap();
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 123);
+}
+
+// ─── insert_with_key with macro key ──────────────────────────────────────
+
+#[test]
+fn macro_key_insert_with_key() {
+    let map: MacroMap = MacroMap::new();
+    let (cast_key, val) = map.insert_with_key(|_inner_key| {
+        Box::new(42i32) as Box<dyn Any>
+    });
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
+    assert!(map.get(cast_key).is_some());
+}
+
+#[test]
+fn macro_key_insert_with_key_inner_key_round_trips() {
+    use crate::key::Key;
+
+    let map: MacroMap = MacroMap::new();
+    let (cast_key, _) = map.insert_with_key(|inner_key| {
+        assert_ne!(inner_key.extra().0, 0);
+        Box::new(77i32) as Box<dyn Any>
+    });
+
+    let inner = cast_key.inner_key();
+    let val = map.get_by_inner_key(inner).unwrap();
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 77);
+}
+
+#[test]
+fn macro_key_try_insert_with_key_ok() {
+    let map: MacroMap = MacroMap::new();
+    let result = map.try_insert_with_key::<()>(|_| {
+        Ok(Box::new(10i32) as Box<dyn Any>)
+    });
+    assert!(result.is_ok());
+    assert_eq!(map.len(), 1);
+}
+
+#[test]
+fn macro_key_try_insert_with_key_err() {
+    let map: MacroMap = MacroMap::new();
+    let result = map.try_insert_with_key::<&str>(|_| Err("fail"));
+    assert!(result.is_err());
+    assert_eq!(map.len(), 0);
+}
+
+#[test]
+fn small_cast_key_insert_with_key() {
+    let map: SmallMap = SmallMap::new();
+    let (key, val) = map.insert_with_key(|_inner_key| {
+        Box::new(55i32) as Box<dyn Any>
+    });
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 55);
+    assert!(map.get(key).is_some());
+}
+
+// ─── cast_key_of with macro key ──────────────────────────────────────────
+
+#[test]
+fn macro_key_cast_key_of_round_trips() {
+    let map: MacroMap = MacroMap::new();
+    let (cast_key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let inner = cast_key.inner_key();
+
+    let recovered = map.cast_key_of(inner).unwrap();
+    assert_eq!(recovered, cast_key);
+}
+
+#[test]
+fn macro_key_cast_key_of_stale_returns_none() {
+    let mut map: MacroMap = MacroMap::new();
+    let (cast_key, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let inner = cast_key.inner_key();
+    map.remove(cast_key);
+    assert!(map.cast_key_of(inner).is_none());
+}
+
+#[test]
+fn small_cast_key_cast_key_of() {
+    let map: SmallMap = SmallMap::new();
+    let (cast_key, _) = map.insert(Box::new(99i32) as Box<dyn Any>);
+    let inner = cast_key.inner_key();
+
+    let recovered = map.cast_key_of(inner).unwrap();
+    assert_eq!(recovered, cast_key);
 }

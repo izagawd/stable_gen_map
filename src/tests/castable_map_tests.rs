@@ -503,3 +503,328 @@ fn clone_diverges_after_remove_and_reinsert() {
     // old key still works on original
     assert!(map.get(key).is_some());
 }
+
+// ─── insert_with_key ───────────────────────────────────────────────────────
+
+#[test]
+fn insert_with_key_returns_valid_cast_key() {
+    let map: Map = Map::new();
+    let (cast_key, val) = map.insert_with_key(|_inner_key| {
+        Box::new(42i32) as Box<dyn Any>
+    });
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
+    assert_eq!(
+        *map.get(cast_key).unwrap().downcast_ref::<i32>().unwrap(),
+        42
+    );
+}
+
+#[test]
+fn insert_with_key_inner_key_matches_returned_cast_key() {
+    use crate::key::Key;
+
+    let map: Map = Map::new();
+    let (cast_key, _) = map.insert_with_key(|inner_key| {
+        // inner_key should have valid data at this point
+        assert_ne!(inner_key.extra().0, 0, "map_id must be non-zero");
+        Box::new(99i32) as Box<dyn Any>
+    });
+
+    // The inner key extracted from the returned cast key should match
+    // what the closure received
+    let inner_from_cast = cast_key.inner_key();
+    let reconstructed = map.get_by_inner_key(inner_from_cast).unwrap();
+    assert_eq!(*reconstructed.downcast_ref::<i32>().unwrap(), 99);
+}
+
+#[test]
+fn insert_with_key_closure_receives_correct_inner_key() {
+    use crate::cast_key::DefaultMapKey;
+    use crate::key::Key;
+    use std::cell::Cell;
+
+    let map: Map = Map::new();
+    let captured_inner = Cell::new(None::<DefaultMapKey<u32, u32>>);
+
+    let (cast_key, _) = map.insert_with_key(|inner_key| {
+        captured_inner.set(Some(inner_key));
+        Box::new(77i32) as Box<dyn Any>
+    });
+
+    let captured = captured_inner.get().unwrap();
+    let from_cast = cast_key.inner_key();
+    assert_eq!(captured.data().idx, from_cast.data().idx);
+    assert_eq!(captured.data().generation, from_cast.data().generation);
+    assert_eq!(captured.extra(), from_cast.extra());
+}
+
+#[test]
+fn insert_with_key_can_store_inner_key_in_value() {
+    use crate::cast_key::DefaultMapKey;
+    use crate::key::Key;
+
+    struct SelfAware {
+        my_inner_key: DefaultMapKey<u32, u32>,
+        data: i32,
+    }
+
+    let map: StableCastMap<DefaultCastKey<dyn Any>, Box<dyn Any>> = StableCastMap::new();
+    let (cast_key, val) = map.insert_with_key(|inner_key| {
+        Box::new(SelfAware {
+            my_inner_key: inner_key,
+            data: 123,
+        }) as Box<dyn Any>
+    });
+
+    let sa = val.downcast_ref::<SelfAware>().unwrap();
+    assert_eq!(sa.data, 123);
+
+    // The stored inner key should match
+    let inner_from_cast = cast_key.inner_key();
+    assert_eq!(sa.my_inner_key.data().idx, inner_from_cast.data().idx);
+    assert_eq!(
+        sa.my_inner_key.data().generation,
+        inner_from_cast.data().generation
+    );
+    assert_eq!(sa.my_inner_key.extra(), inner_from_cast.extra());
+}
+
+#[test]
+fn insert_with_key_multiple_inserts() {
+    let map: Map = Map::new();
+
+    let (k1, _) = map.insert_with_key(|_| Box::new(1i32) as Box<dyn Any>);
+    let (k2, _) = map.insert_with_key(|_| Box::new(2i32) as Box<dyn Any>);
+    let (k3, _) = map.insert_with_key(|_| Box::new(3i32) as Box<dyn Any>);
+
+    assert_eq!(map.len(), 3);
+    assert_eq!(*map.get(k1).unwrap().downcast_ref::<i32>().unwrap(), 1);
+    assert_eq!(*map.get(k2).unwrap().downcast_ref::<i32>().unwrap(), 2);
+    assert_eq!(*map.get(k3).unwrap().downcast_ref::<i32>().unwrap(), 3);
+}
+
+#[test]
+fn insert_with_key_after_remove_reuses_slot() {
+    let mut map: Map = Map::new();
+    let (k1, _) = map.insert_with_key(|_| Box::new(1i32) as Box<dyn Any>);
+    map.remove(k1);
+
+    let (k2, _) = map.insert_with_key(|_| Box::new(2i32) as Box<dyn Any>);
+    assert_eq!(map.len(), 1);
+    // Old key is stale
+    assert!(map.get(k1).is_none());
+    assert_eq!(*map.get(k2).unwrap().downcast_ref::<i32>().unwrap(), 2);
+}
+
+#[test]
+fn insert_with_key_pointer_stability() {
+    let map: Map = Map::new();
+    let (_, ref1) = map.insert_with_key(|_| Box::new(1i32) as Box<dyn Any>);
+    let ptr1 = ref1 as *const dyn Any as *const () as usize;
+
+    // Insert many more to trigger growth
+    for i in 0..100 {
+        map.insert_with_key(|_| Box::new(i as u64) as Box<dyn Any>);
+    }
+
+    let (first_key, _) = map.snapshot()[0];
+    let ref1_again = map.get(first_key).unwrap();
+    let ptr1_again = ref1_again as *const dyn Any as *const () as usize;
+    assert_eq!(ptr1, ptr1_again);
+}
+
+// ─── try_insert_with_key ───────────────────────────────────────────────────
+
+#[test]
+fn try_insert_with_key_ok() {
+    let map: Map = Map::new();
+    let result = map.try_insert_with_key::<String>(|_inner_key| {
+        Ok(Box::new(42i32) as Box<dyn Any>)
+    });
+    assert!(result.is_ok());
+
+    let (cast_key, val) = result.unwrap();
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
+    assert_eq!(
+        *map.get(cast_key).unwrap().downcast_ref::<i32>().unwrap(),
+        42
+    );
+    assert_eq!(map.len(), 1);
+}
+
+#[test]
+fn try_insert_with_key_err_does_not_insert() {
+    let map: Map = Map::new();
+    let result = map.try_insert_with_key::<String>(|_inner_key| {
+        Err("something went wrong".to_string())
+    });
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), "something went wrong");
+    assert_eq!(map.len(), 0);
+}
+
+#[test]
+fn try_insert_with_key_err_slot_is_reusable() {
+    let map: Map = Map::new();
+
+    // Failed insert
+    let _ = map.try_insert_with_key::<()>(|_| Err(()));
+
+    // Successful insert should reuse the slot
+    let (key, val) = map.try_insert_with_key::<()>(|_| {
+        Ok(Box::new(99i32) as Box<dyn Any>)
+    }).unwrap();
+
+    assert_eq!(map.len(), 1);
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 99);
+    assert!(map.get(key).is_some());
+}
+
+#[test]
+fn try_insert_with_key_inner_key_matches() {
+    use crate::cast_key::DefaultMapKey;
+    use crate::key::Key;
+    use std::cell::Cell;
+
+    let map: Map = Map::new();
+    let captured_inner = Cell::new(None::<DefaultMapKey<u32, u32>>);
+
+    let (cast_key, _) = map.try_insert_with_key::<()>(|inner_key| {
+        captured_inner.set(Some(inner_key));
+        Ok(Box::new(55i32) as Box<dyn Any>)
+    }).unwrap();
+
+    let captured = captured_inner.get().unwrap();
+    let from_cast = cast_key.inner_key();
+    assert_eq!(captured.data().idx, from_cast.data().idx);
+    assert_eq!(captured.data().generation, from_cast.data().generation);
+    assert_eq!(captured.extra(), from_cast.extra());
+}
+
+#[test]
+fn try_insert_with_key_ok_then_err_preserves_first() {
+    let map: Map = Map::new();
+
+    let (k1, _) = map.try_insert_with_key::<()>(|_| {
+        Ok(Box::new(1i32) as Box<dyn Any>)
+    }).unwrap();
+
+    let _ = map.try_insert_with_key::<()>(|_| Err(()));
+
+    assert_eq!(map.len(), 1);
+    assert_eq!(*map.get(k1).unwrap().downcast_ref::<i32>().unwrap(), 1);
+}
+
+#[test]
+fn try_insert_with_key_can_insert_during_closure() {
+    // The closure can insert other elements (since insert takes &self)
+    let map: Map = Map::new();
+
+    let (outer_key, _) = map.try_insert_with_key::<()>(|_inner_key| {
+        // Insert another element from within the closure
+        map.insert(Box::new(100i32) as Box<dyn Any>);
+        Ok(Box::new(200i32) as Box<dyn Any>)
+    }).unwrap();
+
+    assert_eq!(map.len(), 2);
+    assert_eq!(
+        *map.get(outer_key).unwrap().downcast_ref::<i32>().unwrap(),
+        200
+    );
+}
+
+// ─── cast_key_of ───────────────────────────────────────────────────────────
+
+#[test]
+fn cast_key_of_returns_same_as_insert() {
+    let map: Map = Map::new();
+    let (cast_key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let inner = cast_key.inner_key();
+
+    let recovered = map.cast_key_of(inner).unwrap();
+    assert_eq!(recovered, cast_key);
+}
+
+#[test]
+fn cast_key_of_works_for_get() {
+    let map: Map = Map::new();
+    let (_, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let (cast_key, _) = map.insert(Box::new(99i32) as Box<dyn Any>);
+
+    let inner = cast_key.inner_key();
+    let recovered = map.cast_key_of(inner).unwrap();
+
+    let val = map.get(recovered).unwrap();
+    assert_eq!(*val.downcast_ref::<i32>().unwrap(), 99);
+}
+
+#[test]
+fn cast_key_of_stale_inner_key_returns_none() {
+    let mut map: Map = Map::new();
+    let (cast_key, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let inner = cast_key.inner_key();
+
+    map.remove(cast_key);
+    assert!(map.cast_key_of(inner).is_none());
+}
+
+#[test]
+fn cast_key_of_cross_map_returns_none() {
+    let map_a: Map = Map::new();
+    let map_b: Map = Map::new();
+
+    let (key_a, _) = map_a.insert(Box::new(1i32) as Box<dyn Any>);
+    let _ = map_b.insert(Box::new(2i32) as Box<dyn Any>);
+
+    let inner_a = key_a.inner_key();
+    assert!(map_b.cast_key_of(inner_a).is_none());
+}
+
+#[test]
+fn cast_key_of_from_insert_with_key() {
+    use crate::cast_key::DefaultMapKey;
+    use crate::key::Key;
+    use std::cell::Cell;
+
+    let map: Map = Map::new();
+    let captured = Cell::new(None::<DefaultMapKey<u32, u32>>);
+
+    let (cast_key, _) = map.insert_with_key(|inner_key| {
+        captured.set(Some(inner_key));
+        Box::new(77i32) as Box<dyn Any>
+    });
+
+    // Recover the cast key from the captured inner key
+    let recovered = map.cast_key_of(captured.get().unwrap()).unwrap();
+    assert_eq!(recovered, cast_key);
+}
+
+#[test]
+fn cast_key_of_downcast_round_trip() {
+    // cast_key_of → downcast_key → get with concrete key
+    let map: Map = Map::new();
+    let (cast_key, _) = map.insert(Box::new(Dog { name: "Buddy".into() }) as Box<dyn Any>);
+    let inner = cast_key.inner_key();
+
+    let recovered_dyn = map.cast_key_of(inner).unwrap();
+    let dog_key: DefaultCastKey<Dog> = map
+        .downcast_key::<Dog, DefaultCastKey<Dog>>(recovered_dyn)
+        .unwrap();
+
+    let dog: &Dog = map.get(dog_key).unwrap();
+    assert_eq!(dog.name, "Buddy");
+}
+
+#[test]
+fn cast_key_of_multiple_elements() {
+    let map: Map = Map::new();
+    let (k1, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let (k2, _) = map.insert(Box::new(2i32) as Box<dyn Any>);
+    let (k3, _) = map.insert(Box::new(3i32) as Box<dyn Any>);
+
+    for original in [k1, k2, k3] {
+        let inner = original.inner_key();
+        let recovered = map.cast_key_of(inner).unwrap();
+        assert_eq!(recovered, original);
+    }
+}

@@ -178,6 +178,36 @@ where
         (to_castable::<CK, D>(inner_key, reference), reference)
     }
 
+    /// Inserts a smart pointer produced by `func`, which receives the
+    /// [`InnerKey`](CastKey::InnerKey) that will identify the inserted
+    /// element.
+    ///
+    /// The closure receives the inner key (without pointer metadata) rather
+    /// than a full `CastKey` because the metadata is only available after
+    /// the value has been created and its deref target can be inspected.
+    /// The full `CastKey` is returned alongside the reference once the
+    /// insertion is complete.
+    #[inline]
+    pub fn insert_with_key(
+        &self,
+        func: impl FnOnce(CK::InnerKey) -> D,
+    ) -> (CK, &D::Target) {
+        let (inner_key, reference) = self.inner.insert_with_key(func);
+        (to_castable::<CK, D>(inner_key, reference), reference)
+    }
+
+    /// Like [`insert_with_key`](Self::insert_with_key) but the closure may
+    /// return `Err`, in which case the slot is released and the error is
+    /// propagated.
+    #[inline]
+    pub fn try_insert_with_key<E>(
+        &self,
+        func: impl FnOnce(CK::InnerKey) -> Result<D, E>,
+    ) -> Result<(CK, &D::Target), E> {
+        let (inner_key, reference) = self.inner.try_insert_with_key(func)?;
+        Ok((to_castable::<CK, D>(inner_key, reference), reference))
+    }
+
     /// Shared-reference lookup by index only (ignores generation).
     #[inline]
     pub fn get_by_index_only(&self, idx: CK::Idx) -> Option<(CK, &D::Target)> {
@@ -228,6 +258,26 @@ where
     #[inline]
     pub fn remove_by_inner_key(&mut self, key: CK::InnerKey) -> Option<D> {
         self.inner.remove(key)
+    }
+
+    /// Converts an inner key to a full [`CastKey`] by looking up the stored
+    /// value to obtain its pointer metadata.
+    ///
+    /// Returns `None` if the inner key is stale or from a different map.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let (cast_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    /// let inner = cast_key.inner_key();
+    ///
+    /// // Later, reconstruct the full cast key from the inner key:
+    /// let recovered: DefaultCastKey<dyn Any> = map.cast_key_of(inner).unwrap();
+    /// assert_eq!(recovered, cast_key);
+    /// ```
+    #[inline]
+    pub fn cast_key_of(&self, inner: CK::InnerKey) -> Option<CK> {
+        let reference: &D::Target = self.inner.get(inner)?;
+        Some(to_castable::<CK, D>(inner, reference))
     }
 
     // ── retain ──────────────────────────────────────────────────────────
