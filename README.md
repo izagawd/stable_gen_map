@@ -285,7 +285,7 @@ fn main() {
   let (dyn_key, _) = map.insert(Box::new(Cat { name: "Whiskers".into() }));
 
   // Downcast the dyn key to a concrete typed key
-  if let Some(cat_key) = map.downcast_key::<DefaultCastKey<Cat>>(dyn_key) {
+  if let Some(cat_key) = map.downcast_key::<Cat>(dyn_key) {
     // Look up with the concrete key — returns &Cat
     let cat: &Cat = map.get(cat_key).unwrap();
     assert_eq!(cat.name, "Whiskers");
