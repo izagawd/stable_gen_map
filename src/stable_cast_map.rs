@@ -161,18 +161,13 @@ where
     pub fn downcast_key<Concrete: 'static>(
         &self,
         key: CK::WithRef<dyn Any>,
-    ) -> Option<CK::WithRef<Concrete>>
-    {
+    ) -> Option<CK::WithRef<Concrete>> {
         let data = self.inner.get(key.inner_key())?;
-        let data_as_any: &dyn Any = unsafe {
-            &*std::ptr::from_raw_parts(data as *const _ as  *const (), key.metadata())
-        };
+        let data_as_any: &dyn Any =
+            unsafe { &*std::ptr::from_raw_parts(data as *const _ as *const (), key.metadata()) };
         if data_as_any.type_id() == std::any::TypeId::of::<Concrete>() {
             Some(unsafe {
-                <CK::WithRef<Concrete> as CastKey>::from_inner_key_and_metadata(
-                    key.inner_key(),
-                    (),
-                )
+                <CK::WithRef<Concrete> as CastKey>::from_inner_key_and_metadata(key.inner_key(), ())
             })
         } else {
             None
@@ -387,13 +382,9 @@ where
     /// Looks up the slot via key_data + map_id, gets the data pointer,
     /// then combines it with `key.metadata()` to produce `&T`.
     #[inline]
-    pub fn get<T: ?Sized + Pointee>(
-        &self,
-        key: CK::WithRef<T>,
-    ) -> Option<&T>
+    pub fn get<T: ?Sized + Pointee>(&self, key: CK::WithRef<T>) -> Option<&T>
     where
         <T as Pointee>::Metadata: Copy,
-
     {
         let base_ref: &D::Target = self.inner.get(to_inner(&key))?;
         let data_ptr: *const () = (base_ref as *const D::Target).cast();
@@ -403,10 +394,7 @@ where
 
     /// Mutable-reference lookup with a potentially differently-typed key.
     #[inline]
-    pub fn get_mut<T: ?Sized + Pointee>(
-        &mut self,
-        key: CK::WithRef<T>,
-    ) -> Option<&mut T>
+    pub fn get_mut<T: ?Sized + Pointee>(&mut self, key: CK::WithRef<T>) -> Option<&mut T>
     where
         <T as Pointee>::Metadata: Copy,
         D: std::ops::DerefMut,
@@ -419,10 +407,7 @@ where
 
     /// Removes an element
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(
-        &mut self,
-        key: CK::WithRef<T>,
-    ) -> Option<D>
+    pub fn remove<T: ?Sized + Pointee>(&mut self, key: CK::WithRef<T>) -> Option<D>
     where
         <T as Pointee>::Metadata: Copy,
     {

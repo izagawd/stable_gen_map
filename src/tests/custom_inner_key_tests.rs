@@ -178,10 +178,7 @@ fn inner_key_from_inner_key_and_metadata_round_trips() {
 
     let inner = original.inner_key();
     let reconstructed = unsafe {
-        CastKeyWithCustomInner::<dyn Any>::from_inner_key_and_metadata(
-            inner,
-            original.metadata(),
-        )
+        CastKeyWithCustomInner::<dyn Any>::from_inner_key_and_metadata(inner, original.metadata())
     };
     assert_eq!(original, reconstructed);
 }
@@ -305,7 +302,9 @@ fn small_custom_inner_key_is_correct_type() {
 #[test]
 fn small_custom_inner_downcast() {
     let map: SmallCustomMap = SmallCustomMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Tiny".into() }) as Box<dyn Any>);
+    let (dyn_key, _) = map.insert(Box::new(Dog {
+        name: "Tiny".into(),
+    }) as Box<dyn Any>);
 
     let dog_key: SmallCastKeyWithCustomInner<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
     let dog: &Dog = map.get(dog_key).unwrap();

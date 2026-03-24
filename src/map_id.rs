@@ -16,7 +16,6 @@ static NEXT_MAP_ID: AtomicUsize = AtomicUsize::new(1);
 pub struct MapId(pub(crate) usize);
 
 impl MapId {
-    
     pub unsafe fn from_usize(number: usize) -> MapId {
         MapId(number)
     }

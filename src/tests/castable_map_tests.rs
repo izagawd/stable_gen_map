@@ -121,8 +121,7 @@ fn downcast_key_wrong_type_returns_none() {
         name: "Fido".into(),
     }) as Box<dyn Any>);
 
-    let result: Option<DefaultCastKey<Parrot>> =
-        map.downcast_key::<Parrot>(dyn_key);
+    let result: Option<DefaultCastKey<Parrot>> = map.downcast_key::<Parrot>(dyn_key);
     assert!(result.is_none());
 }
 
@@ -140,8 +139,7 @@ fn get_with_trait_key() {
     let (dyn_key, _) = map.insert(Box::new(parrot) as Box<dyn Any>);
 
     // Downcast key to concrete, then upcast to dyn Animal
-    let concrete_key: DefaultCastKey<Parrot> =
-        map.downcast_key::<Parrot>(dyn_key).unwrap();
+    let concrete_key: DefaultCastKey<Parrot> = map.downcast_key::<Parrot>(dyn_key).unwrap();
     let animal_key: DefaultCastKey<dyn Animal> = concrete_key;
 
     let animal: &dyn Animal = map.get(animal_key).unwrap();
@@ -801,9 +799,7 @@ fn cast_key_of_downcast_round_trip() {
     let inner = cast_key.inner_key();
 
     let recovered_dyn = map.cast_key_of(inner).unwrap();
-    let dog_key: DefaultCastKey<Dog> = map
-        .downcast_key::<Dog>(recovered_dyn)
-        .unwrap();
+    let dog_key: DefaultCastKey<Dog> = map.downcast_key::<Dog>(recovered_dyn).unwrap();
 
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Buddy");

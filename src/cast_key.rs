@@ -177,7 +177,7 @@ where
     fn eq(&self, other: &Self) -> bool {
         self.key_data == other.key_data
             && self.map_id_and_metadata.as_ptr() as *const () as usize
-            == other.map_id_and_metadata.as_ptr() as *const () as usize
+                == other.map_id_and_metadata.as_ptr() as *const () as usize
     }
 }
 
@@ -433,7 +433,11 @@ macro_rules! __impl_castable_key {
 
             #[inline]
             fn map_id(&self) -> $crate::map_id::MapId {
-                unsafe { $crate::map_id::MapId::from_usize(self.map_id_and_metadata.as_ptr() as *const () as usize) }
+                unsafe {
+                    $crate::map_id::MapId::from_usize(
+                        self.map_id_and_metadata.as_ptr() as *const () as usize,
+                    )
+                }
             }
 
             #[inline]
@@ -445,10 +449,7 @@ macro_rules! __impl_castable_key {
             fn inner_key(&self) -> $inner_key {
                 use $crate::cast_key::CastKey;
                 use $crate::key::Key;
-                <$inner_key as Key>::from_parts(
-                    self.key_data(),
-                    self.map_id(),
-                )
+                <$inner_key as Key>::from_parts(self.key_data(), self.map_id())
             }
 
             #[inline]
@@ -462,7 +463,10 @@ macro_rules! __impl_castable_key {
                         map_id.get_underlying_usize() != 0,
                         "cannot construct castable key with null map id"
                     );
-                    let raw: *mut T = ::std::ptr::from_raw_parts_mut(map_id.get_underlying_usize() as *mut (), metadata);
+                    let raw: *mut T = ::std::ptr::from_raw_parts_mut(
+                        map_id.get_underlying_usize() as *mut (),
+                        metadata,
+                    );
                     Self {
                         key_data: data,
                         map_id_and_metadata: ::std::ptr::NonNull::new_unchecked(raw),

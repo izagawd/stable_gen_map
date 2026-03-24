@@ -185,8 +185,7 @@ fn downcast_key_fails_for_wrong_type() {
     let map: Map = Map::new();
     let (dyn_key, _) = map.insert(Box::new(Dog) as Box<dyn Any>);
 
-    let result: Option<DefaultCastKey<Parrot>> =
-        map.downcast_key::<Parrot>(dyn_key);
+    let result: Option<DefaultCastKey<Parrot>> = map.downcast_key::<Parrot>(dyn_key);
     assert!(result.is_none());
 }
 
