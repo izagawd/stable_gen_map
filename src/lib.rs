@@ -100,4 +100,7 @@ mod tests {
 
     #[cfg(all(test, feature = "castable"))]
     mod castable_key_macro_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod custom_inner_key_tests;
 }
