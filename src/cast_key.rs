@@ -68,6 +68,9 @@ pub unsafe trait CastKey: Copy {
     /// `GenMap`.
     fn inner_key(&self) -> Self::InnerKey;
 
+    /// # Safety
+    /// The provided `MapId`'s inner `usize` value must NOT be zero, or else UB may occur, since most CastKeys internally use NonNull ptrs (which can never be zero) to store the `MapId`s.<br><br>
+    /// `NonNull` ptrs are used because that is what enables the keys to upcast their metadata implicitly
     unsafe fn from_castable_parts(
         data: KeyData<Self::Idx, Self::Gen>,
         map_id: MapId,
