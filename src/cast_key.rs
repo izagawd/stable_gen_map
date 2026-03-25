@@ -68,6 +68,24 @@ pub unsafe trait CastKey: Copy {
     /// `GenMap`.
     fn inner_key(&self) -> Self::InnerKey;
 
+    /// # Safety
+    /// The caller must uphold all of the following:
+    ///
+    /// - `map_id.0 != 0`.
+    ///   Most `CastKey` implementations internally store the map id in a
+    ///   `NonNull` pointer representation, and `NonNull` may never contain a
+    ///   null value. Passing a zero map id can therefore violate internal
+    ///   invariants and cause UB.
+    ///
+    /// - `metadata` must be valid for the allocation identified by the
+    ///   `(data, map_id)` pair.
+    ///   In other words, the metadata must be the exact pointer metadata that
+    ///   belongs to the value referenced by that key. Supplying mismatched
+    ///   metadata can cause the map to construct a reference with the wrong
+    ///   metadata, which may cause UB.
+    ///
+    /// `NonNull` is used internally because it allows key types to preserve and
+    /// implicitly upcast pointer metadata.
     unsafe fn from_castable_parts(
         data: KeyData<Self::Idx, Self::Gen>,
         map_id: MapId,
@@ -75,6 +93,15 @@ pub unsafe trait CastKey: Copy {
     ) -> Self;
 
     /// Build a castable key from an inner key and pointer metadata.
+    /// # Safety
+    /// The caller must uphold all of the following:
+    ///
+    /// - `metadata` must be valid for the allocation identified by the
+    ///   `inner` argument (the inner key of this CastKey).
+    ///   In other words, the metadata must be the exact pointer metadata that
+    ///   belongs to the value referenced by that key. Supplying mismatched
+    ///   metadata can cause the map to construct a reference with the wrong
+    ///   metadata, which may cause UB.
     unsafe fn from_inner_key_and_metadata(
         inner: Self::InnerKey,
         metadata: <Self::RefType as Pointee>::Metadata,
