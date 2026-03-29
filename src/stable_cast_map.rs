@@ -180,8 +180,7 @@ where
     /// reference to the deref target.
     #[inline]
     pub fn insert(&self, value: D) -> (CK, &D::Target) {
-        let (inner_key, reference) = self.inner.insert(value);
-        (to_castable::<CK, D>(inner_key, reference), reference)
+        self.insert_with_key(|_| value)
     }
 
     /// Inserts a smart pointer produced by `func`, which receives the
@@ -195,8 +194,8 @@ where
     /// insertion is complete.
     #[inline]
     pub fn insert_with_key(&self, func: impl FnOnce(CK::InnerKey) -> D) -> (CK, &D::Target) {
-        let (inner_key, reference) = self.inner.insert_with_key(func);
-        (to_castable::<CK, D>(inner_key, reference), reference)
+        self.try_insert_with_key(|key| Ok::<_, ()>(func(key)))
+            .unwrap()
     }
 
     /// Like [`insert_with_key`](Self::insert_with_key) but the closure may
@@ -242,17 +241,7 @@ where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
-        let erased: D = value;
-        let (inner_key, erased_ref) = self.inner.insert(erased);
-        let concrete_ref: &ConcreteD::Target = unsafe {
-            &*(erased_ref as *const D::Target as *const () as *const ConcreteD::Target)
-        };
-        let key = unsafe {
-            <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
-                inner_key, (),
-            )
-        };
-        (key, concrete_ref)
+        self.insert_sized_with_key(|_| value)
     }
 
     /// Inserts a concrete smart pointer produced by `func`, which receives
@@ -280,24 +269,8 @@ where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
-        let (inner_key, erased_ref) = self.inner.insert_with_key(|inner_key| -> D {
-            let typed_key = unsafe {
-                <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
-                    inner_key, (),
-                )
-            };
-            let concrete: ConcreteD = func(typed_key);
-            concrete
-        });
-        let concrete_ref: &ConcreteD::Target = unsafe {
-            &*(erased_ref as *const D::Target as *const () as *const ConcreteD::Target)
-        };
-        let key = unsafe {
-            <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
-                inner_key, (),
-            )
-        };
-        (key, concrete_ref)
+        self.try_insert_sized_with_key(|key| Ok::<_, ()>(func(key)))
+            .unwrap()
     }
 
     /// Like [`insert_sized_with_key`](Self::insert_sized_with_key) but the closure
@@ -312,7 +285,9 @@ where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
-        let (inner_key, erased_ref) =
+        let mut saved_key: Option<CK::WithRef<ConcreteD::Target>> = None;
+
+        let (_, erased_ref) =
             self.inner
                 .try_insert_with_key(|inner_key| -> Result<D, E> {
                     let typed_key = unsafe {
@@ -320,16 +295,14 @@ where
                             inner_key, (),
                         )
                     };
+                    saved_key = Some(typed_key);
                     let concrete: ConcreteD = func(typed_key)?;
                     Ok(concrete)
                 })?;
+
+        let key = saved_key.unwrap();
         let concrete_ref: &ConcreteD::Target = unsafe {
             &*(erased_ref as *const D::Target as *const () as *const ConcreteD::Target)
-        };
-        let key = unsafe {
-            <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
-                inner_key, (),
-            )
         };
         Ok((key, concrete_ref))
     }
@@ -368,19 +341,7 @@ where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         SourceD::Target: Pointee<Metadata: Copy>,
     {
-        let metadata = std::ptr::metadata(&*value as *const SourceD::Target);
-        let erased: D = value;
-        let (inner_key, erased_ref) = self.inner.insert(erased);
-        let data_ptr: *const () = (erased_ref as *const D::Target).cast();
-        let concrete_ref: &SourceD::Target = unsafe {
-            &*std::ptr::from_raw_parts(data_ptr, metadata)
-        };
-        let key = unsafe {
-            <CK::WithRef<SourceD::Target> as CastKey>::from_inner_key_and_metadata(
-                inner_key, metadata,
-            )
-        };
-        (key, concrete_ref)
+        self.insert_as_with_key(|_| value)
     }
 
     /// Inserts a smart pointer produced by `func`, returning a key and
@@ -407,29 +368,8 @@ where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         SourceD::Target: Pointee<Metadata: Copy>,
     {
-        let saved_metadata: std::cell::Cell<
-            Option<<SourceD::Target as Pointee>::Metadata>,
-        > = std::cell::Cell::new(None);
-
-        let (inner_key, erased_ref) = self.inner.insert_with_key(|inner_key| -> D {
-            let concrete: SourceD = func(inner_key);
-            saved_metadata.set(Some(std::ptr::metadata(
-                &*concrete as *const SourceD::Target,
-            )));
-            concrete
-        });
-
-        let metadata = saved_metadata.get().unwrap();
-        let data_ptr: *const () = (erased_ref as *const D::Target).cast();
-        let concrete_ref: &SourceD::Target = unsafe {
-            &*std::ptr::from_raw_parts(data_ptr, metadata)
-        };
-        let key = unsafe {
-            <CK::WithRef<SourceD::Target> as CastKey>::from_inner_key_and_metadata(
-                inner_key, metadata,
-            )
-        };
-        (key, concrete_ref)
+        self.try_insert_as_with_key(|key| Ok::<_, ()>(func(key)))
+            .unwrap()
     }
 
     /// Like [`insert_as_with_key`](Self::insert_as_with_key) but the closure
@@ -444,21 +384,19 @@ where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         SourceD::Target: Pointee<Metadata: Copy>,
     {
-        let saved_metadata: std::cell::Cell<
-            Option<<SourceD::Target as Pointee>::Metadata>,
-        > = std::cell::Cell::new(None);
+        let mut saved_metadata: Option<<SourceD::Target as Pointee>::Metadata> = None;
 
         let (inner_key, erased_ref) =
             self.inner
                 .try_insert_with_key(|inner_key| -> Result<D, E> {
                     let concrete: SourceD = func(inner_key)?;
-                    saved_metadata.set(Some(std::ptr::metadata(
+                    saved_metadata = Some(std::ptr::metadata(
                         &*concrete as *const SourceD::Target,
-                    )));
+                    ));
                     Ok(concrete)
                 })?;
 
-        let metadata = saved_metadata.get().unwrap();
+        let metadata = saved_metadata.unwrap();
         let data_ptr: *const () = (erased_ref as *const D::Target).cast();
         let concrete_ref: &SourceD::Target = unsafe {
             &*std::ptr::from_raw_parts(data_ptr, metadata)
