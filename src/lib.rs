@@ -103,4 +103,7 @@ mod tests {
 
     #[cfg(all(test, feature = "castable"))]
     mod custom_inner_key_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_insert_typed_tests;
 }
