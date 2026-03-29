@@ -211,6 +211,266 @@ where
         Ok((to_castable::<CK, D>(inner_key, reference), reference))
     }
 
+    // ── insert_sized ─────────────────────────────────────────────────────
+
+    /// Inserts a *concrete* smart pointer, returning a key and reference
+    /// typed with the concrete `ConcreteD::Target` rather than the map's
+    /// erased `D::Target`.
+    ///
+    /// `ConcreteD` is the un-erased smart pointer (e.g. `Box<Dog>`). It is
+    /// coerced to `D` (e.g. `Box<dyn Any>`) internally via `CoerceUnsized`.
+    ///
+    /// Because `ConcreteD::Target` is `Sized`, the pointer metadata is `()`
+    /// and the returned key carries the concrete type information.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // map: StableCastMap<DefaultCastKey<dyn Any>, Box<dyn Any>>
+    /// let (dog_key, dog_ref) = map.insert_sized(Box::new(dog));
+    /// // dog_key: DefaultCastKey<Dog>
+    /// // dog_ref: &Dog
+    ///
+    /// // upcast the key when you need the erased form:
+    /// let dyn_key: DefaultCastKey<dyn Any> = dog_key;
+    /// ```
+    #[inline]
+    pub fn insert_sized<ConcreteD>(
+        &self,
+        value: ConcreteD,
+    ) -> (CK::WithRef<ConcreteD::Target>, &ConcreteD::Target)
+    where
+        ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
+        ConcreteD::Target: Sized,
+    {
+        let erased: D = value;
+        let (inner_key, erased_ref) = self.inner.insert(erased);
+        let concrete_ref: &ConcreteD::Target = unsafe {
+            &*(erased_ref as *const D::Target as *const () as *const ConcreteD::Target)
+        };
+        let key = unsafe {
+            <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
+                inner_key, (),
+            )
+        };
+        (key, concrete_ref)
+    }
+
+    /// Inserts a concrete smart pointer produced by `func`, which receives
+    /// the fully-typed [`CastKey`] that will identify the inserted element.
+    ///
+    /// Unlike [`insert_with_key`](Self::insert_with_key) (which passes the
+    /// inner key because the erased metadata is unavailable until after
+    /// insertion), this method can pass the complete
+    /// `CK::WithRef<ConcreteD::Target>` because sized types have `()`
+    /// metadata.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let (dog_key, dog_ref) = map.insert_sized_with_key(|key| {
+    ///     // key: DefaultCastKey<Dog>
+    ///     Box::new(Dog { id: key })
+    /// });
+    /// ```
+    #[inline]
+    pub fn insert_sized_with_key<ConcreteD>(
+        &self,
+        func: impl FnOnce(CK::WithRef<ConcreteD::Target>) -> ConcreteD,
+    ) -> (CK::WithRef<ConcreteD::Target>, &ConcreteD::Target)
+    where
+        ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
+        ConcreteD::Target: Sized,
+    {
+        let (inner_key, erased_ref) = self.inner.insert_with_key(|inner_key| -> D {
+            let typed_key = unsafe {
+                <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
+                    inner_key, (),
+                )
+            };
+            let concrete: ConcreteD = func(typed_key);
+            concrete
+        });
+        let concrete_ref: &ConcreteD::Target = unsafe {
+            &*(erased_ref as *const D::Target as *const () as *const ConcreteD::Target)
+        };
+        let key = unsafe {
+            <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
+                inner_key, (),
+            )
+        };
+        (key, concrete_ref)
+    }
+
+    /// Like [`insert_sized_with_key`](Self::insert_sized_with_key) but the closure
+    /// may return `Err`, in which case the slot is released and the error is
+    /// propagated.
+    #[inline]
+    pub fn try_insert_sized_with_key<ConcreteD, E>(
+        &self,
+        func: impl FnOnce(CK::WithRef<ConcreteD::Target>) -> Result<ConcreteD, E>,
+    ) -> Result<(CK::WithRef<ConcreteD::Target>, &ConcreteD::Target), E>
+    where
+        ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
+        ConcreteD::Target: Sized,
+    {
+        let (inner_key, erased_ref) =
+            self.inner
+                .try_insert_with_key(|inner_key| -> Result<D, E> {
+                    let typed_key = unsafe {
+                        <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
+                            inner_key, (),
+                        )
+                    };
+                    let concrete: ConcreteD = func(typed_key)?;
+                    Ok(concrete)
+                })?;
+        let concrete_ref: &ConcreteD::Target = unsafe {
+            &*(erased_ref as *const D::Target as *const () as *const ConcreteD::Target)
+        };
+        let key = unsafe {
+            <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
+                inner_key, (),
+            )
+        };
+        Ok((key, concrete_ref))
+    }
+
+    // ── insert_as ─────────────────────────────────────────────────────────
+
+    /// Inserts a smart pointer whose target type differs from the map's
+    /// `D::Target`, returning a key and reference typed with the *source*
+    /// type.
+    ///
+    /// Unlike [`insert_sized`](Self::insert_sized), `SourceD::Target` may
+    /// be `?Sized` — this is the entry-point for trait-upcasting scenarios
+    /// such as inserting `Box<dyn Child>` into a map of `Box<dyn Parent>`.
+    ///
+    /// The metadata (e.g. the `dyn Child` vtable) is captured *before* the
+    /// smart pointer is coerced to `D`, so the returned key and reference
+    /// carry the original type information.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // map: StableCastMap<DefaultCastKey<dyn Parent>, Box<dyn Parent>>
+    /// let child: Box<dyn Child> = Box::new(dog);
+    /// let (child_key, child_ref) = map.insert_as(child);
+    /// // child_key: DefaultCastKey<dyn Child>
+    /// // child_ref: &dyn Child
+    ///
+    /// // upcast the key when you need the parent form:
+    /// let parent_key: DefaultCastKey<dyn Parent> = child_key;
+    /// ```
+    #[inline]
+    pub fn insert_as<SourceD>(
+        &self,
+        value: SourceD,
+    ) -> (CK::WithRef<SourceD::Target>, &SourceD::Target)
+    where
+        SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
+        SourceD::Target: Pointee<Metadata: Copy>,
+    {
+        let metadata = std::ptr::metadata(&*value as *const SourceD::Target);
+        let erased: D = value;
+        let (inner_key, erased_ref) = self.inner.insert(erased);
+        let data_ptr: *const () = (erased_ref as *const D::Target).cast();
+        let concrete_ref: &SourceD::Target = unsafe {
+            &*std::ptr::from_raw_parts(data_ptr, metadata)
+        };
+        let key = unsafe {
+            <CK::WithRef<SourceD::Target> as CastKey>::from_inner_key_and_metadata(
+                inner_key, metadata,
+            )
+        };
+        (key, concrete_ref)
+    }
+
+    /// Inserts a smart pointer produced by `func`, returning a key and
+    /// reference typed with the source `SourceD::Target`.
+    ///
+    /// The closure receives the [`InnerKey`](CastKey::InnerKey) rather than
+    /// a full `CastKey` because the pointer metadata (e.g. vtable) is only
+    /// available after the value is created.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let (child_key, child_ref) = map.insert_as_with_key(|inner_key| {
+    ///     // inner_key: DefaultMapKey<u32, u32>
+    ///     Box::new(Dog { id: inner_key }) as Box<dyn Child>
+    /// });
+    /// // child_key: DefaultCastKey<dyn Child>
+    /// ```
+    #[inline]
+    pub fn insert_as_with_key<SourceD>(
+        &self,
+        func: impl FnOnce(CK::InnerKey) -> SourceD,
+    ) -> (CK::WithRef<SourceD::Target>, &SourceD::Target)
+    where
+        SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
+        SourceD::Target: Pointee<Metadata: Copy>,
+    {
+        let saved_metadata: std::cell::Cell<
+            Option<<SourceD::Target as Pointee>::Metadata>,
+        > = std::cell::Cell::new(None);
+
+        let (inner_key, erased_ref) = self.inner.insert_with_key(|inner_key| -> D {
+            let concrete: SourceD = func(inner_key);
+            saved_metadata.set(Some(std::ptr::metadata(
+                &*concrete as *const SourceD::Target,
+            )));
+            concrete
+        });
+
+        let metadata = saved_metadata.get().unwrap();
+        let data_ptr: *const () = (erased_ref as *const D::Target).cast();
+        let concrete_ref: &SourceD::Target = unsafe {
+            &*std::ptr::from_raw_parts(data_ptr, metadata)
+        };
+        let key = unsafe {
+            <CK::WithRef<SourceD::Target> as CastKey>::from_inner_key_and_metadata(
+                inner_key, metadata,
+            )
+        };
+        (key, concrete_ref)
+    }
+
+    /// Like [`insert_as_with_key`](Self::insert_as_with_key) but the closure
+    /// may return `Err`, in which case the slot is released and the error is
+    /// propagated.
+    #[inline]
+    pub fn try_insert_as_with_key<SourceD, E>(
+        &self,
+        func: impl FnOnce(CK::InnerKey) -> Result<SourceD, E>,
+    ) -> Result<(CK::WithRef<SourceD::Target>, &SourceD::Target), E>
+    where
+        SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
+        SourceD::Target: Pointee<Metadata: Copy>,
+    {
+        let saved_metadata: std::cell::Cell<
+            Option<<SourceD::Target as Pointee>::Metadata>,
+        > = std::cell::Cell::new(None);
+
+        let (inner_key, erased_ref) =
+            self.inner
+                .try_insert_with_key(|inner_key| -> Result<D, E> {
+                    let concrete: SourceD = func(inner_key)?;
+                    saved_metadata.set(Some(std::ptr::metadata(
+                        &*concrete as *const SourceD::Target,
+                    )));
+                    Ok(concrete)
+                })?;
+
+        let metadata = saved_metadata.get().unwrap();
+        let data_ptr: *const () = (erased_ref as *const D::Target).cast();
+        let concrete_ref: &SourceD::Target = unsafe {
+            &*std::ptr::from_raw_parts(data_ptr, metadata)
+        };
+        let key = unsafe {
+            <CK::WithRef<SourceD::Target> as CastKey>::from_inner_key_and_metadata(
+                inner_key, metadata,
+            )
+        };
+        Ok((key, concrete_ref))
+    }
+
     /// Shared-reference lookup by index only (ignores generation).
     #[inline]
     pub fn get_by_index_only(&self, idx: CK::Idx) -> Option<(CK, &D::Target)> {
