@@ -1,11 +1,11 @@
 use crate::key::{DefaultKey, Key};
 use crate::key_piece::KeyPiece;
-use crate::stable_deref_gen_map::{BoxStableDerefGenMap, StableDerefGenMap};
+use crate::stable_deref_map::{BoxStableDerefMap, StableDerefMap};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-type Map = BoxStableDerefGenMap<DefaultKey, i32>;
+type Map = BoxStableDerefMap<DefaultKey, i32>;
 
 /// Shared ledger that records exactly which instances have been dropped,
 /// and panics on double-drop so a test failure is immediate rather than
@@ -83,7 +83,7 @@ impl Drop for DropItem {
 
 #[test]
 fn drain_empty_map() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
     let items: Vec<_> = map.drain().collect();
     assert!(items.is_empty());
     assert_eq!(map.len(), 0);
@@ -91,7 +91,7 @@ fn drain_empty_map() {
 
 #[test]
 fn drain_yields_all_elements() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
     let (k1, _) = map.insert(Box::new(10));
     let (k2, _) = map.insert(Box::new(20));
     let (k3, _) = map.insert(Box::new(30));
@@ -108,7 +108,7 @@ fn drain_yields_all_elements() {
 
 #[test]
 fn drain_empties_map() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
     let (k1, _) = map.insert(Box::new(1));
     let (k2, _) = map.insert(Box::new(2));
 
@@ -121,7 +121,7 @@ fn drain_empties_map() {
 
 #[test]
 fn drain_invalidates_old_keys() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
     let (k1, _) = map.insert(Box::new(42));
     let (k2, _) = map.insert(Box::new(99));
 
@@ -133,7 +133,7 @@ fn drain_invalidates_old_keys() {
 
 #[test]
 fn drain_allows_reuse_of_indices() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
     let (k1, _) = map.insert(Box::new(100));
     let k1_data = k1.data();
 
@@ -150,7 +150,7 @@ fn drain_allows_reuse_of_indices() {
 
 #[test]
 fn drain_with_gaps_from_prior_removes() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
     let (k1, _) = map.insert(Box::new(1));
     let (_, _) = map.insert(Box::new(2));
     let (k3, _) = map.insert(Box::new(3));
@@ -169,7 +169,7 @@ fn drain_with_gaps_from_prior_removes() {
 
 #[test]
 fn drain_drop_cleans_up_remaining() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
     let (k1, _) = map.insert(Box::new(1));
     let (k2, _) = map.insert(Box::new(2));
     let (k3, _) = map.insert(Box::new(3));
@@ -187,7 +187,7 @@ fn drain_drop_cleans_up_remaining() {
 
 #[test]
 fn drain_then_insert_works() {
-    let mut map: Map = StableDerefGenMap::new();
+    let mut map: Map = StableDerefMap::new();
     map.insert(Box::new(1));
     map.insert(Box::new(2));
 
@@ -205,7 +205,7 @@ fn drain_then_insert_works() {
 fn drain_zero_consumption_drops_each_exactly_once() {
     let tracker = DropTracker::new();
 
-    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    let mut map = StableDerefMap::<DefaultKey, Box<DropItem>>::new();
     map.insert(tracker.make_item());
     map.insert(tracker.make_item());
     map.insert(tracker.make_item());
@@ -222,7 +222,7 @@ fn drain_zero_consumption_drops_each_exactly_once() {
 fn drain_partial_consumption_drops_each_exactly_once() {
     let tracker = DropTracker::new();
 
-    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    let mut map = StableDerefMap::<DefaultKey, Box<DropItem>>::new();
     for _ in 0..5 {
         map.insert(tracker.make_item());
     }
@@ -244,7 +244,7 @@ fn drain_partial_consumption_drops_each_exactly_once() {
 fn drain_full_consumption_drops_each_exactly_once() {
     let tracker = DropTracker::new();
 
-    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    let mut map = StableDerefMap::<DefaultKey, Box<DropItem>>::new();
     for _ in 0..4 {
         map.insert(tracker.make_item());
     }
@@ -263,7 +263,7 @@ fn drain_full_consumption_drops_each_exactly_once() {
 fn drain_with_gaps_drops_only_occupied_exactly_once() {
     let tracker = DropTracker::new();
 
-    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    let mut map = StableDerefMap::<DefaultKey, Box<DropItem>>::new();
     let (k0, _) = map.insert(tracker.make_item()); // id 0
     let (_, _) = map.insert(tracker.make_item()); // id 1
     let (_, _) = map.insert(tracker.make_item()); // id 2
@@ -281,7 +281,7 @@ fn drain_with_gaps_drops_only_occupied_exactly_once() {
 fn drain_does_not_double_drop_after_map_drop() {
     let tracker = DropTracker::new();
 
-    let mut map = StableDerefGenMap::<DefaultKey, Box<DropItem>>::new();
+    let mut map = StableDerefMap::<DefaultKey, Box<DropItem>>::new();
     for _ in 0..3 {
         map.insert(tracker.make_item());
     }

@@ -47,7 +47,7 @@ impl<C: SlotItem<K>, K: Key> Slot<C, K> {
 ///
 /// You will normally use the type aliases
 /// [`StableGenMap`](crate::stable_gen_map::StableGenMap) and
-/// [`StableDerefGenMap`](crate::stable_deref_gen_map::StableDerefGenMap).
+/// [`StableDerefMap`](crate::stable_deref_map::StableDerefMap).
 pub struct GenMap<K: Key, C: SlotItem<K>> {
     pub(crate) slots: UnsafeCell<Vec<UnsafeCell<Slot<C, K>>>>,
     pub(crate) next_free: Cell<Option<K::Idx>>,

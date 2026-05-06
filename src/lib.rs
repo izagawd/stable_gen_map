@@ -13,7 +13,7 @@ pub mod map_id;
 pub mod slot_item;
 #[cfg(feature = "castable")]
 pub mod stable_cast_map;
-pub mod stable_deref_gen_map;
+pub mod stable_deref_map;
 pub mod stable_gen_map;
 
 #[cfg(test)]
@@ -67,5 +67,8 @@ mod tests {
 
     #[cfg(all(test, feature = "castable"))]
     mod castable_insert_typed_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_key_macro_tests;
 
 }

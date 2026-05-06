@@ -22,7 +22,7 @@
 
 use std::ptr::Pointee;
 
-use crate::key::{DefaultKey, Key, KeyData};
+use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
 
@@ -84,6 +84,33 @@ pub unsafe trait CastKey: Copy {
         map_id: MapId,
         metadata: <Self::RefType as Pointee>::Metadata,
     ) -> Self;
+}
+
+// ─── DefaultMapKey ───────────────────────────────────────────────────────────
+//
+// A plain key used as the inner key for cast maps. No map id — just key_data.
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DefaultMapKey<Idx, Gen> {
+    pub(crate) key_data: KeyData<Idx, Gen>,
+}
+
+impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> From<KeyData<Idx, Gen>>
+    for DefaultMapKey<Idx, Gen>
+{
+    fn from(key_data: KeyData<Idx, Gen>) -> Self {
+        Self { key_data }
+    }
+}
+
+unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for DefaultMapKey<Idx, Gen> {
+    type Idx = Idx;
+    type Gen = Gen;
+
+    #[inline]
+    fn data(&self) -> KeyData<Idx, Gen> {
+        self.key_data
+    }
 }
 
 // ─── DefaultCastKey<T> ──────────────────────────────────────────────────
@@ -172,7 +199,7 @@ where
     type RefType = T;
     type Idx = u32;
     type Gen = u32;
-    type InnerKey = DefaultKey;
+    type InnerKey = DefaultMapKey<u32, u32>;
     type WithRef<U: ?Sized> = DefaultCastKey<U>;
 
     #[inline]
@@ -191,8 +218,8 @@ where
     }
 
     #[inline]
-    fn inner_key(&self) -> DefaultKey {
-        DefaultKey {
+    fn inner_key(&self) -> DefaultMapKey<u32, u32> {
+        DefaultMapKey {
             key_data: self.key_data,
         }
     }
@@ -218,7 +245,7 @@ where
 
     #[inline]
     unsafe fn from_inner_key_and_metadata(
-        inner: DefaultKey,
+        inner: DefaultMapKey<u32, u32>,
         map_id: MapId,
         metadata: <T as Pointee>::Metadata,
     ) -> Self {

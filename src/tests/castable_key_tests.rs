@@ -1,4 +1,4 @@
-use crate::cast_key::{CastKey, DefaultCastKey};
+use crate::cast_key::{CastKey, DefaultCastKey, DefaultMapKey};
 use crate::key::{DefaultKey, Key, KeyData};
 use crate::map_id::MapId;
 use crate::stable_cast_map::StableCastMap;
@@ -92,7 +92,7 @@ fn inner_key_strips_map_id_and_metadata() {
     let map: CastMap = CastMap::new();
     let (cast_key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
 
-    let inner: DefaultKey = cast_key.inner_key();
+    let inner: DefaultMapKey<u32,u32> = cast_key.inner_key();
     assert_eq!(inner.data().idx, cast_key.key_data().idx);
     assert_eq!(inner.data().generation, cast_key.key_data().generation);
 }

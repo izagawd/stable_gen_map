@@ -160,14 +160,14 @@ unsafe impl<T: ?Sized> SmartPtrCloneable for Arc<T> {
 
 /// Generational map that stores user-supplied smart pointers (`Box`, `Rc`,
 /// `Arc`, `&T`, …) directly.  The smart pointer provides pointer stability.
-pub type StableDerefGenMap<K, Derefable> = GenMap<K, DerefSlot<Derefable, K>>;
+pub type StableDerefMap<K, Derefable> = GenMap<K, DerefSlot<Derefable, K>>;
 
-pub type BoxStableDerefGenMap<K, T> = StableDerefGenMap<K, Box<T>>;
+pub type BoxStableDerefMap<K, T> = StableDerefMap<K, Box<T>>;
 
 // ─── Clone (two strategies) ──────────────────────────────────────────────────
 
 impl<K: Key, Derefable: DerefGenMapPromise + SmartPtrCloneable> Clone
-    for StableDerefGenMap<K, Derefable>
+    for StableDerefMap<K, Derefable>
 {
     fn clone(&self) -> Self {
         unsafe {

@@ -18,7 +18,7 @@ Great for patterns that rely on shared mutability on a single thread, and remove
 - `StableGenMap<K, T>`  
   A stable generational map storing a sized `T` in a `Box`. Reusing slots does not need any new allocation. This is generally what you would want.
 
-- `StableDerefGenMap<K, Derefable>`  
+- `StableDerefMap<K, Derefable>`  
   A stable generational map where each element is a **smart pointer** that
   implements 
   `DerefGenMapPromise`. You get stable references to `Deref::Target`,
@@ -26,8 +26,8 @@ Great for patterns that rely on shared mutability on a single thread, and remove
   This is the “advanced” variant for `Box<T>`, `Rc<T>`, `Arc<T>`, `&T`, or
   custom smart pointers.
 
-- `BoxStableDerefGenMap<K, T>`  
-  Type alias for `StableDerefGenMap<K, Box<T>>`.  
+- `BoxStableDerefMap<K, T>`  
+  Type alias for `StableDerefMap<K, Box<T>>`.  
   This is the most ergonomic “owning” deref-based map: the map owns `T` via
   `Box<T>`, you still insert with `&self`, and you get stable `&T`/`&mut T`
   references. Preferred over ```StableGenMap```  if your element needs to be boxed anyways.

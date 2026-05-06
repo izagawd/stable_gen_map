@@ -17,8 +17,8 @@ use crate::cast_key::CastKey;
 use crate::gen_map;
 use crate::key::Key;
 use crate::map_id::{MapId, MapIdState};
-use crate::stable_deref_gen_map::{
-    DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefGenMap,
+use crate::stable_deref_map::{
+    DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap,
 };
 
 // ─── Conversion helper ─────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ where
 
 // ─── StableCastMap ───────────────────────────────────────────────────────────
 
-/// A [`StableDerefGenMap`] wrapper that supports typed lookups via
+/// A [`StableDerefMap`] wrapper that supports typed lookups via
 /// [`CastKey`] and cross-map key safety via a per-map
 /// [`MapId`](crate::map_id::MapId).
 ///
@@ -48,7 +48,7 @@ where
     CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
-    pub(crate) inner: StableDerefGenMap<CK::InnerKey, D>,
+    pub(crate) inner: StableDerefMap<CK::InnerKey, D>,
     pub(crate) map_id: MapIdState,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
@@ -106,7 +106,7 @@ where
     #[inline]
     pub const fn new() -> Self {
         Self {
-            inner: StableDerefGenMap::new(),
+            inner: StableDerefMap::new(),
             map_id: MapIdState::new(),
             _phantom: std::marker::PhantomData,
         }
@@ -116,7 +116,7 @@ where
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: StableDerefGenMap::with_capacity(capacity),
+            inner: StableDerefMap::with_capacity(capacity),
             map_id: MapIdState::new(),
             _phantom: std::marker::PhantomData,
         }
