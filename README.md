@@ -6,7 +6,7 @@ A single-threaded, generational map that lets you:
 - keep `&T` **stable across internal resizes,**
 - and use **generational keys** to avoid use-after-free bugs.
 
-It’s designed for patterns like *graphs, self-referential structures, and arenas* where you want to keep `&T` references around while still inserting new elements, and you want to be able to defer the removal of elements, such as, at the end of a videogame's frame, or turn.
+It's designed for patterns like *graphs, self-referential structures, and arenas* where you want to keep `&T` references around while still inserting new elements, and you want to be able to defer the removal of elements, such as, at the end of a videogame's frame, or turn.
 Great for patterns that rely on shared mutability on a single thread, and removes a lot of borrow checker struggles.
 
 > **Important:** This crate is intentionally single-threaded. The map types are not `Sync`, and are meant to be used from a single thread only.
@@ -18,20 +18,22 @@ Great for patterns that rely on shared mutability on a single thread, and remove
 - `StableGenMap<K, T>`  
   A stable generational map storing a sized `T` in a `Box`. Reusing slots does not need any new allocation. This is generally what you would want.
 
-- `StableDerefGenMap<K, Derefable>`  
+- `StableDerefMap<K, Derefable>`  
   A stable generational map where each element is a **smart pointer** that
   implements 
   `DerefGenMapPromise`. You get stable references to `Deref::Target`,
   even if the underlying `Vec` reallocates.  
-  This is the “advanced” variant for `Box<T>`, `Rc<T>`, `Arc<T>`, `&T`, or
+  This is the "advanced" variant for `Box<T>`, `Rc<T>`, `Arc<T>`, `&T`, or
   custom smart pointers.
 
-- `BoxStableDerefGenMap<K, T>`  
-  Type alias for `StableDerefGenMap<K, Box<T>>`.  
-  This is the most ergonomic “owning” deref-based map: the map owns `T` via
+- `BoxStableDerefMap<K, T>`  
+  Type alias for `StableDerefMap<K, Box<T>>`.  
+  This is the most ergonomic "owning" deref-based map: the map owns `T` via
   `Box<T>`, you still insert with `&self`, and you get stable `&T`/`&mut T`
-  references. Preferred over ```StableGenMap```  if your element needs to be boxed anyways.
-  
+  references. Preferred over `StableGenMap` if your element needs to be boxed anyways.
+
+- **`StableCastMap<CK, D>`** *(requires the `castable` feature, nightly only)*  
+  A wrapper around `StableDerefMap` that supports **type-erased heterogeneous storage** (e.g. `Box<dyn Any>`) with castable keys. Each map has a unique identity so cast keys from one map cannot be used on another. See the [Castable maps](#the-castable-feature-nightly-only) section below.
 
 Keys implement the `Key` trait; you can use the provided `DefaultKey` or define your own (e.g. with smaller index / generation types).
 
@@ -59,12 +61,104 @@ All of these only need `&self`, not `&mut self`.
 **Lifetime / safety model**
 
 - You can hold `&T` from the map and still call `insert` (which only needs `&self`).
-- `remove` and `clear` need `&mut self`, so you can’t free elements while there are outstanding borrows – enforced by the borrow-checker.
+- `remove` and `clear` need `&mut self`, so you can't free elements while there are outstanding borrows – enforced by the borrow-checker.
 - Generational keys (`Key::Gen`) mean stale keys simply return `None` instead of aliasing newly inserted elements.
+- When a slot's generation overflows, it is permanently retired and never reused — no stale key can ever match a different value.
+
+---
+
+## The `castable` feature (nightly only)
+
+The `castable` feature enables `CastKey`, `StableCastMap`, and the `new_castable_key_type!` macro. These rely on the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize`.
+
+```toml
+[dependencies]
+stable_gen_map = { version = "0.11", features = ["castable"] }
+```
+
+### What it provides
+
+`StableCastMap` is a wrapper around `StableDerefMap` that adds two things:
+
+1. **Castable keys** — keys are parameterized over the type they point to (`DefaultCastKey<Dog>`, `DefaultCastKey<dyn Any>`, etc.). Thanks to `CoerceUnsized`, concrete keys can be implicitly upcast to trait-object keys.
+
+2. **Per-map identity** — each map is assigned a unique `MapId` on first insert. The id is stored once in the container and encoded into every key, so cast keys from one map always return `None` when used on a different map.
+
+### Quick example
+
+```rust
+use stable_gen_map::cast_key::DefaultCastKey;
+use stable_gen_map::stable_cast_map::StableCastMap;
+use std::any::Any;
+
+type CastMap = StableCastMap<DefaultCastKey<dyn Any>, Box<dyn Any>>;
+
+fn main() {
+    let map: CastMap = CastMap::new();
+
+    // Insert concrete types into a dyn Any map.
+    let (dog_key, dog_ref) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    // dog_key: DefaultCastKey<Dog>
+    // dog_ref: &Dog
+
+    // Upcast the key when you need the erased form.
+    let dyn_key: DefaultCastKey<dyn Any> = dog_key;
+
+    // Downcast back to the concrete type.
+    let recovered: DefaultCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
+    assert_eq!(map.get(recovered).unwrap().name, "Rex");
+
+    // Cross-map safety: keys from a different map return None.
+    let other: CastMap = CastMap::new();
+    assert!(other.get(dyn_key).is_none());
+}
+
+struct Dog { name: String }
+```
+
+### Available insert methods
+
+| Method | Key given to closure | Returned key type |
+|---|---|---|
+| `insert(value)` | — | `CK` (erased) |
+| `insert_with_key(\|inner_key\| ...)` | `CK::InnerKey` | `CK` (erased) |
+| `insert_sized(value)` | — | `CK::WithRef<Concrete>` |
+| `insert_sized_with_key(\|typed_key\| ...)` | `CK::WithRef<Concrete>` | `CK::WithRef<Concrete>` |
+| `insert_as(value)` | — | `CK::WithRef<Source::Target>` |
+| `insert_as_with_key(\|inner_key\| ...)` | `CK::InnerKey` | `CK::WithRef<Source::Target>` |
+
+### Clone semantics
+
+When a `StableCastMap` is cloned, the clone receives a **fresh map identity**. Keys from the original are not valid on the clone. Use iteration (`snapshot`, `iter_mut`, `drain`) to obtain new keys for the cloned data.
+
+### Custom cast key types
+
+Use the `new_castable_key_type!` macro to define custom key families:
+
+```rust
+use stable_gen_map::new_castable_key_type;
+
+// Default (u32/u32 index/generation):
+new_castable_key_type! {
+    pub struct EntityKey;
+}
+
+// Custom index/generation sizes:
+new_castable_key_type! {
+    pub struct SmallEntityKey(u16, u16);
+}
+
+// Custom inner key type:
+new_castable_key_type! {
+    pub struct EntityKey inner_key MyInnerKey;
+}
+```
+
+---
 
 ## Comparison to other data structures
 
-`StableGenMap` lives in the same space as generational arenas / slot maps, but it’s aimed at a slightly different pattern: **inserting with `&self` while keeping existing `&T` references alive**, in a single-threaded setting where you still sometimes remove elements at well-defined points (e.g. end of a videogame frame).
+`StableGenMap` lives in the same space as generational arenas / slot maps, but it's aimed at a slightly different pattern: **inserting with `&self` while keeping existing `&T` references alive**, in a single-threaded setting where you still sometimes remove elements at well-defined points (e.g. end of a videogame frame).
 
 
 Rough comparison:
@@ -85,13 +179,13 @@ Use `stable_gen_map`  when:
 - You want to use patterns that do not rely heavily on ECS
 - You need to **hold on to `&T` from the map while also inserting new elements** into the same map.
 - You like **generational keys**.
-- You’re in a **single-threaded** or **scoped-thread** world.
+- You're in a **single-threaded** or **scoped-thread** world.
 - You still want to **remove elements at specific points** in your logic, such as:
   - at the end of a videogame frame,
   - at the end of a simulation tick,
-  - during a periodic “cleanup” or GC-like pass.
+  - during a periodic "cleanup" or GC-like pass.
 
-If you don’t specifically need those properties, you could take a look at `slotmap`, `slab`, `sharded-slab`, or `generational-arena`
+If you don't specifically need those properties, you could take a look at `slotmap`, `slab`, `sharded-slab`, or `generational-arena`
 
 
 ---
@@ -125,9 +219,7 @@ impl Entity {
     ) -> (DefaultKey, &'m Entity) {
         let parent_key = self.key;
 
-
-      
-        /// No &mut reference to map required for the insert
+        // No &mut reference to map required for the insert
         let (child_key, child_ref) = map.insert_with_key(|k| Entity {
             key: k,
             name: child_name.to_string(),
@@ -135,12 +227,9 @@ impl Entity {
             children: RefCell::new(Vec::new()),
         });
 
-        
-        
         // Record the relationship using interior mutability inside the value.
         // no need to reget the parent, since the insert did not need &mut
         self.children.borrow_mut().push(child_key);
-
 
         (child_key, child_ref)
     }
@@ -158,21 +247,12 @@ fn main() {
     });
 
     // Root spawns a child using only `&self` + `&StableGenMap`.
-    // An ECS pattern would require a `system` to be the one to do these operations,
-    // but with stable gen map, the instance itself can do the spawning
     let (child_key, child) = root.add_child(&map, "child");
 
     // That child spawns a grandchild, again only `&self` + `&StableGenMap`.
-    // an ECS pattern would require a `system` to be the one to do these operations
-    // but with stable gen map, the instance itself can do the spawning
     let (grandchild_key, grandchild) = child.add_child(&map, "grandchild");
 
     // Everything stays wired up via generational keys.
-  
-  
-    // we do not need to reget the `root` and `child` references,
-    // since the inserts did not require a &mut reference,
-    // which can save performance in some cases
     assert_eq!(root.children.borrow().as_slice(), &[child_key]);
     assert_eq!(child.parent.get(), Some(root_key));
     assert_eq!(child.children.borrow().as_slice(), &[grandchild_key]);
@@ -183,7 +263,3 @@ fn main() {
     assert!(std::ptr::eq(grandchild, map.get(grandchild_key).unwrap()));
 }
 ```
-
-
-
-

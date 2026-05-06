@@ -1,13 +1,23 @@
 #![allow(warnings)]
-pub mod stable_deref_gen_map;
+#![cfg_attr(feature = "castable", feature(ptr_metadata))]
+#![cfg_attr(feature = "castable", feature(coerce_unsized))]
+#![cfg_attr(feature = "castable", feature(unsize))]
 
-
-pub mod key_piece;
+#[cfg(feature = "castable")]
+pub mod cast_key;
+pub mod gen_map;
 pub mod key;
+pub mod key_piece;
+#[cfg(feature = "castable")]
+pub mod map_id;
+pub mod slot_item;
+#[cfg(feature = "castable")]
+pub mod stable_cast_map;
+pub mod stable_deref_map;
 pub mod stable_gen_map;
 
 #[cfg(test)]
-mod tests{
+mod tests {
     #[cfg(test)]
     mod stable_deref_gen_retain_tests;
 
@@ -15,9 +25,9 @@ mod tests{
     mod stable_gen_retain_tests;
 
     #[cfg(test)]
-    mod stable_gen_clone_tests;
-    #[cfg(test)]
     mod stable_deref_gen_map_tests;
+    #[cfg(test)]
+    mod stable_gen_clone_tests;
 
     #[cfg(test)]
     mod stable_deref_gen_clone_tests;
@@ -45,5 +55,20 @@ mod tests{
 
     #[cfg(test)]
     mod stable_deref_gen_drain_tests;
-}
 
+    #[cfg(all(test, feature = "castable"))]
+    mod map_id_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_key_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_map_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_insert_typed_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_key_macro_tests;
+
+}

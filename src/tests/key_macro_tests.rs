@@ -73,8 +73,14 @@ fn multiple_keys_in_one_invocation() {
 
 #[test]
 fn pub_small_key_has_correct_assoc_types() {
-    assert_eq!(TypeId::of::<<PubSmallKey as Key>::Idx>(), TypeId::of::<u16>());
-    assert_eq!(TypeId::of::<<PubSmallKey as Key>::Gen>(), TypeId::of::<u16>());
+    assert_eq!(
+        TypeId::of::<<PubSmallKey as Key>::Idx>(),
+        TypeId::of::<u16>()
+    );
+    assert_eq!(
+        TypeId::of::<<PubSmallKey as Key>::Gen>(),
+        TypeId::of::<u16>()
+    );
 }
 
 #[test]

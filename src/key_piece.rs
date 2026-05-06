@@ -6,24 +6,23 @@ use std::ops::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
 /// This enables a key's Idx and Generation to have a variety of possible types, which enables a lot
 /// of flexibility
 pub unsafe trait KeyPiece:
-Copy
-+ Num
-+ 'static
-+ Add<Output = Self>
-+ Sub<Output = Self>
-+ Mul<Output = Self>
-+ AddAssign<Self>
-+ Div<Output = Self>
-+ PartialOrd
-+ SubAssign
-+ WrappingAdd
-+ Rem<Output = Self>
-+ CheckedAdd
+    Copy
+    + Num
+    + 'static
+    + Add<Output = Self>
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + AddAssign<Self>
+    + Div<Output = Self>
+    + PartialOrd
+    + SubAssign
+    + WrappingAdd
+    + Rem<Output = Self>
+    + CheckedAdd
 {
     fn into_usize(self: Self) -> usize;
 
     fn from_usize(v: usize) -> Self;
-
 }
 
 macro_rules! impl_key_piece {
