@@ -378,13 +378,13 @@ where
     /// Shared-reference lookup using the inner key directly.
     ///
     /// This bypasses the map-id check — the caller is responsible for
-    /// ensuring the key belongs to this map.
+    /// ensuring the key belongs to this map if they desire that
     #[inline]
     pub fn get_by_inner_key(&self, key: CK::InnerKey) -> Option<&D::Target> {
         self.inner.get(key)
     }
 
-    /// Mutable-reference lookup using the inner key directly.
+    /// Mutable-reference lookup using the inner key directly. It does not do a MapId check
     #[inline]
     pub fn get_mut_by_inner_key(&mut self, key: CK::InnerKey) -> Option<&mut D::Target>
     where
@@ -393,7 +393,7 @@ where
         self.inner.get_mut(key)
     }
 
-    /// Removes an element by inner key.
+    /// Removes an element by inner key. It does not do a MapId check
     #[inline]
     pub fn remove_by_inner_key(&mut self, key: CK::InnerKey) -> Option<D> {
         self.inner.remove(key)
