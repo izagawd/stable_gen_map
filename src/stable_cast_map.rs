@@ -16,7 +16,7 @@ use std::ptr::Pointee;
 use crate::cast_key::CastKey;
 use crate::gen_map;
 use crate::key::Key;
-use crate::map_id::{MapId, MapIdState};
+use crate::map_id::{MapId};
 use crate::stable_deref_map::{
     DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap,
 };
@@ -49,7 +49,7 @@ where
     D: DerefGenMapPromise,
 {
     pub(crate) inner: StableDerefMap<CK::InnerKey, D>,
-    pub(crate) map_id: MapIdState,
+    pub(crate) map_id: MapId,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
@@ -67,7 +67,7 @@ where
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            map_id: MapIdState::new(),
+            map_id: MapId::next(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -82,16 +82,14 @@ where
 {
     /// Returns `true` if `key_map_id` matches this map's identity.
     #[inline]
-    fn validate_map_id(&self, key_map_id: MapId) -> bool {
-        self.map_id
-            .current_id()
-            .map_or(false, |id| id == key_map_id)
+    pub fn validate_map_id(&self, key_map_id: MapId) -> bool {
+        self.map_id == key_map_id
     }
 
-    /// Returns this map's id, assigning one if needed.
+    /// Returns this map's id
     #[inline]
-    fn map_id_for_key(&self) -> MapId {
-        self.map_id.ensure_id()
+    pub fn map_id(&self) -> MapId {
+        self.map_id
     }
 }
 
@@ -104,10 +102,10 @@ where
 {
     /// Creates a new, empty map.
     #[inline]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             inner: StableDerefMap::new(),
-            map_id: MapIdState::new(),
+            map_id: MapId::next(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -117,7 +115,7 @@ where
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: StableDerefMap::with_capacity(capacity),
-            map_id: MapIdState::new(),
+            map_id: MapId::next(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -177,7 +175,7 @@ where
         let data_as_any: &dyn Any =
             unsafe { &*std::ptr::from_raw_parts(data as *const _ as *const (), key.metadata()) };
         if data_as_any.type_id() == std::any::TypeId::of::<Concrete>() {
-            let map_id = self.map_id_for_key();
+            let map_id = self.map_id();
             Some(unsafe {
                 <CK::WithRef<Concrete> as CastKey>::from_inner_key_and_metadata(
                     key.inner_key(),
@@ -214,7 +212,7 @@ where
         &self,
         func: impl FnOnce(CK::InnerKey) -> Result<D, E>,
     ) -> Result<(CK, &D::Target), E> {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         let (inner_key, reference) = self.inner.try_insert_with_key(func)?;
         Ok((to_castable::<CK, D>(inner_key, map_id, reference), reference))
     }
@@ -261,7 +259,7 @@ where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         let mut saved_key: Option<CK::WithRef<ConcreteD::Target>> = None;
 
         let (_, erased_ref) =
@@ -327,7 +325,7 @@ where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         SourceD::Target: Pointee<Metadata: Copy>,
     {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         let mut saved_metadata: Option<<SourceD::Target as Pointee>::Metadata> = None;
 
         let (inner_key, erased_ref) =
@@ -356,7 +354,7 @@ where
     /// Shared-reference lookup by index only (ignores generation and map id).
     #[inline]
     pub fn get_by_index_only(&self, idx: CK::Idx) -> Option<(CK, &D::Target)> {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         let (inner_key, reference) = self.inner.get_by_index_only(idx)?;
         Some((to_castable::<CK, D>(inner_key, map_id, reference), reference))
     }
@@ -367,7 +365,7 @@ where
     where
         D: std::ops::DerefMut,
     {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         let (inner_key, reference) = self.inner.get_by_index_only_mut(idx)?;
         let patched = to_castable::<CK, D>(inner_key, map_id, reference);
         Some((patched, reference))
@@ -405,7 +403,7 @@ where
     /// Returns `None` if the inner key is stale.
     #[inline]
     pub fn cast_key_of(&self, inner: CK::InnerKey) -> Option<CK> {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         let reference: &D::Target = self.inner.get(inner)?;
         Some(to_castable::<CK, D>(inner, map_id, reference))
     }
@@ -419,7 +417,7 @@ where
         F: FnMut(CK, &mut D::Target) -> bool,
         D: DerefMut,
     {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         self.inner.retain(|inner_key, stored| {
             let reference: &D::Target = &**stored;
             let patched = to_castable::<CK, D>(inner_key, map_id, reference);
@@ -432,7 +430,7 @@ where
     /// Returns a snapshot of all `(key, &target)` pairs.
     #[inline]
     pub fn snapshot(&self) -> Vec<(CK, &D::Target)> {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(self.inner.iter_unsafe().map(|(inner_key, reference)| {
@@ -455,7 +453,7 @@ where
     /// Returns a snapshot of keys only.
     #[inline]
     pub fn snapshot_keys(&self) -> Vec<CK> {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
@@ -473,7 +471,7 @@ where
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
     pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (CK, &D::Target)> {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         self.inner
             .iter_unsafe()
             .map(move |(inner_key, reference)| {
@@ -486,7 +484,7 @@ where
     /// Mutable iterator over all occupied elements.
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, CK, D> {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         IterMut {
             inner: self.inner.iter_mut(),
             map_id,
@@ -499,7 +497,7 @@ where
     /// Removes all elements and returns them as an iterator.
     #[inline]
     pub fn drain(&mut self) -> Drain<'_, CK, D> {
-        let map_id = self.map_id_for_key();
+        let map_id = self.map_id();
         Drain {
             inner: self.inner.drain(),
             map_id,
@@ -685,7 +683,7 @@ where
     type IntoIter = IntoIter<CK, D>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let map_id = self.map_id.ensure_id();
+        let map_id = self.map_id;
         IntoIter {
             inner: self.inner.into_iter(),
             map_id,
