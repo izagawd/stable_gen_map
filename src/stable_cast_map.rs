@@ -82,7 +82,10 @@ where
 {
     /// Returns `true` if `key_map_id` matches this map's identity.
     #[inline]
-    pub fn validate_map_id(&self, key_map_id: MapId) -> bool {
+    pub fn validate_map_id(&self, key_map_id: MapId) -> bool
+    {
+        debug_assert!(self.map_id.0 != 0);
+        unsafe { std::hint::assert_unchecked(self.map_id.0 != 0) }
         self.map_id == key_map_id
     }
 
