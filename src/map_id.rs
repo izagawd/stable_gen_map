@@ -37,39 +37,3 @@ impl MapId {
         MapId(raw)
     }
 }
-
-/// Per-map state that lazily assigns a [`MapId`] on the first insert.
-///
-/// A freshly constructed map starts with `None` and acquires an id
-/// the first time [`ensure_id`](MapIdState::ensure_id) is called.
-pub struct MapIdState {
-    id: Cell<Option<MapId>>,
-}
-
-impl MapIdState {
-    pub(crate) const fn new() -> Self {
-        Self {
-            id: Cell::new(None),
-        }
-    }
-
-    /// Returns the current id, if one has been assigned.
-    pub fn current_id(&self) -> Option<MapId> {
-        self.id.get()
-    }
-
-    /// Returns the current id, or requests a fresh one from the global
-    /// counter if this state doesn't have one yet.
-    ///
-    /// Once an id is assigned it never changes.
-    pub fn ensure_id(&self) -> MapId {
-        match self.id.get() {
-            Some(id) => id,
-            None => {
-                let id = MapId::next();
-                self.id.set(Some(id));
-                id
-            }
-        }
-    }
-}
