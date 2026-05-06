@@ -235,7 +235,7 @@ where
                 map_id.0 != 0,
                 "cannot construct castable key with null map id"
             );
-            let raw: *mut T = std::ptr::from_raw_parts_mut(map_id.0 as *mut (), metadata);
+            let raw: *mut T = std::ptr::from_raw_parts_mut(std::ptr::without_provenance_mut::<()>(map_id.0), metadata);
             Self {
                 key_data: data,
                 map_id_and_metadata: std::ptr::NonNull::new_unchecked(raw),
@@ -461,7 +461,7 @@ macro_rules! __impl_castable_key {
                         "cannot construct castable key with null map id"
                     );
                     let raw: *mut T = ::std::ptr::from_raw_parts_mut(
-                        map_id.get_underlying_usize() as *mut (),
+                        std::ptr::without_provenance_mut::<()>(map_id.get_underlying_usize()),
                         metadata,
                     );
                     Self {
