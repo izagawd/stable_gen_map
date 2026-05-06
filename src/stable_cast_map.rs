@@ -508,6 +508,9 @@ where
     }
 }
 
+/// Type alias for a `StableCastMap` that uses a box
+pub type BoxStableCastMap<CK: CastKey> = StableCastMap<CK, Box<CK::RefType>>;
+
 // ─── Cross-typed lookups (with map-id validation) ───────────────────────────
 
 impl<CK, D> StableCastMap<CK, D>
