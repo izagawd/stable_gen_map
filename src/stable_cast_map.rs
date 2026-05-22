@@ -16,7 +16,6 @@ use std::ptr::Pointee;
 use crate::cast_key::CastKey;
 use crate::gen_map;
 use crate::key::Key;
-use crate::map_id::{MapId};
 use crate::stable_deref_map::{
     DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap,
 };
@@ -26,20 +25,19 @@ use crate::stable_deref_map::{
 /// Build a castable key from an inner key, a map id, and a reference (for
 /// pointer metadata).
 #[inline]
-fn to_castable<CK, D>(inner: CK::InnerKey, map_id: MapId, reference: &D::Target) -> CK
+fn to_castable<CK, D>(inner: CK::InnerKey, reference: &D::Target) -> CK
 where
     CK: CastKey<RefType = D::Target>,
     D: DerefGenMapPromise,
 {
     let metadata = std::ptr::metadata(reference as *const D::Target);
-    unsafe { CK::from_inner_key_and_metadata(inner, map_id, metadata) }
+    unsafe { CK::from_inner_key_and_metadata(inner, metadata) }
 }
 
 // ─── StableCastMap ───────────────────────────────────────────────────────────
 
 /// A [`StableDerefMap`] wrapper that supports typed lookups via
 /// [`CastKey`] and cross-map key safety via a per-map
-/// [`MapId`](crate::map_id::MapId).
 ///
 /// - `CK`: the castable key family, e.g. `DefaultCastKey<D::Target>`.
 /// - `D`: the smart pointer type, e.g. `Box<dyn Any>`.
@@ -49,7 +47,6 @@ where
     D: DerefGenMapPromise,
 {
     pub(crate) inner: StableDerefMap<CK::InnerKey, D>,
-    pub(crate) map_id: MapId,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
@@ -67,32 +64,8 @@ where
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            map_id: MapId::next(),
             _phantom: std::marker::PhantomData,
         }
-    }
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-impl<CK, D> StableCastMap<CK, D>
-where
-    CK: CastKey<RefType = D::Target>,
-    D: DerefGenMapPromise,
-{
-    /// Returns `true` if `key_map_id` matches this map's identity.
-    #[inline]
-    pub fn validate_map_id(&self, key_map_id: MapId) -> bool
-    {
-        debug_assert!(self.map_id.0 != 0);
-        unsafe { std::hint::assert_unchecked(self.map_id.0 != 0) }
-        self.map_id == key_map_id
-    }
-
-    /// Returns this map's id
-    #[inline]
-    pub fn map_id(&self) -> MapId {
-        self.map_id
     }
 }
 
@@ -108,7 +81,6 @@ where
     pub fn new() -> Self {
         Self {
             inner: StableDerefMap::new(),
-            map_id: MapId::next(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -118,7 +90,6 @@ where
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: StableDerefMap::with_capacity(capacity),
-            map_id: MapId::next(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -171,18 +142,13 @@ where
         &self,
         key: CK::WithRef<dyn Any>,
     ) -> Option<CK::WithRef<Concrete>> {
-        if !self.validate_map_id(key.map_id()) {
-            return None;
-        }
         let data = self.inner.get(key.inner_key())?;
         let data_as_any: &dyn Any =
             unsafe { &*std::ptr::from_raw_parts(data as *const _ as *const (), key.metadata()) };
         if data_as_any.type_id() == std::any::TypeId::of::<Concrete>() {
-            let map_id = self.map_id();
             Some(unsafe {
                 <CK::WithRef<Concrete> as CastKey>::from_inner_key_and_metadata(
                     key.inner_key(),
-                    map_id,
                     (),
                 )
             })
@@ -215,9 +181,8 @@ where
         &self,
         func: impl FnOnce(CK::InnerKey) -> Result<D, E>,
     ) -> Result<(CK, &D::Target), E> {
-        let map_id = self.map_id();
         let (inner_key, reference) = self.inner.try_insert_with_key(func)?;
-        Ok((to_castable::<CK, D>(inner_key, map_id, reference), reference))
+        Ok((to_castable::<CK, D>(inner_key, reference), reference))
     }
 
     // ── insert_sized ────────────────────────────────────────────────────
@@ -262,7 +227,6 @@ where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
-        let map_id = self.map_id();
         let mut saved_key: Option<CK::WithRef<ConcreteD::Target>> = None;
 
         let (_, erased_ref) =
@@ -270,7 +234,7 @@ where
                 .try_insert_with_key(|inner_key| -> Result<D, E> {
                     let typed_key = unsafe {
                         <CK::WithRef<ConcreteD::Target> as CastKey>::from_inner_key_and_metadata(
-                            inner_key, map_id, (),
+                            inner_key, (),
                         )
                     };
                     saved_key = Some(typed_key);
@@ -328,7 +292,6 @@ where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         SourceD::Target: Pointee<Metadata: Copy>,
     {
-        let map_id = self.map_id();
         let mut saved_metadata: Option<<SourceD::Target as Pointee>::Metadata> = None;
 
         let (inner_key, erased_ref) =
@@ -346,7 +309,7 @@ where
             unsafe { &*std::ptr::from_raw_parts(data_ptr, metadata) };
         let key = unsafe {
             <CK::WithRef<SourceD::Target> as CastKey>::from_inner_key_and_metadata(
-                inner_key, map_id, metadata,
+                inner_key, metadata,
             )
         };
         Ok((key, concrete_ref))
@@ -357,20 +320,18 @@ where
     /// Shared-reference lookup by index only (ignores generation and map id).
     #[inline]
     pub fn get_by_index_only(&self, idx: CK::Idx) -> Option<(CK, &D::Target)> {
-        let map_id = self.map_id();
         let (inner_key, reference) = self.inner.get_by_index_only(idx)?;
-        Some((to_castable::<CK, D>(inner_key, map_id, reference), reference))
+        Some((to_castable::<CK, D>(inner_key, reference), reference))
     }
 
     /// Mutable lookup by index only (ignores generation and map id).
     #[inline]
     pub fn get_by_index_only_mut(&mut self, idx: CK::Idx) -> Option<(CK, &mut D::Target)>
     where
-        D: std::ops::DerefMut,
+        D: DerefMut,
     {
-        let map_id = self.map_id();
         let (inner_key, reference) = self.inner.get_by_index_only_mut(idx)?;
-        let patched = to_castable::<CK, D>(inner_key, map_id, reference);
+        let patched = to_castable::<CK, D>(inner_key, reference);
         Some((patched, reference))
     }
 
@@ -385,7 +346,7 @@ where
         self.inner.get(key)
     }
 
-    /// Mutable-reference lookup using the inner key directly. It does not do a MapId check
+    /// Mutable-reference lookup using the inner key directly.
     #[inline]
     pub fn get_mut_by_inner_key(&mut self, key: CK::InnerKey) -> Option<&mut D::Target>
     where
@@ -394,7 +355,7 @@ where
         self.inner.get_mut(key)
     }
 
-    /// Removes an element by inner key. It does not do a MapId check
+    /// Removes an element by inner key.
     #[inline]
     pub fn remove_by_inner_key(&mut self, key: CK::InnerKey) -> Option<D> {
         self.inner.remove(key)
@@ -406,9 +367,8 @@ where
     /// Returns `None` if the inner key is stale.
     #[inline]
     pub fn cast_key_of(&self, inner: CK::InnerKey) -> Option<CK> {
-        let map_id = self.map_id();
         let reference: &D::Target = self.inner.get(inner)?;
-        Some(to_castable::<CK, D>(inner, map_id, reference))
+        Some(to_castable::<CK, D>(inner, reference))
     }
 
     // ── retain ──────────────────────────────────────────────────────────
@@ -420,10 +380,9 @@ where
         F: FnMut(CK, &mut D::Target) -> bool,
         D: DerefMut,
     {
-        let map_id = self.map_id();
         self.inner.retain(|inner_key, stored| {
             let reference: &D::Target = &**stored;
-            let patched = to_castable::<CK, D>(inner_key, map_id, reference);
+            let patched = to_castable::<CK, D>(inner_key, reference);
             f(patched, stored.deref_mut())
         })
     }
@@ -433,11 +392,10 @@ where
     /// Returns a snapshot of all `(key, &target)` pairs.
     #[inline]
     pub fn snapshot(&self) -> Vec<(CK, &D::Target)> {
-        let map_id = self.map_id();
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(self.inner.iter_unsafe().map(|(inner_key, reference)| {
-                (to_castable::<CK, D>(inner_key, map_id, reference), reference)
+                (to_castable::<CK, D>(inner_key, reference), reference)
             }));
             vec
         }
@@ -456,13 +414,12 @@ where
     /// Returns a snapshot of keys only.
     #[inline]
     pub fn snapshot_keys(&self) -> Vec<CK> {
-        let map_id = self.map_id();
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
                 self.inner
                     .iter_unsafe()
-                    .map(|(inner_key, reference)| to_castable::<CK, D>(inner_key, map_id, reference)),
+                    .map(|(inner_key, reference)| to_castable::<CK, D>(inner_key, reference)),
             );
             vec
         }
@@ -474,11 +431,10 @@ where
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
     pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (CK, &D::Target)> {
-        let map_id = self.map_id();
         self.inner
             .iter_unsafe()
             .map(move |(inner_key, reference)| {
-                (to_castable::<CK, D>(inner_key, map_id, reference), reference)
+                (to_castable::<CK, D>(inner_key, reference), reference)
             })
     }
 
@@ -487,10 +443,8 @@ where
     /// Mutable iterator over all occupied elements.
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, CK, D> {
-        let map_id = self.map_id();
         IterMut {
             inner: self.inner.iter_mut(),
-            map_id,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -500,10 +454,8 @@ where
     /// Removes all elements and returns them as an iterator.
     #[inline]
     pub fn drain(&mut self) -> Drain<'_, CK, D> {
-        let map_id = self.map_id();
         Drain {
             inner: self.inner.drain(),
-            map_id,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -525,9 +477,6 @@ where
     where
         <T as Pointee>::Metadata: Copy,
     {
-        if !self.validate_map_id(key.map_id()) {
-            return None;
-        }
         let base_ref: &D::Target = self.inner.get(key.inner_key())?;
         let data_ptr: *const () = (base_ref as *const D::Target).cast();
         let fat_ptr: *const T = std::ptr::from_raw_parts(data_ptr, key.metadata());
@@ -541,9 +490,6 @@ where
         <T as Pointee>::Metadata: Copy,
         D: std::ops::DerefMut,
     {
-        if !self.validate_map_id(key.map_id()) {
-            return None;
-        }
         let base_ref: &mut D::Target = self.inner.get_mut(key.inner_key())?;
         let data_ptr: *mut () = (base_ref as *mut D::Target).cast();
         let fat_ptr: *mut T = std::ptr::from_raw_parts_mut(data_ptr, key.metadata());
@@ -556,9 +502,6 @@ where
     where
         <T as Pointee>::Metadata: Copy,
     {
-        if !self.validate_map_id(key.map_id()) {
-            return None;
-        }
         self.inner.remove(key.inner_key())
     }
 }
@@ -595,7 +538,6 @@ where
     D: DerefGenMapPromise,
 {
     inner: gen_map::IterMut<'a, CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
-    map_id: MapId,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
@@ -608,7 +550,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let (inner_key, stored) = self.inner.next()?;
-        let patched = to_castable::<CK, D>(inner_key, self.map_id, &**stored);
+        let patched = to_castable::<CK, D>(inner_key, &**stored);
         Some((patched, stored.deref_mut()))
     }
 
@@ -625,7 +567,6 @@ where
     D: DerefGenMapPromise,
 {
     inner: gen_map::Drain<'a, CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
-    map_id: MapId,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
@@ -638,7 +579,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let (inner_key, value) = self.inner.next()?;
-        let patched = to_castable::<CK, D>(inner_key, self.map_id, &*value);
+        let patched = to_castable::<CK, D>(inner_key, &*value);
         Some((patched, value))
     }
 
@@ -655,7 +596,6 @@ where
     D: DerefGenMapPromise,
 {
     inner: gen_map::IntoIter<CK::InnerKey, DerefSlot<D, CK::InnerKey>>,
-    map_id: MapId,
     _phantom: std::marker::PhantomData<fn() -> CK>,
 }
 
@@ -668,7 +608,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let (inner_key, value) = self.inner.next()?;
-        let patched = to_castable::<CK, D>(inner_key, self.map_id, &*value);
+        let patched = to_castable::<CK, D>(inner_key, &*value);
         Some((patched, value))
     }
 
@@ -686,10 +626,8 @@ where
     type IntoIter = IntoIter<CK, D>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let map_id = self.map_id;
         IntoIter {
             inner: self.inner.into_iter(),
-            map_id,
             _phantom: std::marker::PhantomData,
         }
     }

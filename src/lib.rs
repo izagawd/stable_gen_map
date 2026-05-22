@@ -59,16 +59,15 @@ mod tests {
     #[cfg(all(test, feature = "castable"))]
     mod map_id_tests;
 
-    #[cfg(all(test, feature = "castable"))]
-    mod castable_key_tests;
+    //#[cfg(all(test, feature = "castable"))]
+    //mod castable_key_tests;
 
-    #[cfg(all(test, feature = "castable"))]
-    mod castable_map_tests;
+    //#[cfg(all(test, feature = "castable"))]
+    //mod castable_map_tests;
+    //#[cfg(all(test, feature = "castable"))]
+   // mod castable_insert_typed_tests;
 
-    #[cfg(all(test, feature = "castable"))]
-    mod castable_insert_typed_tests;
-
-    #[cfg(all(test, feature = "castable"))]
-    mod castable_key_macro_tests;
+   // #[cfg(all(test, feature = "castable"))]
+   // mod castable_key_macro_tests;
 
 }

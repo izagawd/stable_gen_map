@@ -24,7 +24,6 @@ use std::ptr::Pointee;
 
 use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
-use crate::map_id::MapId;
 
 // ─── CastKey trait ──────────────────────────────────────────────────────
 
@@ -58,7 +57,6 @@ pub unsafe trait CastKey: Copy {
     >;
 
     fn key_data(&self) -> KeyData<Self::Idx, Self::Gen>;
-    fn map_id(&self) -> MapId;
     fn metadata(&self) -> <Self::RefType as Pointee>::Metadata;
 
     /// Strip pointer metadata and map id, producing the inner key used by
@@ -70,7 +68,6 @@ pub unsafe trait CastKey: Copy {
     /// - `metadata` must be valid for the allocation identified by the key.
     unsafe fn from_castable_parts(
         data: KeyData<Self::Idx, Self::Gen>,
-        map_id: MapId,
         metadata: <Self::RefType as Pointee>::Metadata,
     ) -> Self;
 
@@ -81,7 +78,6 @@ pub unsafe trait CastKey: Copy {
     /// - `metadata` must be valid for the allocation identified by `inner`.
     unsafe fn from_inner_key_and_metadata(
         inner: Self::InnerKey,
-        map_id: MapId,
         metadata: <Self::RefType as Pointee>::Metadata,
     ) -> Self;
 }
@@ -127,29 +123,22 @@ where
     <T as Pointee>::Metadata: Copy,
 {
     pub(crate) key_data: KeyData<u32, u32>,
-    pub(crate) map_id_and_metadata: std::ptr::NonNull<T>,
+    pub(crate) metadata: <T as Pointee>::Metadata,
 }
 
 // ── CoerceUnsized ──────────────────────────────────────────────────────────
-
-impl<T, U> std::ops::CoerceUnsized<DefaultCastKey<U>> for DefaultCastKey<T>
-where
-    T: ?Sized + Pointee + std::marker::Unsize<U>,
-    U: ?Sized + Pointee,
-    <T as Pointee>::Metadata: Copy,
-    <U as Pointee>::Metadata: Copy,
-{
-}
-
 // ── Manual trait impls ──────────────────────────────────────────────────────
 
 impl<T: ?Sized + Pointee> Clone for DefaultCastKey<T>
 where
-    <T as Pointee>::Metadata: Copy,
+    <T as Pointee>::Metadata: Clone,
 {
     #[inline]
     fn clone(&self) -> Self {
-        *self
+        Self{
+            key_data: self.key_data.clone(),
+            metadata: self.metadata.clone(),
+        }
     }
 }
 
@@ -162,7 +151,6 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DefaultCastKey")
             .field("key_data", &self.key_data)
-            .field("map_id", &self.map_id())
             .finish()
     }
 }
@@ -173,8 +161,6 @@ where
 {
     fn eq(&self, other: &Self) -> bool {
         self.key_data == other.key_data
-            && self.map_id_and_metadata.as_ptr() as *const () as usize
-                == other.map_id_and_metadata.as_ptr() as *const () as usize
     }
 }
 
@@ -186,7 +172,6 @@ where
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.key_data.hash(state);
-        (self.map_id_and_metadata.as_ptr() as *const () as usize).hash(state);
     }
 }
 
@@ -208,13 +193,8 @@ where
     }
 
     #[inline]
-    fn map_id(&self) -> MapId {
-        MapId(self.map_id_and_metadata.as_ptr() as *const () as usize)
-    }
-
-    #[inline]
     fn metadata(&self) -> <T as Pointee>::Metadata {
-        std::ptr::metadata(self.map_id_and_metadata.as_ptr() as *const T)
+        self.metadata
     }
 
     #[inline]
@@ -227,18 +207,12 @@ where
     #[inline]
     unsafe fn from_castable_parts(
         data: KeyData<u32, u32>,
-        map_id: MapId,
         metadata: <T as Pointee>::Metadata,
     ) -> Self {
         unsafe {
-            debug_assert!(
-                map_id.0 != 0,
-                "cannot construct castable key with null map id"
-            );
-            let raw: *mut T = std::ptr::from_raw_parts_mut(std::ptr::without_provenance_mut::<()>(map_id.0), metadata);
             Self {
                 key_data: data,
-                map_id_and_metadata: std::ptr::NonNull::new_unchecked(raw),
+                metadata
             }
         }
     }
@@ -246,10 +220,9 @@ where
     #[inline]
     unsafe fn from_inner_key_and_metadata(
         inner: DefaultMapKey<u32, u32>,
-        map_id: MapId,
         metadata: <T as Pointee>::Metadata,
     ) -> Self {
-        unsafe { Self::from_castable_parts(inner.data(), map_id, metadata) }
+        unsafe { Self::from_castable_parts(inner.data(),  metadata) }
     }
 }
 
