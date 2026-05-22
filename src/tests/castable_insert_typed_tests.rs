@@ -1,4 +1,4 @@
-use crate::cast_key::{CastKey, StableCastKey, DefaultMapKey};
+use crate::cast_key::{CastKey, StableCastKey, InnerCastMapKey};
 use crate::stable_cast_map::StableCastMap;
 use std::any::Any;
 
@@ -256,8 +256,8 @@ fn insert_as_pointer_stability() {
 fn insert_as_with_key_closure_receives_inner_key() {
     use std::cell::Cell;
     let map: AnimalMap = AnimalMap::new();
-    let captured = Cell::new(None::<DefaultMapKey<u32,u32>>);
-    let (_, _) = map.insert_as_with_key(|inner_key: DefaultMapKey<u32,u32>| {
+    let captured = Cell::new(None::<InnerCastMapKey<u32,u32>>);
+    let (_, _) = map.insert_as_with_key(|inner_key: InnerCastMapKey<u32,u32>| {
         captured.set(Some(inner_key));
         Box::new(Dog { name: "Rex".into() }) as Box<dyn Animal>
     });

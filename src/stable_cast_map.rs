@@ -11,7 +11,7 @@ use std::collections::TryReserveError;
 use std::ops::{DerefMut, Index, IndexMut};
 use std::ptr::Pointee;
 
-use crate::cast_key::{CastKey, DefaultMapKey, StableCastKey};
+use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
 use crate::key::Key;
 use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
@@ -163,7 +163,7 @@ where
     #[inline]
     pub fn insert_with_key(
         &self,
-        func: impl FnOnce(DefaultMapKey<Idx, Gen>) -> D,
+        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> D,
     ) -> (StableCastKey<D::Target, Idx, Gen>, &D::Target) {
         let (key, reference) = self.inner.insert_with_key(func);
         (stabilize(key, self.map_id), reference)
@@ -172,7 +172,7 @@ where
     #[inline]
     pub fn try_insert_with_key<E>(
         &self,
-        func: impl FnOnce(DefaultMapKey<Idx, Gen>) -> Result<D, E>,
+        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> Result<D, E>,
     ) -> Result<(StableCastKey<D::Target, Idx, Gen>, &D::Target), E> {
         let (key, reference) = self.inner.try_insert_with_key(func)?;
         Ok((stabilize(key, self.map_id), reference))
@@ -243,7 +243,7 @@ where
     #[inline]
     pub fn insert_as_with_key<SourceD>(
         &self,
-        func: impl FnOnce(DefaultMapKey<Idx, Gen>) -> SourceD,
+        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> SourceD,
     ) -> (StableCastKey<SourceD::Target, Idx, Gen>, &SourceD::Target)
     where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
@@ -256,7 +256,7 @@ where
     #[inline]
     pub fn try_insert_as_with_key<SourceD, E>(
         &self,
-        func: impl FnOnce(DefaultMapKey<Idx, Gen>) -> Result<SourceD, E>,
+        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> Result<SourceD, E>,
     ) -> Result<(StableCastKey<SourceD::Target, Idx, Gen>, &SourceD::Target), E>
     where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
@@ -292,12 +292,12 @@ where
     // ── inner-key access ──────────────────────────────────────────────
 
     #[inline]
-    pub fn get_by_inner_key(&self, key: DefaultMapKey<Idx, Gen>) -> Option<&D::Target> {
+    pub fn get_by_inner_key(&self, key: InnerCastMapKey<Idx, Gen>) -> Option<&D::Target> {
         self.inner.get_by_inner_key(key)
     }
 
     #[inline]
-    pub fn get_mut_by_inner_key(&mut self, key: DefaultMapKey<Idx, Gen>) -> Option<&mut D::Target>
+    pub fn get_mut_by_inner_key(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<&mut D::Target>
     where
         D: std::ops::DerefMut,
     {
@@ -305,14 +305,14 @@ where
     }
 
     #[inline]
-    pub fn remove_by_inner_key(&mut self, key: DefaultMapKey<Idx, Gen>) -> Option<D> {
+    pub fn remove_by_inner_key(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<D> {
         self.inner.remove_by_inner_key(key)
     }
 
     #[inline]
     pub fn cast_key_of(
         &self,
-        inner: DefaultMapKey<Idx, Gen>,
+        inner: InnerCastMapKey<Idx, Gen>,
     ) -> Option<StableCastKey<D::Target, Idx, Gen>> {
         let key = self.inner.cast_key_of(inner)?;
         Some(stabilize(key, self.map_id))
