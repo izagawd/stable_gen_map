@@ -78,7 +78,7 @@ where
 {
     /// Creates a new, empty map.
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             inner: StableDerefMap::new(),
             _phantom: std::marker::PhantomData,
@@ -95,32 +95,47 @@ where
     }
 
     /// Reserves capacity for at least `additional` more elements.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn reserve(&self, additional: usize) {
+    pub unsafe fn reserve(&self, additional: usize) {
         self.inner.reserve(additional);
     }
 
     /// Tries to reserve capacity for at least `additional` more elements.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+    pub unsafe fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
         self.inner.try_reserve(additional)
     }
 
     /// Returns how many slots the backing `Vec` can hold before reallocating.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn capacity(&self) -> usize {
+    pub unsafe fn capacity(&self) -> usize {
         self.inner.capacity()
     }
 
     /// Returns the number of occupied elements.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn len(&self) -> usize {
+    pub unsafe fn len(&self) -> usize {
         self.inner.len()
     }
 
     /// Empties the map.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn clear(&mut self) {
+    pub unsafe fn clear(&mut self) {
         self.inner.clear();
     }
 }
@@ -137,8 +152,11 @@ where
     ///
     /// Returns `None` if the key is stale, from a different map, or the
     /// concrete type doesn't match.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn downcast_key<Concrete: 'static>(
+    pub unsafe fn downcast_key<Concrete: 'static>(
         &self,
         key: CK::WithRef<dyn Any>,
     ) -> Option<CK::WithRef<Concrete>> {
@@ -161,23 +179,32 @@ where
 
     /// Inserts a smart pointer, returning a key (with metadata and map id)
     /// and a reference to the deref target.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn insert(&self, value: D) -> (CK, &D::Target) {
+    pub unsafe fn insert(&self, value: D) -> (CK, &D::Target) {
         self.insert_with_key(|_| value)
     }
 
     /// Inserts a smart pointer produced by `func`, which receives the
     /// inner key that will identify the inserted element.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn insert_with_key(&self, func: impl FnOnce(CK::InnerKey) -> D) -> (CK, &D::Target) {
+    pub unsafe fn insert_with_key(&self, func: impl FnOnce(CK::InnerKey) -> D) -> (CK, &D::Target) {
         self.try_insert_with_key(|key| Ok::<_, ()>(func(key)))
             .unwrap()
     }
 
     /// Like [`insert_with_key`](Self::insert_with_key) but the closure may
-    /// return `Err`.
+    /// return `Err`, in which case the slot is released.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn try_insert_with_key<E>(
+    pub unsafe fn try_insert_with_key<E>(
         &self,
         func: impl FnOnce(CK::InnerKey) -> Result<D, E>,
     ) -> Result<(CK, &D::Target), E> {
@@ -189,8 +216,11 @@ where
 
     /// Inserts a *concrete* smart pointer, returning a key and reference
     /// typed with the concrete `ConcreteD::Target`.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn insert_sized<ConcreteD>(
+    pub unsafe fn insert_sized<ConcreteD>(
         &self,
         value: ConcreteD,
     ) -> (CK::WithRef<ConcreteD::Target>, &ConcreteD::Target)
@@ -203,8 +233,11 @@ where
 
     /// Inserts a concrete smart pointer produced by `func`, which receives
     /// the fully-typed [`CastKey`].
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn insert_sized_with_key<ConcreteD>(
+    pub unsafe fn insert_sized_with_key<ConcreteD>(
         &self,
         func: impl FnOnce(CK::WithRef<ConcreteD::Target>) -> ConcreteD,
     ) -> (CK::WithRef<ConcreteD::Target>, &ConcreteD::Target)
@@ -218,8 +251,11 @@ where
 
     /// Like [`insert_sized_with_key`](Self::insert_sized_with_key) but the
     /// closure may return `Err`.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn try_insert_sized_with_key<ConcreteD, E>(
+    pub unsafe fn try_insert_sized_with_key<ConcreteD, E>(
         &self,
         func: impl FnOnce(CK::WithRef<ConcreteD::Target>) -> Result<ConcreteD, E>,
     ) -> Result<(CK::WithRef<ConcreteD::Target>, &ConcreteD::Target), E>
@@ -254,8 +290,11 @@ where
     /// Inserts a smart pointer whose target type differs from the map's
     /// `D::Target`, returning a key and reference typed with the *source*
     /// type.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn insert_as<SourceD>(
+    pub unsafe fn insert_as<SourceD>(
         &self,
         value: SourceD,
     ) -> (CK::WithRef<SourceD::Target>, &SourceD::Target)
@@ -268,8 +307,11 @@ where
 
     /// Inserts a smart pointer produced by `func`, returning a key and
     /// reference typed with the source `SourceD::Target`.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn insert_as_with_key<SourceD>(
+    pub unsafe fn insert_as_with_key<SourceD>(
         &self,
         func: impl FnOnce(CK::InnerKey) -> SourceD,
     ) -> (CK::WithRef<SourceD::Target>, &SourceD::Target)
@@ -283,8 +325,11 @@ where
 
     /// Like [`insert_as_with_key`](Self::insert_as_with_key) but the closure
     /// may return `Err`.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn try_insert_as_with_key<SourceD, E>(
+    pub unsafe fn try_insert_as_with_key<SourceD, E>(
         &self,
         func: impl FnOnce(CK::InnerKey) -> Result<SourceD, E>,
     ) -> Result<(CK::WithRef<SourceD::Target>, &SourceD::Target), E>
@@ -318,15 +363,21 @@ where
     // ── get_by_index_only ───────────────────────────────────────────────
 
     /// Shared-reference lookup by index only (ignores generation and map id).
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn get_by_index_only(&self, idx: CK::Idx) -> Option<(CK, &D::Target)> {
+    pub unsafe fn get_by_index_only(&self, idx: CK::Idx) -> Option<(CK, &D::Target)> {
         let (inner_key, reference) = self.inner.get_by_index_only(idx)?;
         Some((to_castable::<CK, D>(inner_key, reference), reference))
     }
 
     /// Mutable lookup by index only (ignores generation and map id).
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn get_by_index_only_mut(&mut self, idx: CK::Idx) -> Option<(CK, &mut D::Target)>
+    pub unsafe fn get_by_index_only_mut(&mut self, idx: CK::Idx) -> Option<(CK, &mut D::Target)>
     where
         D: DerefMut,
     {
@@ -341,14 +392,20 @@ where
     ///
     /// This bypasses the map-id check — the caller is responsible for
     /// ensuring the key belongs to this map if they desire that
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn get_by_inner_key(&self, key: CK::InnerKey) -> Option<&D::Target> {
+    pub unsafe fn get_by_inner_key(&self, key: CK::InnerKey) -> Option<&D::Target> {
         self.inner.get(key)
     }
 
     /// Mutable-reference lookup using the inner key directly.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn get_mut_by_inner_key(&mut self, key: CK::InnerKey) -> Option<&mut D::Target>
+    pub unsafe fn get_mut_by_inner_key(&mut self, key: CK::InnerKey) -> Option<&mut D::Target>
     where
         D: std::ops::DerefMut,
     {
@@ -356,8 +413,11 @@ where
     }
 
     /// Removes an element by inner key.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn remove_by_inner_key(&mut self, key: CK::InnerKey) -> Option<D> {
+    pub unsafe fn remove_by_inner_key(&mut self, key: CK::InnerKey) -> Option<D> {
         self.inner.remove(key)
     }
 
@@ -365,8 +425,11 @@ where
     /// value to obtain its pointer metadata.
     ///
     /// Returns `None` if the inner key is stale.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn cast_key_of(&self, inner: CK::InnerKey) -> Option<CK> {
+    pub unsafe fn cast_key_of(&self, inner: CK::InnerKey) -> Option<CK> {
         let reference: &D::Target = self.inner.get(inner)?;
         Some(to_castable::<CK, D>(inner, reference))
     }
@@ -374,8 +437,11 @@ where
     // ── retain ──────────────────────────────────────────────────────────
 
     /// Retains only elements for which `f(key, &mut target)` returns `true`.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn retain<F>(&mut self, mut f: F)
+    pub unsafe fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(CK, &mut D::Target) -> bool,
         D: DerefMut,
@@ -390,8 +456,11 @@ where
     // ── snapshot ────────────────────────────────────────────────────────
 
     /// Returns a snapshot of all `(key, &target)` pairs.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn snapshot(&self) -> Vec<(CK, &D::Target)> {
+    pub unsafe fn snapshot(&self) -> Vec<(CK, &D::Target)> {
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(self.inner.iter_unsafe().map(|(inner_key, reference)| {
@@ -402,8 +471,11 @@ where
     }
 
     /// Returns a snapshot of `&target` references only.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn snapshot_refs(&self) -> Vec<&D::Target> {
+    pub unsafe fn snapshot_refs(&self) -> Vec<&D::Target> {
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(self.inner.iter_unsafe().map(|(_, reference)| reference));
@@ -412,8 +484,11 @@ where
     }
 
     /// Returns a snapshot of keys only.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn snapshot_keys(&self) -> Vec<CK> {
+    pub unsafe fn snapshot_keys(&self) -> Vec<CK> {
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
@@ -441,8 +516,11 @@ where
     // ── iter_mut ────────────────────────────────────────────────────────
 
     /// Mutable iterator over all occupied elements.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<'_, CK, D> {
+    pub unsafe fn iter_mut(&mut self) -> IterMut<'_, CK, D> {
         IterMut {
             inner: self.inner.iter_mut(),
             _phantom: std::marker::PhantomData,
@@ -452,8 +530,11 @@ where
     // ── drain ───────────────────────────────────────────────────────────
 
     /// Removes all elements and returns them as an iterator.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn drain(&mut self) -> Drain<'_, CK, D> {
+    pub unsafe fn drain(&mut self) -> Drain<'_, CK, D> {
         Drain {
             inner: self.inner.drain(),
             _phantom: std::marker::PhantomData,
@@ -472,8 +553,11 @@ where
     CK: CastKey<RefType = <D as std::ops::Deref>::Target>,
 {
     /// Shared-reference lookup with a key for a potentially *different* type `T`.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn get<T: ?Sized + Pointee>(&self, key: CK::WithRef<T>) -> Option<&T>
+    pub unsafe fn get<T: ?Sized + Pointee>(&self, key: CK::WithRef<T>) -> Option<&T>
     where
         <T as Pointee>::Metadata: Copy,
     {
@@ -484,8 +568,11 @@ where
     }
 
     /// Mutable-reference lookup with a potentially differently-typed key.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn get_mut<T: ?Sized + Pointee>(&mut self, key: CK::WithRef<T>) -> Option<&mut T>
+    pub unsafe fn get_mut<T: ?Sized + Pointee>(&mut self, key: CK::WithRef<T>) -> Option<&mut T>
     where
         <T as Pointee>::Metadata: Copy,
         D: std::ops::DerefMut,
@@ -497,8 +584,11 @@ where
     }
 
     /// Removes an element by cast key.
+    ///
+    /// # Safety
+    /// Caller must uphold all map invariants.
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(&mut self, key: CK::WithRef<T>) -> Option<D>
+    pub unsafe fn remove<T: ?Sized + Pointee>(&mut self, key: CK::WithRef<T>) -> Option<D>
     where
         <T as Pointee>::Metadata: Copy,
     {
@@ -516,7 +606,7 @@ where
     type Output = D::Target;
 
     fn index(&self, key: CK::WithRef<CK::RefType>) -> &Self::Output {
-        self.get(key).unwrap()
+        unsafe { self.get(key).unwrap() }
     }
 }
 
@@ -526,7 +616,7 @@ where
     D: DerefGenMapPromise + std::ops::DerefMut,
 {
     fn index_mut(&mut self, key: CK::WithRef<CK::RefType>) -> &mut Self::Output {
-        self.get_mut(key).unwrap()
+        unsafe { self.get_mut(key).unwrap() }
     }
 }
 
@@ -643,7 +733,7 @@ where
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        self.iter_mut()
+        unsafe { self.iter_mut() }
     }
 }
 
