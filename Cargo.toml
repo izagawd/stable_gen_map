@@ -1,6 +1,6 @@
 [package]
 name = "stable_gen_map"
-version = "0.16.1"
+version = "0.17.0"
 edition = "2021"
 rust-version = "1.79.0"
 authors = ["Izagawd <theizaboss@gmail.com>"]
@@ -16,7 +16,7 @@ homepage = "https://github.com/izagawd/stable_gen_map"
 num-traits = "0.2.19"
 
 [features]
-default = ["castable"]
+default = []
 ## Enables `CastKey`, `StableCastMap`, and the `new_castable_key_type!` macro.
 ## Requires a **nightly** toolchain (`ptr_metadata`, `coerce_unsized`, `unsize`).
 castable = []

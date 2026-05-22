@@ -76,7 +76,7 @@ The `castable` feature enables `CastKey`, `StableCastKey`, `StableCastMap`, and 
 
 ```toml
 [dependencies]
-stable_gen_map = { version = "0.12", features = ["castable"] }
+stable_gen_map = { version = "0.17", features = ["castable"] }
 ```
 
 ### What it provides
