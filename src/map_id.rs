@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Global counter for map identifiers. Starts at 1 so that 0 is never a valid
@@ -33,8 +32,17 @@ impl MapId {
     ///
     /// Ids start at 1; 0 is reserved as the invalid/vacant sentinel.
     pub(crate) fn next() -> Self {
-        let raw = NEXT_MAP_ID.fetch_add(1, Ordering::Relaxed);
-        assert!(raw != 0, "MapId counter overflow");
+        let raw = NEXT_MAP_ID
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |raw| {
+                if raw == 0 {
+                    None
+                } else {
+                    Some(raw.wrapping_add(1))
+                }
+            })
+            .unwrap_or_else(|_| panic!("MapId counter overflow"));
+
+        debug_assert_ne!(raw, 0);
         MapId(raw)
     }
 }
