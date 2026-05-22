@@ -12,6 +12,8 @@ pub mod key_piece;
 pub mod map_id;
 pub mod slot_item;
 #[cfg(feature = "castable")]
+pub mod unsafe_cast_map;
+#[cfg(feature = "castable")]
 pub mod stable_cast_map;
 pub mod stable_deref_map;
 pub mod stable_gen_map;
@@ -59,15 +61,12 @@ mod tests {
     #[cfg(all(test, feature = "castable"))]
     mod map_id_tests;
 
-    //#[cfg(all(test, feature = "castable"))]
-    //mod castable_key_tests;
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_key_tests;
 
-    //#[cfg(all(test, feature = "castable"))]
-    //mod castable_map_tests;
-    //#[cfg(all(test, feature = "castable"))]
-   // mod castable_insert_typed_tests;
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_map_tests;
 
-   // #[cfg(all(test, feature = "castable"))]
-   // mod castable_key_macro_tests;
-
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_insert_typed_tests;
 }
