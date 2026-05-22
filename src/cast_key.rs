@@ -5,7 +5,7 @@
 //!   It is the bare key used by `UnsafeCastMap`.
 //! - [`StableCastKey<T>`] wraps a `CastKey` and adds a [`MapId`](crate::map_id::MapId),
 //!   making it safe to use with `StableCastMap` (cross-map misuse returns `None`).
-//! - [`DefaultMapKey`] is the plain inner key used by the backing `GenMap`.
+//! - [`InnerCastMapKey`] is the plain inner key used by the backing `GenMap`.
 //!
 //! Neither `CastKey` nor `StableCastKey` is a [`Key`](crate::key::Key).
 //! The cast map wrappers handle conversion at the boundary.
@@ -15,28 +15,29 @@
 //! - `CastKey<dyn Trait>`: 16 bytes (KeyData + vtable pointer)
 //! - `StableCastKey<T>`: `CastKey<T>` + 8 bytes (MapId)
 
+use std::fs::Metadata;
 use std::ptr::Pointee;
 
 use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
 
-// ─── DefaultMapKey ──────────────────────────────────────────────────────────
+// ─── InnerCastMapKey ──────────────────────────────────────────────────────────
 
-/// A plain key used as the inner key for cast maps — just key_data.
+/// A plain key used as the inner key for cast maps
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DefaultMapKey<Idx, Gen> {
+pub struct InnerCastMapKey<Idx, Gen> {
     pub(crate) key_data: KeyData<Idx, Gen>,
 }
 
 impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> From<KeyData<Idx, Gen>>
-    for DefaultMapKey<Idx, Gen>
+    for InnerCastMapKey<Idx, Gen>
 {
     fn from(key_data: KeyData<Idx, Gen>) -> Self {
         Self { key_data }
     }
 }
 
-unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for DefaultMapKey<Idx, Gen> {
+unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for InnerCastMapKey<Idx, Gen> {
     type Idx = Idx;
     type Gen = Gen;
 
@@ -137,8 +138,8 @@ where
     /// Strips pointer metadata, producing the inner key used by
     /// the backing `GenMap`.
     #[inline]
-    pub fn inner_key(&self) -> DefaultMapKey<Idx, Gen> {
-        DefaultMapKey {
+    pub fn inner_key(&self) -> InnerCastMapKey<Idx, Gen> {
+        InnerCastMapKey {
             key_data: self.key_data,
         }
     }
@@ -172,21 +173,6 @@ where
     ) -> Self {
         Self {
             key_data: data,
-            metadata,
-        }
-    }
-
-    /// Build a cast key from an inner key and pointer metadata.
-    ///
-    /// # Safety
-    /// `metadata` must be valid for the allocation identified by `inner`.
-    #[inline]
-    pub unsafe fn from_inner_key_and_metadata(
-        inner: DefaultMapKey<Idx, Gen>,
-        metadata: <T as Pointee>::Metadata,
-    ) -> Self {
-        Self {
-            key_data: inner.key_data,
             metadata,
         }
     }
@@ -268,6 +254,32 @@ impl<T: ?Sized + Pointee, Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> StableCast
 where
     <T as Pointee>::Metadata: Copy,
 {
+
+    /// Constructs a `StableCastKey` from its raw cast key and map id.
+    ///
+    /// This is intended for cases where the caller has already proven that the
+    /// key parts came from the same map and that the stored pointer metadata is
+    /// valid for `T`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `map_id` identifies the map that owns the slot
+    /// addressed by `cast_key.inner_key()`.
+    ///
+    /// If a lookup with the returned key succeeds, the metadata stored in
+    /// `cast_key` must be valid for viewing the slot's stored value as `T`.
+    /// For example, when `T` is a trait object, the stored metadata must be the
+    /// correct vtable for the actual value in that slot.
+    ///
+    /// Supplying metadata from a different type, a different slot, or a different
+    /// map may cause safe lookup methods to construct an invalid reference, which
+    /// is undefined behavior.
+    pub unsafe fn from_parts(cast_key: CastKey<T,Idx,Gen>, map_id: crate::map_id::MapId, ) -> Self {
+        StableCastKey{
+            inner: cast_key,
+            map_id,
+        }
+    }
     /// Returns the generational key data.
     #[inline]
     pub fn key_data(&self) -> KeyData<Idx, Gen> {
@@ -289,7 +301,7 @@ where
     /// Strips pointer metadata and map id, producing the inner key used by
     /// the backing `GenMap`.
     #[inline]
-    pub fn inner_key(&self) -> DefaultMapKey<Idx, Gen> {
+    pub fn inner_key(&self) -> InnerCastMapKey<Idx, Gen> {
         self.inner.inner_key()
     }
 

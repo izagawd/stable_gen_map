@@ -1,4 +1,4 @@
-use crate::cast_key::{CastKey, StableCastKey, DefaultMapKey};
+use crate::cast_key::{CastKey, StableCastKey, InnerCastMapKey};
 use crate::key::Key;
 use crate::stable_cast_map::StableCastMap;
 use std::any::Any;

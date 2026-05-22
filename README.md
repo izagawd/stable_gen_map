@@ -123,7 +123,7 @@ struct Dog { name: String }
 |---|---|---|---|
 | `StableCastKey<T, Idx, Gen>` | Yes | No — lookups are safe | General use with `StableCastMap` |
 | `CastKey<T, Idx, Gen>` | No | Yes — caller must ensure metadata validity | Low-level use with `UnsafeCastMap` |
-| `DefaultMapKey<Idx, Gen>` | No | N/A — no metadata | Inner key used by the backing `GenMap` |
+| `InnerCastMapKey<Idx, Gen>` | No | N/A — no metadata | Inner key used by the backing `GenMap` |
 
 `Idx` and `Gen` default to `u32`. Use custom types (e.g. `u16`) for smaller keys.
 
@@ -132,11 +132,11 @@ struct Dog { name: String }
 | Method | Key given to closure | Returned key type |
 |---|---|---|
 | `insert(value)` | — | `StableCastKey<D::Target>` (erased) |
-| `insert_with_key(\|inner_key\| ...)` | `DefaultMapKey` | `StableCastKey<D::Target>` (erased) |
+| `insert_with_key(\|inner_key\| ...)` | `InnerCastMapKey` | `StableCastKey<D::Target>` (erased) |
 | `insert_sized(value)` | — | `StableCastKey<Concrete>` |
 | `insert_sized_with_key(\|typed_key\| ...)` | `StableCastKey<Concrete>` | `StableCastKey<Concrete>` |
 | `insert_as(value)` | — | `StableCastKey<Source::Target>` |
-| `insert_as_with_key(\|inner_key\| ...)` | `DefaultMapKey` | `StableCastKey<Source::Target>` |
+| `insert_as_with_key(\|inner_key\| ...)` | `InnerCastMapKey` | `StableCastKey<Source::Target>` |
 
 ### Key upcasting
 

@@ -13,7 +13,7 @@ use std::collections::TryReserveError;
 use std::ops::{DerefMut};
 use std::ptr::Pointee;
 
-use crate::cast_key::{CastKey, DefaultMapKey};
+use crate::cast_key::{CastKey, InnerCastMapKey};
 use crate::gen_map;
 use crate::key::Key;
 use crate::key_piece::KeyPiece;
@@ -26,7 +26,7 @@ use crate::stable_deref_map::{
 /// Build a cast key from an inner key and a reference (for pointer metadata).
 #[inline]
 fn to_castable<D, Idx, Gen>(
-    inner: DefaultMapKey<Idx, Gen>,
+    inner: InnerCastMapKey<Idx, Gen>,
     reference: &D::Target,
 ) -> CastKey<D::Target, Idx, Gen>
 where
@@ -56,7 +56,7 @@ where
     Idx: Copy + KeyPiece,
     Gen: Copy + KeyPiece,
 {
-    pub(crate) inner: StableDerefMap<DefaultMapKey<Idx, Gen>, D>,
+    pub(crate) inner: StableDerefMap<InnerCastMapKey<Idx, Gen>, D>,
 }
 
 // ─── Clone ──────────────────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ where
     #[inline]
     pub fn insert_with_key(
         &self,
-        func: impl FnOnce(DefaultMapKey<Idx, Gen>) -> D,
+        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> D,
     ) -> (CastKey<D::Target, Idx, Gen>, &D::Target) {
         self.try_insert_with_key(|key| Ok::<_, ()>(func(key)))
             .unwrap()
@@ -188,7 +188,7 @@ where
     #[inline]
     pub fn try_insert_with_key<E>(
         &self,
-        func: impl FnOnce(DefaultMapKey<Idx, Gen>) -> Result<D, E>,
+        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> Result<D, E>,
     ) -> Result<(CastKey<D::Target, Idx, Gen>, &D::Target), E> {
         let (inner_key, reference) = self.inner.try_insert_with_key(func)?;
         Ok((to_castable::<D, Idx, Gen>(inner_key, reference), reference))
@@ -279,7 +279,7 @@ where
     #[inline]
     pub fn insert_as_with_key<SourceD>(
         &self,
-        func: impl FnOnce(DefaultMapKey<Idx, Gen>) -> SourceD,
+        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> SourceD,
     ) -> (CastKey<SourceD::Target, Idx, Gen>, &SourceD::Target)
     where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
@@ -294,7 +294,7 @@ where
     #[inline]
     pub fn try_insert_as_with_key<SourceD, E>(
         &self,
-        func: impl FnOnce(DefaultMapKey<Idx, Gen>) -> Result<SourceD, E>,
+        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> Result<SourceD, E>,
     ) -> Result<(CastKey<SourceD::Target, Idx, Gen>, &SourceD::Target), E>
     where
         SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
@@ -349,13 +349,13 @@ where
 
     /// Shared-reference lookup using the inner key directly.
     #[inline]
-    pub fn get_by_inner_key(&self, key: DefaultMapKey<Idx, Gen>) -> Option<&D::Target> {
+    pub fn get_by_inner_key(&self, key: InnerCastMapKey<Idx, Gen>) -> Option<&D::Target> {
         self.inner.get(key)
     }
 
     /// Mutable-reference lookup using the inner key directly.
     #[inline]
-    pub fn get_mut_by_inner_key(&mut self, key: DefaultMapKey<Idx, Gen>) -> Option<&mut D::Target>
+    pub fn get_mut_by_inner_key(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<&mut D::Target>
     where
         D: std::ops::DerefMut,
     {
@@ -364,7 +364,7 @@ where
 
     /// Removes an element by inner key.
     #[inline]
-    pub fn remove_by_inner_key(&mut self, key: DefaultMapKey<Idx, Gen>) -> Option<D> {
+    pub fn remove_by_inner_key(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<D> {
         self.inner.remove(key)
     }
 
@@ -373,7 +373,7 @@ where
     ///
     /// Returns `None` if the inner key is stale.
     #[inline]
-    pub fn cast_key_of(&self, inner: DefaultMapKey<Idx, Gen>) -> Option<CastKey<D::Target, Idx, Gen>> {
+    pub fn cast_key_of(&self, inner: InnerCastMapKey<Idx, Gen>) -> Option<CastKey<D::Target, Idx, Gen>> {
         let reference: &D::Target = self.inner.get(inner)?;
         Some(to_castable::<D, Idx, Gen>(inner, reference))
     }
@@ -530,7 +530,7 @@ where
     Idx: Copy + KeyPiece,
     Gen: Copy + KeyPiece,
 {
-    inner: gen_map::IterMut<'a, DefaultMapKey<Idx, Gen>, DerefSlot<D, DefaultMapKey<Idx, Gen>>>,
+    inner: gen_map::IterMut<'a, InnerCastMapKey<Idx, Gen>, DerefSlot<D, InnerCastMapKey<Idx, Gen>>>,
 }
 
 impl<'a, D, Idx, Gen> Iterator for IterMut<'a, D, Idx, Gen>
@@ -561,7 +561,7 @@ where
     Idx: Copy + KeyPiece,
     Gen: Copy + KeyPiece,
 {
-    inner: gen_map::Drain<'a, DefaultMapKey<Idx, Gen>, DerefSlot<D, DefaultMapKey<Idx, Gen>>>,
+    inner: gen_map::Drain<'a, InnerCastMapKey<Idx, Gen>, DerefSlot<D, InnerCastMapKey<Idx, Gen>>>,
 }
 
 impl<'a, D, Idx, Gen> Iterator for Drain<'a, D, Idx, Gen>
@@ -592,7 +592,7 @@ where
     Idx: Copy + KeyPiece,
     Gen: Copy + KeyPiece,
 {
-    inner: gen_map::IntoIter<DefaultMapKey<Idx, Gen>, DerefSlot<D, DefaultMapKey<Idx, Gen>>>,
+    inner: gen_map::IntoIter<InnerCastMapKey<Idx, Gen>, DerefSlot<D, InnerCastMapKey<Idx, Gen>>>,
 }
 
 impl<D, Idx, Gen> Iterator for IntoIter<D, Idx, Gen>
