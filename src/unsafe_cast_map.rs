@@ -10,7 +10,7 @@
 
 use std::any::Any;
 use std::collections::TryReserveError;
-use std::ops::{DerefMut, Index, IndexMut};
+use std::ops::{DerefMut};
 use std::ptr::Pointee;
 
 use crate::cast_key::{CastKey, DefaultMapKey};
@@ -519,33 +519,8 @@ where
     }
 }
 
-// ─── Index / IndexMut ───────────────────────────────────────────────────────
 
-impl<D, Idx, Gen> Index<CastKey<D::Target, Idx, Gen>> for UnsafeCastMap<D, Idx, Gen>
-where
-    D: DerefGenMapPromise,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
-{
-    type Output = D::Target;
 
-    fn index(&self, key: CastKey<D::Target, Idx, Gen>) -> &Self::Output {
-        unsafe { self.get(key).unwrap() }
-    }
-}
-
-impl<D, Idx, Gen> IndexMut<CastKey<D::Target, Idx, Gen>> for UnsafeCastMap<D, Idx, Gen>
-where
-    D: DerefGenMapPromise + std::ops::DerefMut,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
-{
-    fn index_mut(&mut self, key: CastKey<D::Target, Idx, Gen>) -> &mut Self::Output {
-        unsafe { self.get_mut(key).unwrap() }
-    }
-}
 
 // ─── IterMut ────────────────────────────────────────────────────────────────
 
