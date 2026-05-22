@@ -1,13 +1,19 @@
-//! Castable key type that is generic over `T: ?Sized`, storing
-//! pointer metadata alongside a generational index.
+//! Castable key types for use with [`UnsafeCastMap`](crate::unsafe_cast_map::UnsafeCastMap)
+//! and [`StableCastMap`](crate::stable_cast_map::StableCastMap).
 //!
-//! `CastKey` is **not** a [`Key`](crate::key::Key). The inner
-//! `GenMap` uses a plain [`DefaultMapKey`]; the castable map wrapper
-//! converts at the boundary.
+//! - [`CastKey<T>`] stores pointer metadata alongside a generational index.
+//!   It is the bare key used by `UnsafeCastMap`.
+//! - [`StableCastKey<T>`] wraps a `CastKey` and adds a [`MapId`](crate::map_id::MapId),
+//!   making it safe to use with `StableCastMap` (cross-map misuse returns `None`).
+//! - [`DefaultMapKey`] is the plain inner key used by the backing `GenMap`.
+//!
+//! Neither `CastKey` nor `StableCastKey` is a [`Key`](crate::key::Key).
+//! The cast map wrappers handle conversion at the boundary.
 //!
 //! # Sizes (64-bit)
 //! - `CastKey<SizedType>`: 8 bytes (KeyData only, metadata is `()`)
 //! - `CastKey<dyn Trait>`: 16 bytes (KeyData + vtable pointer)
+//! - `StableCastKey<T>`: `CastKey<T>` + 8 bytes (MapId)
 
 use std::ptr::Pointee;
 
@@ -251,7 +257,7 @@ where
     KeyData<Idx, Gen>: std::hash::Hash,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.inner.hash(state);
+        self.inner.key_data.hash(state);
         self.map_id.hash(state);
     }
 }

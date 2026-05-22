@@ -335,11 +335,16 @@ where
 
     #[inline]
     pub fn snapshot(&self) -> Vec<(StableCastKey<D::Target, Idx, Gen>, &D::Target)> {
-        self.inner
-            .snapshot()
-            .into_iter()
-            .map(|(ck, r)| (stabilize(ck, self.map_id), r))
-            .collect()
+        unsafe {
+            let map_id = self.map_id;
+            let mut vec = Vec::with_capacity(self.inner.len());
+            vec.extend(
+                self.inner
+                    .iter_unsafe()
+                    .map(|(ck, r)| (stabilize(ck, map_id), r)),
+            );
+            vec
+        }
     }
 
     #[inline]
@@ -349,11 +354,16 @@ where
 
     #[inline]
     pub fn snapshot_keys(&self) -> Vec<StableCastKey<D::Target, Idx, Gen>> {
-        self.inner
-            .snapshot_keys()
-            .into_iter()
-            .map(|ck| stabilize(ck, self.map_id))
-            .collect()
+        unsafe {
+            let map_id = self.map_id;
+            let mut vec = Vec::with_capacity(self.inner.len());
+            vec.extend(
+                self.inner
+                    .iter_unsafe()
+                    .map(|(ck, _)| stabilize(ck, map_id)),
+            );
+            vec
+        }
     }
 
     // ── iter_unsafe ─────────────────────────────────────────────────────

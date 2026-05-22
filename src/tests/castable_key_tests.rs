@@ -121,3 +121,57 @@ fn upcast_sized_to_dyn_trait() {
     let val = map.get(key).unwrap();
     assert_eq!(val.name(), "Rex");
 }
+
+#[test]
+fn upcast_preserves_key_data() {
+    let map: CastMap = CastMap::new();
+    let (dyn_key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let sized_key = map.downcast_key::<i32>(dyn_key).unwrap();
+
+    let upcasted = sized_key.upcast::<dyn Any>();
+    assert_eq!(sized_key.key_data().idx, upcasted.key_data().idx);
+    assert_eq!(sized_key.key_data().generation, upcasted.key_data().generation);
+}
+
+// ─── StableCastKey accessors ────────────────────────────────────────────────
+
+#[test]
+fn stable_cast_key_map_id_matches_map() {
+    let map: CastMap = CastMap::new();
+    let (key, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    assert_eq!(key.map_id(), map.map_id());
+}
+
+#[test]
+fn all_keys_from_same_map_share_map_id() {
+    let map: CastMap = CastMap::new();
+    let (k1, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let (k2, _) = map.insert(Box::new(2i32) as Box<dyn Any>);
+    let (k3, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    assert_eq!(k1.map_id(), k2.map_id());
+    assert_eq!(k2.map_id(), k3.map_id());
+}
+
+#[test]
+fn cast_key_accessor_returns_inner_without_map_id() {
+    let map: CastMap = CastMap::new();
+    let (stable_key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let bare: CastKey<dyn Any> = stable_key.cast_key();
+
+    assert_eq!(bare.key_data(), stable_key.key_data());
+}
+
+// ─── downcast then upcast round-trip ────────────────────────────────────────
+
+#[test]
+fn downcast_then_upcast_round_trips() {
+    let map: CastMap = CastMap::new();
+    let (original, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+
+    let concrete = map.downcast_key::<Dog>(original).unwrap();
+    let back = concrete.upcast::<dyn Any>();
+
+    // the upcast key should still be usable
+    let val = map.get(back).unwrap();
+    assert_eq!(val.downcast_ref::<Dog>().unwrap().name, "Rex");
+}

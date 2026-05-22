@@ -650,3 +650,67 @@ fn insert_after_remove_reuses_slot() {
     assert!(map.get(k1).is_none());
     assert!(map.get(k2).is_some());
 }
+
+// ─── map_id ───────────────────────────────────────────────────────────────
+
+#[test]
+fn map_id_accessible() {
+    let map: CastMap = CastMap::new();
+    let _ = map.map_id();
+}
+
+#[test]
+fn two_maps_have_different_ids() {
+    let a: CastMap = CastMap::new();
+    let b: CastMap = CastMap::new();
+    assert_ne!(a.map_id(), b.map_id());
+}
+
+#[test]
+fn clone_gets_fresh_map_id() {
+    let map: RcMap = RcMap::new();
+    map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
+    let cloned = map.clone();
+    assert_ne!(map.map_id(), cloned.map_id());
+}
+
+// ─── upcast key used for get / remove ──────────────────────────────────────
+
+#[test]
+fn upcast_key_works_for_get() {
+    let map: CastMap = CastMap::new();
+    let (sized_key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let dyn_key = sized_key.upcast::<dyn Any>();
+    let val = map.get(dyn_key).unwrap();
+    assert_eq!(val.downcast_ref::<Dog>().unwrap().name, "Rex");
+}
+
+#[test]
+fn upcast_key_works_for_remove() {
+    let mut map: CastMap = CastMap::new();
+    let (sized_key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let dyn_key = sized_key.upcast::<dyn Any>();
+    let removed = map.remove(dyn_key).unwrap();
+    assert_eq!(removed.downcast_ref::<Dog>().unwrap().name, "Rex");
+}
+
+#[test]
+fn upcast_key_works_for_get_mut() {
+    let mut map: CastMap = CastMap::new();
+    let (sized_key, _) = map.insert_sized(Box::new(Dog { name: "Old".into() }));
+    let dyn_key = sized_key.upcast::<dyn Any>();
+    map.get_mut(dyn_key).unwrap().downcast_mut::<Dog>().unwrap().name = "New".into();
+    assert_eq!(map.get(sized_key).unwrap().name, "New");
+}
+
+// ─── cross-map with upcast keys ────────────────────────────────────────────
+
+#[test]
+fn upcast_key_from_different_map_returns_none() {
+    let map_a: CastMap = CastMap::new();
+    let map_b: CastMap = CastMap::new();
+    let (sized_key, _) = map_a.insert_sized(Box::new(42i32));
+    let dyn_key = sized_key.upcast::<dyn Any>();
+    let _ = map_b.insert(Box::new(99i32) as Box<dyn Any>);
+    assert!(map_b.get(dyn_key).is_none());
+}

@@ -1,8 +1,12 @@
-//! Map type that uses a [`CastKey`] as its user-facing key.
+//! Low-level cast map without per-map identity checks.
 //!
-//! Internally, a [`DefaultMapKey`] is used by the `GenMap`. The cast map
-//! wrapper converts between the inner key and `CastKey` at every
-//! boundary — adding metadata on the way out, stripping it on the way in.
+//! [`UnsafeCastMap`] supports typed lookups via [`CastKey`], but the
+//! `get`, `get_mut`, and `downcast_key` methods are **`unsafe`** because
+//! the caller must ensure the key's pointer metadata is valid for the
+//! data stored at that slot.
+//!
+//! For a safe wrapper that checks a per-map [`MapId`](crate::map_id::MapId),
+//! see [`StableCastMap`](crate::stable_cast_map::StableCastMap).
 
 use std::any::Any;
 use std::collections::TryReserveError;
