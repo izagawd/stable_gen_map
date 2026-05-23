@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Global counter for map identifiers. Starts at 1 so that 0 is never a valid
@@ -12,19 +13,19 @@ static NEXT_MAP_ID: AtomicUsize = AtomicUsize::new(1);
 /// on another.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct MapId(pub(crate) usize);
+pub struct MapId(pub(crate) NonZeroUsize);
 
 impl MapId {
-    /// Construct a `MapId` from a raw `usize`.
+    /// Construct a `MapId` from a raw `NonZeroUsize`.
     ///
     /// # Safety
     /// The caller must ensure the value is a valid, previously issued map id.
-    pub unsafe fn from_usize(number: usize) -> MapId {
+    pub unsafe fn from_non_zero_usize(number: NonZeroUsize) -> MapId {
         MapId(number)
     }
 
-    /// Returns the underlying `usize` value.
-    pub fn get_underlying_usize(&self) -> usize {
+    /// Returns the underlying `NonZeroUsize` value.
+    pub fn get_underlying_non_zero_usize(&self) -> NonZeroUsize {
         self.0
     }
 
@@ -43,6 +44,9 @@ impl MapId {
             .unwrap_or_else(|_| panic!("MapId counter overflow"));
 
         debug_assert_ne!(raw, 0);
-        MapId(raw)
+        MapId(
+            NonZeroUsize::new(raw)
+                .expect("Map ID overflow")
+        )
     }
 }

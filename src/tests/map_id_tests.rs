@@ -1,16 +1,5 @@
 use crate::map_id::{MapId};
 
-
-
-#[test]
-fn map_id_next_does_not_assign_zero() {
-
-    let id = MapId::next();
-    assert!(id.get_underlying_usize() != 0);
-}
-
-
-
 #[test]
 fn different_map_id_next_calls_get_different_ids() {
     let a = MapId::next();
@@ -40,7 +29,7 @@ fn map_id_is_copy_clone_debug_eq_hash() {
 #[test]
 fn from_usize_round_trips() {
     let id = MapId::next();
-    let raw = id.get_underlying_usize();
-    let reconstructed = unsafe { MapId::from_usize(raw) };
+    let raw = id.get_underlying_non_zero_usize();
+    let reconstructed = unsafe { MapId::from_non_zero_usize(raw) };
     assert_eq!(id, reconstructed);
 }
