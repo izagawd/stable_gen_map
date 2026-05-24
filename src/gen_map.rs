@@ -148,8 +148,8 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
     /// Tries to reserve capacity for at least `additional` more elements.
     #[inline]
-    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
-        self.slots.get_mut().try_reserve(additional)
+    pub fn try_reserve(&self, additional: usize) -> Result<(), TryReserveError> {
+        unsafe{ &mut *self.slots.get() }.try_reserve(additional)
     }
 
     /// Returns how many slots the backing `Vec` can hold before reallocating.

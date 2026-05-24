@@ -12,7 +12,6 @@ use std::ops::{DerefMut, Index, IndexMut};
 use std::ptr::Pointee;
 
 use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
-use crate::key::Key;
 use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
 use crate::stable_deref_map::DerefGenMapPromise;
@@ -111,7 +110,7 @@ where
     }
 
     #[inline]
-    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+    pub fn try_reserve(&self, additional: usize) -> Result<(), TryReserveError> {
         self.inner.try_reserve(additional)
     }
 
@@ -209,6 +208,21 @@ where
         (stabilize(key, self.map_id), reference)
     }
 
+    /// Gets the inner `UnsafeCastMap` as owned
+    pub fn inner(self) -> UnsafeCastMap<D, Idx, Gen> {
+        self.inner
+    }
+
+    /// Gets the inner `UnsafeCastMap` as a mutable reference
+    pub fn inner_mut(&mut self) -> &mut UnsafeCastMap<D, Idx, Gen> {
+        &mut self.inner
+    }
+
+    /// Gets the inner `UnsafeCastMap` as a shared reference
+    pub fn inner_ref(&self) -> &UnsafeCastMap<D, Idx, Gen> {
+        &self.inner
+    }
+
     #[inline]
     pub fn try_insert_sized_with_key<ConcreteD, E>(
         &self,
@@ -287,6 +301,30 @@ where
     {
         let (key, reference) = self.inner.get_by_index_only_mut(idx)?;
         Some((stabilize(key, self.map_id), reference))
+    }
+
+
+    /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
+    /// the `&mut self` borrow prevents the stored type's `Clone` from
+    /// mutating the map.
+    #[inline]
+    pub fn clone_efficiently_mut(&mut self) -> Self where D: Clone
+    {
+        Self{
+            inner: self.inner.clone_efficiently_mut(),
+            map_id: MapId::next()
+        }
+    }
+
+
+    /// A more efficient clone than `Clone::clone`, but **UB** if the `Clone`
+    /// implementation of the stored type mutates the map.
+    #[inline]
+    pub unsafe  fn clone_efficiently(&self) -> Self where D: Clone {
+        Self{
+            inner: self.inner.clone_efficiently(),
+            map_id: MapId::next()
+        }
     }
 
     // ── inner-key access ──────────────────────────────────────────────

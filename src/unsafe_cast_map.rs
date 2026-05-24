@@ -10,12 +10,11 @@
 
 use std::any::Any;
 use std::collections::TryReserveError;
-use std::ops::{DerefMut};
+use std::ops::DerefMut;
 use std::ptr::Pointee;
 
 use crate::cast_key::{CastKey, InnerCastMapKey};
 use crate::gen_map;
-use crate::key::Key;
 use crate::key_piece::KeyPiece;
 use crate::stable_deref_map::{
     DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap,
@@ -107,7 +106,7 @@ where
 
     /// Tries to reserve capacity for at least `additional` more elements.
     #[inline]
-    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+    pub fn try_reserve(&self, additional: usize) -> Result<(), TryReserveError> {
         self.inner.try_reserve(additional)
     }
 
@@ -343,6 +342,25 @@ where
         let (inner_key, reference) = self.inner.get_by_index_only_mut(idx)?;
         let patched = to_castable::<D, Idx, Gen>(inner_key, reference);
         Some((patched, reference))
+    }
+
+    /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
+    /// the `&mut self` borrow prevents the stored type's `Clone` from
+    /// mutating the map.
+    #[inline]
+    pub fn clone_efficiently_mut(&mut self) -> Self where D: Clone
+    {
+        Self{
+            inner: self.inner.clone_efficiently_mut()
+        }
+    }
+
+    /// A more efficient clone than `Clone::clone`, but **UB** if the `Clone`
+    /// implementation of the stored type mutates the map.
+    pub unsafe  fn clone_efficiently(&self) -> Self  where D: Clone {
+        Self{
+            inner: self.inner.clone_efficiently(),
+        }
     }
 
     // ── inner-key access ──────────────────────────────────────────────
