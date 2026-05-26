@@ -7,12 +7,17 @@ pub struct KeyData<Idx, Generation> {
 }
 
 impl<Idx, Generation> KeyData<Idx, Generation> {
-
-    pub fn generation(&self) -> Generation where Generation: Copy {
+    pub fn generation(&self) -> Generation
+    where
+        Generation: Copy,
+    {
         self.generation
     }
-    
-    pub fn index(&self) -> Idx where Idx: Copy {
+
+    pub fn index(&self) -> Idx
+    where
+        Idx: Copy,
+    {
         self.idx
     }
 }
