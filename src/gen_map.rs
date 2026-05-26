@@ -36,7 +36,7 @@ impl<C: SlotItem<K>, K: Key> Slot<C, K> {
     /// Returns a shared reference to the slot's [`SlotItem`].
     ///
     /// # Safety
-    /// The caller must ensure occupancy before accessing the item's value.
+    /// The caller must not violate map invariants.
     #[inline]
     pub unsafe fn item(&self) -> &C {
         &self.item
