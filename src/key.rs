@@ -6,6 +6,17 @@ pub struct KeyData<Idx, Generation> {
     pub(crate) generation: Generation,
 }
 
+impl<Idx, Generation> KeyData<Idx, Generation> {
+
+    pub fn generation(&self) -> Generation where Generation: Copy {
+        self.generation
+    }
+    
+    pub fn index(&self) -> Idx where Idx: Copy {
+        self.idx
+    }
+}
+
 /// Odd means occupied, even means not occupied. this function does the check based on that
 pub(crate) fn is_occupied_by_generation<Num: KeyPiece>(generation: Num) -> bool {
     generation % (Num::one() + Num::one()) != Num::zero()
