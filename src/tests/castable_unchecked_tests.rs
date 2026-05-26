@@ -45,7 +45,9 @@ fn unsafe_cast_map_get_unchecked_with_concrete_key() {
 fn unsafe_cast_map_get_unchecked_multiple_types() {
     let map: UnsafeMap = UnsafeMap::new();
     let (k1, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
-    let (k2, _) = map.insert_sized(Box::new(Cat { name: "Whiskers".into() }));
+    let (k2, _) = map.insert_sized(Box::new(Cat {
+        name: "Whiskers".into(),
+    }));
     let (k3, _) = map.insert_sized(Box::new(100u64));
 
     unsafe {
@@ -58,7 +60,9 @@ fn unsafe_cast_map_get_unchecked_multiple_types() {
 #[test]
 fn unsafe_cast_map_get_unchecked_agrees_with_get() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert_sized(Box::new(Dog { name: "Buddy".into() }));
+    let (key, _) = map.insert_sized(Box::new(Dog {
+        name: "Buddy".into(),
+    }));
 
     unsafe {
         let checked = map.get(key).unwrap();
@@ -143,7 +147,9 @@ fn unsafe_cast_map_get_slot_vacant_after_remove() {
 #[test]
 fn unsafe_cast_map_get_slot_unchecked_matches_get_slot() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert_sized(Box::new(Cat { name: "Whiskers".into() }));
+    let (key, _) = map.insert_sized(Box::new(Cat {
+        name: "Whiskers".into(),
+    }));
     let idx = key.key_data().idx;
 
     unsafe {
@@ -196,7 +202,10 @@ fn unsafe_cast_map_get_slot_mut_can_modify() {
     }
 
     unsafe {
-        assert_eq!(map.get(key).unwrap().downcast_ref::<Dog>().unwrap().name, "Max");
+        assert_eq!(
+            map.get(key).unwrap().downcast_ref::<Dog>().unwrap().name,
+            "Max"
+        );
     }
 }
 

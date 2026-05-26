@@ -18,9 +18,7 @@ use crate::cast_key::{CastKey, InnerCastMapKey};
 use crate::gen_map;
 use crate::gen_map::Slot;
 use crate::key_piece::KeyPiece;
-use crate::stable_deref_map::{
-    DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap,
-};
+use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot, SmartPtrCloneable, StableDerefMap};
 
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
@@ -239,22 +237,21 @@ where
     {
         let mut saved_key: Option<CastKey<ConcreteD::Target, Idx, Gen>> = None;
 
-        let (_, erased_ref) =
-            self.inner
-                .try_insert_with_key(|inner_key| -> Result<D, E> {
-                    let typed_key = CastKey {
-                        key_data: inner_key.key_data,
-                        metadata: (),
-                    };
-                    saved_key = Some(typed_key);
-                    let concrete: ConcreteD = func(typed_key)?;
-                    Ok(concrete)
-                })?;
+        let (_, erased_ref) = self
+            .inner
+            .try_insert_with_key(|inner_key| -> Result<D, E> {
+                let typed_key = CastKey {
+                    key_data: inner_key.key_data,
+                    metadata: (),
+                };
+                saved_key = Some(typed_key);
+                let concrete: ConcreteD = func(typed_key)?;
+                Ok(concrete)
+            })?;
 
         let key = saved_key.unwrap();
-        let concrete_ref: &ConcreteD::Target = unsafe {
-            &*(erased_ref as *const D::Target as *const () as *const ConcreteD::Target)
-        };
+        let concrete_ref: &ConcreteD::Target =
+            unsafe { &*(erased_ref as *const D::Target as *const () as *const ConcreteD::Target) };
         Ok((key, concrete_ref))
     }
 
@@ -307,8 +304,7 @@ where
             self.inner
                 .try_insert_with_key(|inner_key| -> Result<D, E> {
                     let concrete: SourceD = func(inner_key)?;
-                    saved_metadata =
-                        Some(std::ptr::metadata(&*concrete as *const SourceD::Target));
+                    saved_metadata = Some(std::ptr::metadata(&*concrete as *const SourceD::Target));
                     Ok(concrete)
                 })?;
 
@@ -327,7 +323,10 @@ where
 
     /// Shared-reference lookup by index only (ignores generation).
     #[inline]
-    pub fn get_by_index_only(&self, idx: Idx) -> Option<(CastKey<D::Target, Idx, Gen>, &D::Target)> {
+    pub fn get_by_index_only(
+        &self,
+        idx: Idx,
+    ) -> Option<(CastKey<D::Target, Idx, Gen>, &D::Target)> {
         let (inner_key, reference) = self.inner.get_by_index_only(idx)?;
         Some((to_castable::<D, Idx, Gen>(inner_key, reference), reference))
     }
@@ -403,7 +402,8 @@ where
     pub unsafe fn get_slot_as_cell(
         &self,
         idx: Idx,
-    ) -> Option<&UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>>> {
+    ) -> Option<&UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>>>
+    {
         self.inner.get_slot_as_cell(idx)
     }
 
@@ -460,17 +460,22 @@ where
     /// the `&mut self` borrow prevents the stored type's `Clone` from
     /// mutating the map.
     #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self where D: Clone
+    pub fn clone_efficiently_mut(&mut self) -> Self
+    where
+        D: Clone,
     {
-        Self{
-            inner: self.inner.clone_efficiently_mut()
+        Self {
+            inner: self.inner.clone_efficiently_mut(),
         }
     }
 
     /// A more efficient clone than `Clone::clone`, but **UB** if the `Clone`
     /// implementation of the stored type mutates the map.
-    pub unsafe  fn clone_efficiently(&self) -> Self  where D: Clone {
-        Self{
+    pub unsafe fn clone_efficiently(&self) -> Self
+    where
+        D: Clone,
+    {
+        Self {
             inner: self.inner.clone_efficiently(),
         }
     }
@@ -503,7 +508,10 @@ where
     ///
     /// Returns `None` if the inner key is stale.
     #[inline]
-    pub fn cast_key_of(&self, inner: InnerCastMapKey<Idx, Gen>) -> Option<CastKey<D::Target, Idx, Gen>> {
+    pub fn cast_key_of(
+        &self,
+        inner: InnerCastMapKey<Idx, Gen>,
+    ) -> Option<CastKey<D::Target, Idx, Gen>> {
         let reference: &D::Target = self.inner.get(inner)?;
         Some(to_castable::<D, Idx, Gen>(inner, reference))
     }
@@ -567,12 +575,12 @@ where
     /// # Safety
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
-    pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (CastKey<D::Target, Idx, Gen>, &D::Target)> {
-        self.inner
-            .iter_unsafe()
-            .map(move |(inner_key, reference)| {
-                (to_castable::<D, Idx, Gen>(inner_key, reference), reference)
-            })
+    pub unsafe fn iter_unsafe(
+        &self,
+    ) -> impl Iterator<Item = (CastKey<D::Target, Idx, Gen>, &D::Target)> {
+        self.inner.iter_unsafe().map(move |(inner_key, reference)| {
+            (to_castable::<D, Idx, Gen>(inner_key, reference), reference)
+        })
     }
 
     // ── iter_mut ────────────────────────────────────────────────────────
@@ -628,7 +636,10 @@ where
     /// # Safety
     /// The key's metadata must be valid for the data stored at that slot.
     #[inline]
-    pub unsafe fn get_mut<T: ?Sized + Pointee>(&mut self, key: CastKey<T, Idx, Gen>) -> Option<&mut T>
+    pub unsafe fn get_mut<T: ?Sized + Pointee>(
+        &mut self,
+        key: CastKey<T, Idx, Gen>,
+    ) -> Option<&mut T>
     where
         <T as Pointee>::Metadata: Copy,
         D: std::ops::DerefMut,
@@ -663,10 +674,13 @@ where
     /// - The slot at that index must be occupied with the matching generation.
     /// - The key's metadata must be valid for the data stored at that slot.
     #[inline]
-    pub unsafe fn get_unchecked_mut<T: ?Sized + Pointee>(&mut self, key: CastKey<T, Idx, Gen>) -> &mut T
+    pub unsafe fn get_unchecked_mut<T: ?Sized + Pointee>(
+        &mut self,
+        key: CastKey<T, Idx, Gen>,
+    ) -> &mut T
     where
         <T as Pointee>::Metadata: Copy,
-        D: std::ops::DerefMut,
+        D: DerefMut,
     {
         let base_ref: &mut D::Target = self.inner.get_unchecked_mut(key.inner_key());
         let data_ptr: *mut () = (base_ref as *mut D::Target).cast();
@@ -683,9 +697,6 @@ where
         self.inner.remove(key.inner_key())
     }
 }
-
-
-
 
 // ─── IterMut ────────────────────────────────────────────────────────────────
 

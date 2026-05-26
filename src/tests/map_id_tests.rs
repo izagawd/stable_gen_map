@@ -1,4 +1,4 @@
-use crate::map_id::{MapId};
+use crate::map_id::MapId;
 
 #[test]
 fn different_map_id_next_calls_get_different_ids() {
@@ -6,8 +6,6 @@ fn different_map_id_next_calls_get_different_ids() {
     let b = MapId::next();
     assert_ne!(a, b);
 }
-
-
 
 #[test]
 fn map_id_is_copy_clone_debug_eq_hash() {

@@ -30,10 +30,7 @@ fn stabilize<T: ?Sized + Pointee, Idx: Copy, Gen: Copy>(
 where
     <T as Pointee>::Metadata: Copy,
 {
-    StableCastKey {
-        inner: key,
-        map_id,
-    }
+    StableCastKey { inner: key, map_id }
 }
 
 // ─── StableCastMap ──────────────────────────────────────────────────────────
@@ -185,7 +182,10 @@ where
     pub fn insert_sized<ConcreteD>(
         &self,
         value: ConcreteD,
-    ) -> (StableCastKey<ConcreteD::Target, Idx, Gen>, &ConcreteD::Target)
+    ) -> (
+        StableCastKey<ConcreteD::Target, Idx, Gen>,
+        &ConcreteD::Target,
+    )
     where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
@@ -198,15 +198,18 @@ where
     pub fn insert_sized_with_key<ConcreteD>(
         &self,
         func: impl FnOnce(StableCastKey<ConcreteD::Target, Idx, Gen>) -> ConcreteD,
-    ) -> (StableCastKey<ConcreteD::Target, Idx, Gen>, &ConcreteD::Target)
+    ) -> (
+        StableCastKey<ConcreteD::Target, Idx, Gen>,
+        &ConcreteD::Target,
+    )
     where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
         let map_id = self.map_id;
-        let (key, reference) =
-            self.inner
-                .insert_sized_with_key(|ck| func(stabilize(ck, map_id)));
+        let (key, reference) = self
+            .inner
+            .insert_sized_with_key(|ck| func(stabilize(ck, map_id)));
         (stabilize(key, self.map_id), reference)
     }
 
@@ -229,15 +232,21 @@ where
     pub fn try_insert_sized_with_key<ConcreteD, E>(
         &self,
         func: impl FnOnce(StableCastKey<ConcreteD::Target, Idx, Gen>) -> Result<ConcreteD, E>,
-    ) -> Result<(StableCastKey<ConcreteD::Target, Idx, Gen>, &ConcreteD::Target), E>
+    ) -> Result<
+        (
+            StableCastKey<ConcreteD::Target, Idx, Gen>,
+            &ConcreteD::Target,
+        ),
+        E,
+    >
     where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
         let map_id = self.map_id;
-        let (key, reference) =
-            self.inner
-                .try_insert_sized_with_key(|ck| func(stabilize(ck, map_id)))?;
+        let (key, reference) = self
+            .inner
+            .try_insert_sized_with_key(|ck| func(stabilize(ck, map_id)))?;
         Ok((stabilize(key, self.map_id), reference))
     }
 
@@ -305,7 +314,6 @@ where
         Some((stabilize(key, self.map_id), reference))
     }
 
-
     // ── get_slot ────────────────────────────────────────────────────────
 
     /// Returns a reference to the raw [`Slot`] at the given index.
@@ -363,7 +371,8 @@ where
     pub unsafe fn get_slot_as_cell(
         &self,
         idx: Idx,
-    ) -> Option<&UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>>> {
+    ) -> Option<&UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>>>
+    {
         self.inner.get_slot_as_cell(idx)
     }
 
@@ -416,27 +425,30 @@ where
         self.inner.get_slot_unchecked_mut(idx)
     }
 
-
     /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
     /// the `&mut self` borrow prevents the stored type's `Clone` from
     /// mutating the map.
     #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self where D: Clone
+    pub fn clone_efficiently_mut(&mut self) -> Self
+    where
+        D: Clone,
     {
-        Self{
+        Self {
             inner: self.inner.clone_efficiently_mut(),
-            map_id: MapId::next()
+            map_id: MapId::next(),
         }
     }
-
 
     /// A more efficient clone than `Clone::clone`, but **UB** if the `Clone`
     /// implementation of the stored type mutates the map.
     #[inline]
-    pub unsafe  fn clone_efficiently(&self) -> Self where D: Clone {
-        Self{
+    pub unsafe fn clone_efficiently(&self) -> Self
+    where
+        D: Clone,
+    {
+        Self {
             inner: self.inner.clone_efficiently(),
-            map_id: MapId::next()
+            map_id: MapId::next(),
         }
     }
 
@@ -478,8 +490,7 @@ where
         D: DerefMut,
     {
         let map_id = self.map_id;
-        self.inner
-            .retain(|ck, val| f(stabilize(ck, map_id), val));
+        self.inner.retain(|ck, val| f(stabilize(ck, map_id), val));
     }
 
     // ── snapshot ────────────────────────────────────────────────────────
@@ -595,10 +606,7 @@ where
     /// - The slot at that index must be occupied with the matching generation.
     /// - The key's metadata must be valid for the data stored at that slot.
     #[inline]
-    pub unsafe fn get_unchecked<T: ?Sized + Pointee>(
-        &self,
-        key: StableCastKey<T, Idx, Gen>,
-    ) -> &T
+    pub unsafe fn get_unchecked<T: ?Sized + Pointee>(&self, key: StableCastKey<T, Idx, Gen>) -> &T
     where
         <T as Pointee>::Metadata: Copy,
     {
@@ -625,10 +633,7 @@ where
     }
 
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(
-        &mut self,
-        key: StableCastKey<T, Idx, Gen>,
-    ) -> Option<D>
+    pub fn remove<T: ?Sized + Pointee>(&mut self, key: StableCastKey<T, Idx, Gen>) -> Option<D>
     where
         <T as Pointee>::Metadata: Copy,
     {

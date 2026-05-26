@@ -167,10 +167,7 @@ where
     /// # Safety
     /// `metadata` must be valid for the allocation identified by the key.
     #[inline]
-    pub unsafe fn from_parts(
-        data: KeyData<Idx, Gen>,
-        metadata: <T as Pointee>::Metadata,
-    ) -> Self {
+    pub unsafe fn from_parts(data: KeyData<Idx, Gen>, metadata: <T as Pointee>::Metadata) -> Self {
         Self {
             key_data: data,
             metadata,
@@ -254,7 +251,6 @@ impl<T: ?Sized + Pointee, Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> StableCast
 where
     <T as Pointee>::Metadata: Copy,
 {
-
     /// Constructs a `StableCastKey` from its raw cast key and map id.
     ///
     /// This is intended for cases where the caller has already proven that the
@@ -274,8 +270,8 @@ where
     /// Supplying metadata from a different type, a different slot, or a different
     /// map may cause safe lookup methods to construct an invalid reference, which
     /// is undefined behavior.
-    pub unsafe fn from_parts(cast_key: CastKey<T,Idx,Gen>, map_id: crate::map_id::MapId, ) -> Self {
-        StableCastKey{
+    pub unsafe fn from_parts(cast_key: CastKey<T, Idx, Gen>, map_id: crate::map_id::MapId) -> Self {
+        StableCastKey {
             inner: cast_key,
             map_id,
         }

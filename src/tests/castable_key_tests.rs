@@ -1,4 +1,4 @@
-use crate::cast_key::{CastKey, StableCastKey, InnerCastMapKey};
+use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
 use crate::key::Key;
 use crate::stable_cast_map::StableCastMap;
 use std::any::Any;
@@ -130,7 +130,10 @@ fn upcast_preserves_key_data() {
 
     let upcasted = sized_key.upcast::<dyn Any>();
     assert_eq!(sized_key.key_data().idx, upcasted.key_data().idx);
-    assert_eq!(sized_key.key_data().generation, upcasted.key_data().generation);
+    assert_eq!(
+        sized_key.key_data().generation,
+        upcasted.key_data().generation
+    );
 }
 
 // ─── StableCastKey accessors ────────────────────────────────────────────────

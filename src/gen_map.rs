@@ -15,9 +15,7 @@ pub struct Slot<C: SlotItem<K>, K: Key> {
 }
 
 impl<C: SlotItem<K>, K: Key> Slot<C, K> {
-
-
-    pub fn is_occupied(&self) -> bool{
+    pub fn is_occupied(&self) -> bool {
         is_occupied_by_generation(self.generation)
     }
     /// Returns a shared reference to the generation stored in this slot.
@@ -209,7 +207,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// Tries to reserve capacity for at least `additional` more elements.
     #[inline]
     pub fn try_reserve(&self, additional: usize) -> Result<(), TryReserveError> {
-        unsafe{ &mut *self.slots.get() }.try_reserve(additional)
+        unsafe { &mut *self.slots.get() }.try_reserve(additional)
     }
 
     /// Returns how many slots the backing `Vec` can hold before reallocating.

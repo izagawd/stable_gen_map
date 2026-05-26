@@ -44,9 +44,6 @@ impl MapId {
             .unwrap_or_else(|_| panic!("MapId counter overflow"));
 
         debug_assert_ne!(raw, 0);
-        MapId(
-            NonZeroUsize::new(raw)
-                .expect("Map ID overflow")
-        )
+        MapId(NonZeroUsize::new(raw).expect("Map ID overflow"))
     }
 }
