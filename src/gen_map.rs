@@ -9,9 +9,69 @@ use std::ops::{Index, IndexMut};
 
 // ─── Slot ────────────────────────────────────────────────────────────────────
 
-pub(crate) struct Slot<C: SlotItem<K>, K: Key> {
+pub struct Slot<C: SlotItem<K>, K: Key> {
     pub(crate) item: C,
     pub(crate) generation: K::Gen,
+}
+
+impl<C: SlotItem<K>, K: Key> Slot<C, K> {
+
+
+    pub fn is_occupied(&self) -> bool{
+        is_occupied_by_generation(self.generation)
+    }
+    /// Returns a shared reference to the generation stored in this slot.
+    #[inline]
+    pub fn generation(&self) -> &K::Gen {
+        &self.generation
+    }
+
+    /// Returns a mutable reference to the generation stored in this slot.
+    ///
+    /// # Safety
+    /// The caller must not violate map invariants
+    #[inline]
+    pub unsafe fn generation_mut(&mut self) -> &mut K::Gen {
+        &mut self.generation
+    }
+
+    /// Returns a shared reference to the slot's [`SlotItem`].
+    ///
+    /// # Safety
+    /// The caller must ensure occupancy before accessing the item's value.
+    #[inline]
+    pub unsafe fn item(&self) -> &C {
+        &self.item
+    }
+
+    /// Returns a mutable reference to the slot's [`SlotItem`].
+    ///
+    /// # Safety
+    /// The caller must not violate map invariants.
+    #[inline]
+    pub unsafe fn item_mut(&mut self) -> &mut C {
+        &mut self.item
+    }
+
+    /// Returns a shared reference to the slot's output.
+    ///
+    /// # Safety
+    /// The slot must be occupied.
+    #[inline]
+    pub unsafe fn ref_output(&self) -> &C::Output {
+        self.item.ref_output()
+    }
+}
+
+impl<C: SlotItemMutOutput<K>, K: Key> Slot<C, K> {
+    /// Returns a mutable reference to the slot's output.
+    ///
+    /// # Safety
+    /// The slot must be occupied.
+    #[inline]
+    pub unsafe fn mut_output(&mut self) -> &mut C::Output {
+        self.item.mut_output()
+    }
 }
 
 impl<C: SlotItem<K>, K: Key> Drop for Slot<C, K> {
@@ -201,6 +261,117 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                 None
             }
         }
+    }
+
+    /// Returns a reference to the raw [`Slot`] at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned slot exposes internal data structures. The caller
+    /// must not use this to violate map invariants, and must check
+    /// occupancy before accessing the slot's value.
+    ///
+    /// **Holding a `&Slot` reference, performing an `insert`, and then
+    /// accessing that old `&Slot` or any of its contents is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained slot references.
+    #[inline]
+    pub unsafe fn get_slot(&self, idx: K::Idx) -> Option<&Slot<C, K>> {
+        let slots = &*self.slots.get();
+        let slot = &*slots.get(idx.into_usize())?.get();
+        Some(slot)
+    }
+
+    /// Returns a reference to the raw [`Slot`] without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a `&Slot` reference, performing an `insert`, and then
+    /// accessing that old `&Slot` or any of its contents is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained slot references.
+    #[inline]
+    pub unsafe fn get_slot_unchecked(&self, idx: K::Idx) -> &Slot<C, K> {
+        let slots = &*self.slots.get();
+        &*slots.get_unchecked(idx.into_usize()).get()
+    }
+
+    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
+    /// at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned cell exposes internal data structures. The caller
+    /// must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a cell reference, performing an `insert`, and then
+    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained references.
+    #[inline]
+    pub unsafe fn get_slot_as_cell(&self, idx: K::Idx) -> Option<&UnsafeCell<Slot<C, K>>> {
+        let slots = &*self.slots.get();
+        slots.get(idx.into_usize())
+    }
+
+    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
+    /// without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a cell reference, performing an `insert`, and then
+    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained references.
+    #[inline]
+    pub unsafe fn get_slot_as_cell_unchecked(&self, idx: K::Idx) -> &UnsafeCell<Slot<C, K>> {
+        let slots = &*self.slots.get();
+        slots.get_unchecked(idx.into_usize())
+    }
+
+    /// Returns a mutable reference to the raw [`Slot`] at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned slot exposes internal data structures. The caller
+    /// must not use this to violate map invariants, and must check
+    /// occupancy before accessing the slot's value.
+    #[inline]
+    pub unsafe fn get_slot_mut(&mut self, idx: K::Idx) -> Option<&mut Slot<C, K>> {
+        let slots = self.slots.get_mut();
+        Some(slots.get_mut(idx.into_usize())?.get_mut())
+    }
+
+    /// Returns a mutable reference to the raw [`Slot`] without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must not use this to violate map invariants, and must
+    ///   check occupancy before accessing the slot's value.
+    #[inline]
+    pub unsafe fn get_slot_mut_unchecked(&mut self, idx: K::Idx) -> &mut Slot<C, K> {
+        let slots = self.slots.get_mut();
+        slots.get_unchecked_mut(idx.into_usize()).get_mut()
+    }
+
+    /// Shared-reference lookup without bounds or generation checks.
+    ///
+    /// # Safety
+    /// - The key's index must be in bounds.
+    /// - The slot at that index must be occupied with the matching generation.
+    #[inline]
+    pub unsafe fn get_unchecked(&self, k: K) -> &C::Output {
+        let key_data = k.data();
+        let slots = &*self.slots.get();
+        let slot = &*slots.get_unchecked(key_data.idx.into_usize()).get();
+        slot.item.ref_output()
     }
 
     // ── get_mut (requires SlotItemMutOutput) ────────────────────────────
@@ -536,6 +707,19 @@ impl<K: Key, C: SlotItemMutOutput<K>> GenMap<K, C> {
         } else {
             None
         }
+    }
+
+    /// Mutable-reference lookup without bounds or generation checks.
+    ///
+    /// # Safety
+    /// - The key's index must be in bounds.
+    /// - The slot at that index must be occupied with the matching generation.
+    #[inline]
+    pub unsafe fn get_unchecked_mut(&mut self, k: K) -> &mut C::Output {
+        let key_data = k.data();
+        let slots = self.slots.get_mut();
+        let slot = slots.get_unchecked_mut(key_data.idx.into_usize()).get_mut();
+        slot.item.mut_output()
     }
 }
 

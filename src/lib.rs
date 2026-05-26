@@ -69,4 +69,10 @@ mod tests {
 
     #[cfg(all(test, feature = "castable"))]
     mod castable_insert_typed_tests;
+
+    #[cfg(test)]
+    mod unchecked_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_unchecked_tests;
 }

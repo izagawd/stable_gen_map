@@ -7,14 +7,16 @@
 //! of causing UB.
 
 use std::any::Any;
+use std::cell::UnsafeCell;
 use std::collections::TryReserveError;
 use std::ops::{DerefMut, Index, IndexMut};
 use std::ptr::Pointee;
 
 use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
+use crate::gen_map::Slot;
 use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
-use crate::stable_deref_map::DerefGenMapPromise;
+use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 
@@ -304,6 +306,117 @@ where
     }
 
 
+    // ── get_slot ────────────────────────────────────────────────────────
+
+    /// Returns a reference to the raw [`Slot`] at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned slot exposes internal data structures. The caller
+    /// must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a `&Slot` reference, performing an `insert`, and then
+    /// accessing that old `&Slot` is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained slot references.
+    #[inline]
+    pub unsafe fn get_slot(
+        &self,
+        idx: Idx,
+    ) -> Option<&Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+        self.inner.get_slot(idx)
+    }
+
+    /// Returns a reference to the raw [`Slot`] without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a `&Slot` reference, performing an `insert`, and then
+    /// accessing that old `&Slot` is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained slot references.
+    #[inline]
+    pub unsafe fn get_slot_unchecked(
+        &self,
+        idx: Idx,
+    ) -> &Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>> {
+        self.inner.get_slot_unchecked(idx)
+    }
+
+    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
+    /// at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned cell exposes internal data structures. The caller
+    /// must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a cell reference, performing an `insert`, and then
+    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained references.
+    #[inline]
+    pub unsafe fn get_slot_as_cell(
+        &self,
+        idx: Idx,
+    ) -> Option<&UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>>> {
+        self.inner.get_slot_as_cell(idx)
+    }
+
+    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
+    /// without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a cell reference, performing an `insert`, and then
+    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained references.
+    #[inline]
+    pub unsafe fn get_slot_as_cell_unchecked(
+        &self,
+        idx: Idx,
+    ) -> &UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+        self.inner.get_slot_as_cell_unchecked(idx)
+    }
+
+    /// Returns a mutable reference to the raw [`Slot`] at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned slot exposes internal data structures. The caller
+    /// must not use this to violate map invariants, and must check
+    /// occupancy before accessing the slot's value.
+    #[inline]
+    pub unsafe fn get_slot_mut(
+        &mut self,
+        idx: Idx,
+    ) -> Option<&mut Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+        self.inner.get_slot_mut(idx)
+    }
+
+    /// Returns a mutable reference to the raw [`Slot`] without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must not use this to violate map invariants, and must
+    ///   check occupancy before accessing the slot's value.
+    #[inline]
+    pub unsafe fn get_slot_mut_unchecked(
+        &mut self,
+        idx: Idx,
+    ) -> &mut Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>> {
+        self.inner.get_slot_mut_unchecked(idx)
+    }
+
+
     /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
     /// the `&mut self` borrow prevents the stored type's `Clone` from
     /// mutating the map.
@@ -472,6 +585,43 @@ where
             return None;
         }
         unsafe { self.inner.get_mut(key.inner) }
+    }
+
+    /// Shared-reference lookup without bounds, generation, or map-id checks.
+    ///
+    /// # Safety
+    /// - The key must belong to this map.
+    /// - The key's index must be in bounds.
+    /// - The slot at that index must be occupied with the matching generation.
+    /// - The key's metadata must be valid for the data stored at that slot.
+    #[inline]
+    pub unsafe fn get_unchecked<T: ?Sized + Pointee>(
+        &self,
+        key: StableCastKey<T, Idx, Gen>,
+    ) -> &T
+    where
+        <T as Pointee>::Metadata: Copy,
+    {
+        self.inner.get_unchecked(key.inner)
+    }
+
+    /// Mutable-reference lookup without bounds, generation, or map-id checks.
+    ///
+    /// # Safety
+    /// - The key must belong to this map.
+    /// - The key's index must be in bounds.
+    /// - The slot at that index must be occupied with the matching generation.
+    /// - The key's metadata must be valid for the data stored at that slot.
+    #[inline]
+    pub unsafe fn get_unchecked_mut<T: ?Sized + Pointee>(
+        &mut self,
+        key: StableCastKey<T, Idx, Gen>,
+    ) -> &mut T
+    where
+        <T as Pointee>::Metadata: Copy,
+        D: std::ops::DerefMut,
+    {
+        self.inner.get_unchecked_mut(key.inner)
     }
 
     #[inline]
