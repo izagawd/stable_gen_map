@@ -409,11 +409,11 @@ where
     /// - The caller must not use this to violate map invariants, and must
     ///   check occupancy before accessing the slot's value.
     #[inline]
-    pub unsafe fn get_slot_mut_unchecked(
+    pub unsafe fn get_slot_unchecked_mut(
         &mut self,
         idx: Idx,
     ) -> &mut Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>> {
-        self.inner.get_slot_mut_unchecked(idx)
+        self.inner.get_slot_unchecked_mut(idx)
     }
 
 
@@ -448,11 +448,11 @@ where
     }
 
     #[inline]
-    pub fn get_mut_by_inner_key(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<&mut D::Target>
+    pub fn get_by_inner_key_mut(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<&mut D::Target>
     where
         D: std::ops::DerefMut,
     {
-        self.inner.get_mut_by_inner_key(key)
+        self.inner.get_by_inner_key_mut(key)
     }
 
     #[inline]

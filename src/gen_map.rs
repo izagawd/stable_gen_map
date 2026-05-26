@@ -356,7 +356,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// - The caller must not use this to violate map invariants, and must
     ///   check occupancy before accessing the slot's value.
     #[inline]
-    pub unsafe fn get_slot_mut_unchecked(&mut self, idx: K::Idx) -> &mut Slot<C, K> {
+    pub unsafe fn get_slot_unchecked_mut(&mut self, idx: K::Idx) -> &mut Slot<C, K> {
         let slots = self.slots.get_mut();
         slots.get_unchecked_mut(idx.into_usize()).get_mut()
     }

@@ -295,11 +295,11 @@ fn get_by_inner_key() {
 }
 
 #[test]
-fn get_mut_by_inner_key() {
+fn get_by_inner_key_mut() {
     let mut map: CastMap = CastMap::new();
     let (key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
     let inner = key.inner_key();
-    let val = map.get_mut_by_inner_key(inner).unwrap();
+    let val = map.get_by_inner_key_mut(inner).unwrap();
     val.downcast_mut::<Dog>().unwrap().name = "New".into();
     assert_eq!(
         map.get_by_inner_key(inner).unwrap().downcast_ref::<Dog>().unwrap().name,

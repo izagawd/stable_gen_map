@@ -237,13 +237,13 @@ fn get_slot_mut_none_for_out_of_bounds() {
 }
 
 #[test]
-fn get_slot_mut_unchecked_can_modify_value() {
+fn get_slot_unchecked_mut_can_modify_value() {
     let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
     let (k, _) = map.insert(42);
     let idx = k.data().idx;
 
     unsafe {
-        let slot = map.get_slot_mut_unchecked(idx);
+        let slot = map.get_slot_unchecked_mut(idx);
         *slot.mut_output() = 123;
     }
     assert_eq!(*map.get(k).unwrap(), 123);

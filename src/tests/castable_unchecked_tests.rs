@@ -201,13 +201,13 @@ fn unsafe_cast_map_get_slot_mut_can_modify() {
 }
 
 #[test]
-fn unsafe_cast_map_get_slot_mut_unchecked_can_modify() {
+fn unsafe_cast_map_get_slot_unchecked_mut_can_modify() {
     let mut map: UnsafeMap = UnsafeMap::new();
     let (key, _) = map.insert(Box::new(100i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
-        let slot = map.get_slot_mut_unchecked(idx);
+        let slot = map.get_slot_unchecked_mut(idx);
         let val: &mut dyn Any = slot.mut_output();
         *val.downcast_mut::<i32>().unwrap() = 200;
     }
@@ -393,13 +393,13 @@ fn stable_cast_map_get_slot_mut_can_modify() {
 }
 
 #[test]
-fn stable_cast_map_get_slot_mut_unchecked_can_modify() {
+fn stable_cast_map_get_slot_unchecked_mut_can_modify() {
     let mut map: SafeMap = SafeMap::new();
     let (key, _) = map.insert(Box::new(100i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
-        let slot = map.get_slot_mut_unchecked(idx);
+        let slot = map.get_slot_unchecked_mut(idx);
         let val: &mut dyn Any = slot.mut_output();
         *val.downcast_mut::<i32>().unwrap() = 200;
     }
