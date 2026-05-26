@@ -601,7 +601,6 @@ where
     /// Shared-reference lookup without bounds, generation, or map-id checks.
     ///
     /// # Safety
-    /// - The key must belong to this map.
     /// - The key's index must be in bounds.
     /// - The slot at that index must be occupied with the matching generation.
     /// - The key's metadata must be valid for the data stored at that slot.
@@ -616,7 +615,6 @@ where
     /// Mutable-reference lookup without bounds, generation, or map-id checks.
     ///
     /// # Safety
-    /// - The key must belong to this map.
     /// - The key's index must be in bounds.
     /// - The slot at that index must be occupied with the matching generation.
     /// - The key's metadata must be valid for the data stored at that slot.
