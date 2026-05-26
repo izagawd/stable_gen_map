@@ -32,7 +32,7 @@ impl MapId {
     /// Requests a fresh, globally unique map id.
     ///
     /// Ids start at 1; 0 is reserved as the invalid/vacant sentinel.
-    pub(crate) fn next() -> Self {
+    pub fn next() -> Self {
         let raw = NEXT_MAP_ID
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |raw| {
                 if raw == 0 {
