@@ -450,7 +450,7 @@ where
     #[inline]
     pub fn get_by_inner_key_mut(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<&mut D::Target>
     where
-        D: std::ops::DerefMut,
+        D: DerefMut,
     {
         self.inner.get_by_inner_key_mut(key)
     }
