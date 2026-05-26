@@ -7,14 +7,16 @@
 //! of causing UB.
 
 use std::any::Any;
+use std::cell::UnsafeCell;
 use std::collections::TryReserveError;
 use std::ops::{DerefMut, Index, IndexMut};
 use std::ptr::Pointee;
 
 use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
+use crate::gen_map::Slot;
 use crate::key_piece::KeyPiece;
 use crate::map_id::MapId;
-use crate::stable_deref_map::DerefGenMapPromise;
+use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 
@@ -28,10 +30,7 @@ fn stabilize<T: ?Sized + Pointee, Idx: Copy, Gen: Copy>(
 where
     <T as Pointee>::Metadata: Copy,
 {
-    StableCastKey {
-        inner: key,
-        map_id,
-    }
+    StableCastKey { inner: key, map_id }
 }
 
 // ─── StableCastMap ──────────────────────────────────────────────────────────
@@ -183,7 +182,10 @@ where
     pub fn insert_sized<ConcreteD>(
         &self,
         value: ConcreteD,
-    ) -> (StableCastKey<ConcreteD::Target, Idx, Gen>, &ConcreteD::Target)
+    ) -> (
+        StableCastKey<ConcreteD::Target, Idx, Gen>,
+        &ConcreteD::Target,
+    )
     where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
@@ -196,15 +198,18 @@ where
     pub fn insert_sized_with_key<ConcreteD>(
         &self,
         func: impl FnOnce(StableCastKey<ConcreteD::Target, Idx, Gen>) -> ConcreteD,
-    ) -> (StableCastKey<ConcreteD::Target, Idx, Gen>, &ConcreteD::Target)
+    ) -> (
+        StableCastKey<ConcreteD::Target, Idx, Gen>,
+        &ConcreteD::Target,
+    )
     where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
         let map_id = self.map_id;
-        let (key, reference) =
-            self.inner
-                .insert_sized_with_key(|ck| func(stabilize(ck, map_id)));
+        let (key, reference) = self
+            .inner
+            .insert_sized_with_key(|ck| func(stabilize(ck, map_id)));
         (stabilize(key, self.map_id), reference)
     }
 
@@ -227,15 +232,21 @@ where
     pub fn try_insert_sized_with_key<ConcreteD, E>(
         &self,
         func: impl FnOnce(StableCastKey<ConcreteD::Target, Idx, Gen>) -> Result<ConcreteD, E>,
-    ) -> Result<(StableCastKey<ConcreteD::Target, Idx, Gen>, &ConcreteD::Target), E>
+    ) -> Result<
+        (
+            StableCastKey<ConcreteD::Target, Idx, Gen>,
+            &ConcreteD::Target,
+        ),
+        E,
+    >
     where
         ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
         ConcreteD::Target: Sized,
     {
         let map_id = self.map_id;
-        let (key, reference) =
-            self.inner
-                .try_insert_sized_with_key(|ck| func(stabilize(ck, map_id)))?;
+        let (key, reference) = self
+            .inner
+            .try_insert_sized_with_key(|ck| func(stabilize(ck, map_id)))?;
         Ok((stabilize(key, self.map_id), reference))
     }
 
@@ -303,27 +314,141 @@ where
         Some((stabilize(key, self.map_id), reference))
     }
 
+    // ── get_slot ────────────────────────────────────────────────────────
+
+    /// Returns a reference to the raw [`Slot`] at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned slot exposes internal data structures. The caller
+    /// must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a `&Slot` reference, performing an `insert`, and then
+    /// accessing that old `&Slot` is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained slot references.
+    #[inline]
+    pub unsafe fn get_slot(
+        &self,
+        idx: Idx,
+    ) -> Option<&Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+        self.inner.get_slot(idx)
+    }
+
+    /// Returns a reference to the raw [`Slot`] without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a `&Slot` reference, performing an `insert`, and then
+    /// accessing that old `&Slot` is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained slot references.
+    #[inline]
+    pub unsafe fn get_slot_unchecked(
+        &self,
+        idx: Idx,
+    ) -> &Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>> {
+        self.inner.get_slot_unchecked(idx)
+    }
+
+    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
+    /// at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned cell exposes internal data structures. The caller
+    /// must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a cell reference, performing an `insert`, and then
+    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained references.
+    #[inline]
+    pub unsafe fn get_slot_as_cell(
+        &self,
+        idx: Idx,
+    ) -> Option<&UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>>>
+    {
+        self.inner.get_slot_as_cell(idx)
+    }
+
+    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
+    /// without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must check occupancy before accessing the slot's value.
+    ///
+    /// **Holding a cell reference, performing an `insert`, and then
+    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
+    /// requires `&self` and may reallocate the backing storage, which
+    /// invalidates all previously obtained references.
+    #[inline]
+    pub unsafe fn get_slot_as_cell_unchecked(
+        &self,
+        idx: Idx,
+    ) -> &UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+        self.inner.get_slot_as_cell_unchecked(idx)
+    }
+
+    /// Returns a mutable reference to the raw [`Slot`] at the given index.
+    ///
+    /// Performs bounds checking. Returns `None` if out of bounds.
+    ///
+    /// # Safety
+    /// The returned slot exposes internal data structures. The caller
+    /// must not use this to violate map invariants, and must check
+    /// occupancy before accessing the slot's value.
+    #[inline]
+    pub unsafe fn get_slot_mut(
+        &mut self,
+        idx: Idx,
+    ) -> Option<&mut Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+        self.inner.get_slot_mut(idx)
+    }
+
+    /// Returns a mutable reference to the raw [`Slot`] without bounds checking.
+    ///
+    /// # Safety
+    /// - The index must be in bounds.
+    /// - The caller must not use this to violate map invariants, and must
+    ///   check occupancy before accessing the slot's value.
+    #[inline]
+    pub unsafe fn get_slot_unchecked_mut(
+        &mut self,
+        idx: Idx,
+    ) -> &mut Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>> {
+        self.inner.get_slot_unchecked_mut(idx)
+    }
 
     /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
     /// the `&mut self` borrow prevents the stored type's `Clone` from
     /// mutating the map.
     #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self where D: Clone
+    pub fn clone_efficiently_mut(&mut self) -> Self
+    where
+        D: Clone,
     {
-        Self{
+        Self {
             inner: self.inner.clone_efficiently_mut(),
-            map_id: MapId::next()
+            map_id: MapId::next(),
         }
     }
-
 
     /// A more efficient clone than `Clone::clone`, but **UB** if the `Clone`
     /// implementation of the stored type mutates the map.
     #[inline]
-    pub unsafe  fn clone_efficiently(&self) -> Self where D: Clone {
-        Self{
+    pub unsafe fn clone_efficiently(&self) -> Self
+    where
+        D: Clone,
+    {
+        Self {
             inner: self.inner.clone_efficiently(),
-            map_id: MapId::next()
+            map_id: MapId::next(),
         }
     }
 
@@ -335,11 +460,11 @@ where
     }
 
     #[inline]
-    pub fn get_mut_by_inner_key(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<&mut D::Target>
+    pub fn get_by_inner_key_mut(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<&mut D::Target>
     where
-        D: std::ops::DerefMut,
+        D: DerefMut,
     {
-        self.inner.get_mut_by_inner_key(key)
+        self.inner.get_by_inner_key_mut(key)
     }
 
     #[inline]
@@ -365,8 +490,7 @@ where
         D: DerefMut,
     {
         let map_id = self.map_id;
-        self.inner
-            .retain(|ck, val| f(stabilize(ck, map_id), val));
+        self.inner.retain(|ck, val| f(stabilize(ck, map_id), val));
     }
 
     // ── snapshot ────────────────────────────────────────────────────────
@@ -474,11 +598,40 @@ where
         unsafe { self.inner.get_mut(key.inner) }
     }
 
+    /// Shared-reference lookup without bounds, generation, or map-id checks.
+    ///
+    /// # Safety
+    /// - The key's index must be in bounds.
+    /// - The slot at that index must be occupied with the matching generation.
+    /// - The key's metadata must be valid for the data stored at that slot.
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(
+    pub unsafe fn get_unchecked<T: ?Sized + Pointee>(&self, key: StableCastKey<T, Idx, Gen>) -> &T
+    where
+        <T as Pointee>::Metadata: Copy,
+    {
+        self.inner.get_unchecked(key.inner)
+    }
+
+    /// Mutable-reference lookup without bounds, generation, or map-id checks.
+    ///
+    /// # Safety
+    /// - The key's index must be in bounds.
+    /// - The slot at that index must be occupied with the matching generation.
+    /// - The key's metadata must be valid for the data stored at that slot.
+    #[inline]
+    pub unsafe fn get_unchecked_mut<T: ?Sized + Pointee>(
         &mut self,
         key: StableCastKey<T, Idx, Gen>,
-    ) -> Option<D>
+    ) -> &mut T
+    where
+        <T as Pointee>::Metadata: Copy,
+        D: std::ops::DerefMut,
+    {
+        self.inner.get_unchecked_mut(key.inner)
+    }
+
+    #[inline]
+    pub fn remove<T: ?Sized + Pointee>(&mut self, key: StableCastKey<T, Idx, Gen>) -> Option<D>
     where
         <T as Pointee>::Metadata: Copy,
     {

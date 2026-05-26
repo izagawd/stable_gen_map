@@ -1,4 +1,4 @@
-use crate::cast_key::{CastKey, StableCastKey, InnerCastMapKey};
+use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
 use crate::key::Key;
 use crate::stable_cast_map::StableCastMap;
 use std::any::Any;
@@ -6,10 +6,14 @@ use std::any::Any;
 type CastMap = StableCastMap<Box<dyn Any>>;
 
 #[derive(Debug, PartialEq)]
-struct Dog { name: String }
+struct Dog {
+    name: String,
+}
 
 #[derive(Debug, PartialEq)]
-struct Cat { name: String }
+struct Cat {
+    name: String,
+}
 
 // ─── Insert & Get ──────────────────────────────────────────────────────────
 
@@ -29,8 +33,14 @@ fn insert_multiple_types() {
     let (k2, _) = map.insert(Box::new("hello".to_string()) as Box<dyn Any>);
     let (k3, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     assert_eq!(*map.get(k1).unwrap().downcast_ref::<u64>().unwrap(), 10);
-    assert_eq!(map.get(k2).unwrap().downcast_ref::<String>().unwrap(), "hello");
-    assert_eq!(map.get(k3).unwrap().downcast_ref::<Dog>().unwrap(), &Dog { name: "Rex".into() });
+    assert_eq!(
+        map.get(k2).unwrap().downcast_ref::<String>().unwrap(),
+        "hello"
+    );
+    assert_eq!(
+        map.get(k3).unwrap().downcast_ref::<Dog>().unwrap(),
+        &Dog { name: "Rex".into() }
+    );
 }
 
 // ─── Get with concrete key ─────────────────────────────────────────────────
@@ -62,7 +72,10 @@ fn remove_with_concrete_key() {
     let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let dog_key: StableCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
     let removed = map.remove(dog_key).unwrap();
-    assert_eq!(removed.downcast_ref::<Dog>().unwrap(), &Dog { name: "Rex".into() });
+    assert_eq!(
+        removed.downcast_ref::<Dog>().unwrap(),
+        &Dog { name: "Rex".into() }
+    );
 }
 
 // ─── Stale key ─────────────────────────────────────────────────────────────
@@ -260,7 +273,10 @@ fn insert_sized_key_can_upcast_to_dyn_any() {
     let (dog_key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
     let dyn_key = dog_key.upcast::<dyn Any>();
     let val = map.get(dyn_key).unwrap();
-    assert_eq!(val.downcast_ref::<Dog>().unwrap(), &Dog { name: "Rex".into() });
+    assert_eq!(
+        val.downcast_ref::<Dog>().unwrap(),
+        &Dog { name: "Rex".into() }
+    );
 }
 
 #[test]
@@ -295,14 +311,18 @@ fn get_by_inner_key() {
 }
 
 #[test]
-fn get_mut_by_inner_key() {
+fn get_by_inner_key_mut() {
     let mut map: CastMap = CastMap::new();
     let (key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
     let inner = key.inner_key();
-    let val = map.get_mut_by_inner_key(inner).unwrap();
+    let val = map.get_by_inner_key_mut(inner).unwrap();
     val.downcast_mut::<Dog>().unwrap().name = "New".into();
     assert_eq!(
-        map.get_by_inner_key(inner).unwrap().downcast_ref::<Dog>().unwrap().name,
+        map.get_by_inner_key(inner)
+            .unwrap()
+            .downcast_ref::<Dog>()
+            .unwrap()
+            .name,
         "New"
     );
 }
@@ -549,11 +569,15 @@ trait Animal: Any {
 }
 
 impl Animal for Dog {
-    fn speak(&self) -> &str { "woof" }
+    fn speak(&self) -> &str {
+        "woof"
+    }
 }
 
 impl Animal for Cat {
-    fn speak(&self) -> &str { "meow" }
+    fn speak(&self) -> &str {
+        "meow"
+    }
 }
 
 #[test]
@@ -699,7 +723,11 @@ fn upcast_key_works_for_get_mut() {
     let mut map: CastMap = CastMap::new();
     let (sized_key, _) = map.insert_sized(Box::new(Dog { name: "Old".into() }));
     let dyn_key = sized_key.upcast::<dyn Any>();
-    map.get_mut(dyn_key).unwrap().downcast_mut::<Dog>().unwrap().name = "New".into();
+    map.get_mut(dyn_key)
+        .unwrap()
+        .downcast_mut::<Dog>()
+        .unwrap()
+        .name = "New".into();
     assert_eq!(map.get(sized_key).unwrap().name, "New");
 }
 
