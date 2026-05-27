@@ -18,72 +18,30 @@ Great for patterns that rely on shared mutability on a single thread, and remove
 This shows the main selling point: **insert with `&self`** and indirect references via keys.
 
 ```rust
-use std::cell::{Cell, RefCell};
-
 use stable_gen_map::key::DefaultKey;
 use stable_gen_map::stable_gen_map::StableGenMap;
 
-#[derive(Debug)]
-struct Entity {
-    key: DefaultKey,
-    name: String,
-    parent: Cell<Option<DefaultKey>>,
-    children: RefCell<Vec<DefaultKey>>,
-}
-
-impl Entity {
-    /// Add a child *from this entity* using only `&self` and `&StableGenMap`.
-    /// Returns both the child's key and a stable `&Entity` reference.
- 
-    fn add_child<'m>(
-        &self,
-        map: &'m StableGenMap<DefaultKey, Entity>,
-        child_name: &str,
-    ) -> (DefaultKey, &'m Entity) {
-        let parent_key = self.key;
-
-        // No &mut reference to map required for the insert
-        let (child_key, child_ref) = map.insert_with_key(|k| Entity {
-            key: k,
-            name: child_name.to_string(),
-            parent: Cell::new(Some(parent_key)),
-            children: RefCell::new(Vec::new()),
-        });
-
-        // Record the relationship using interior mutability inside the value.
-        // no need to reget the parent, since the insert did not need &mut
-        self.children.borrow_mut().push(child_key);
-
-        (child_key, child_ref)
-    }
-}
-
 fn main() {
-    let mut map: StableGenMap<DefaultKey, Entity> = StableGenMap::new();
+  let map = StableGenMap::<DefaultKey, String>::new();
 
-    // Create the root entity. We get an `&Entity`, not `&mut Entity`.
-    let (root_key, root) = map.insert_with_key(|k| Entity {
-        key: k,
-        name: "root".into(),
-        parent: Cell::new(None),
-        children: RefCell::new(Vec::new()),
-    });
+  // insert() only needs &self, and returns a stable &T
+  let (key_a, ref_a) = map.insert("hello".into());
+  let (key_b, ref_b) = map.insert("world".into());
 
-    // Root spawns a child using only `&self` + `&StableGenMap`.
-    let (child_key, child) = root.add_child(&map, "child");
+  // Both references are alive simultaneously — no borrow conflict
+  println!("{ref_a} {ref_b}");
 
-    // That child spawns a grandchild, again only `&self` + `&StableGenMap`.
-    let (grandchild_key, grandchild) = child.add_child(&map, "grandchild");
+  // References survive further inserts, even if the backing Vec reallocates
+  for i in 0..1000 {
+    map.insert(format!("item {i}"));
+  }
+  println!("still valid: {ref_a} {ref_b}");
 
-    // Everything stays wired up via generational keys.
-    assert_eq!(root.children.borrow().as_slice(), &[child_key]);
-    assert_eq!(child.parent.get(), Some(root_key));
-    assert_eq!(child.children.borrow().as_slice(), &[grandchild_key]);
-    assert_eq!(grandchild.parent.get(), Some(child_key));
-
-    // And the references we got from `add_child` are the same as `get(...)`.
-    assert!(std::ptr::eq(child, map.get(child_key).unwrap()));
-    assert!(std::ptr::eq(grandchild, map.get(grandchild_key).unwrap()));
+  // Removal needs &mut self — the borrow checker enforces
+  // that no &T references are alive when you remove
+  let mut map = map;
+  assert_eq!(map.remove(key_a), Some("hello".into()));
+  assert!(map.get(key_a).is_none()); // stale key returns None
 }
 ```
 
