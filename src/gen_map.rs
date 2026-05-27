@@ -526,19 +526,14 @@ impl<C: SlotStorage> GenMap<C> {
     #[inline]
     pub fn clear(&mut self) {
         let slots_len = self.slots.get_mut().len();
-
         for idx in 0..slots_len {
-            let generation = unsafe {
-                self.slots
-                    .get_mut()
-                    .get_unchecked_mut(idx)
-                    .get_mut()
-                    .generation
-            };
-
+            let slot = unsafe { self.slots.get_mut().get_unchecked_mut(idx).get_mut() };
+            if !slot.is_occupied() {
+                continue;
+            }
             let key = KeyOfStorage::<C>::from(KeyData {
                 idx: IdxOfStorage::<C>::from_usize(idx),
-                generation: unsafe { generation.try_into().unwrap_unchecked() },
+                generation: unsafe { slot.generation.try_into().unwrap_unchecked() },
             });
             let _ = self.remove(key);
         }

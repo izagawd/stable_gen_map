@@ -44,6 +44,30 @@ fn stable_gen_map_into_iter_handles_max_live_generation_without_panicking() {
 }
 
 #[test]
+fn clear_after_generation_overflow_does_not_panic() {
+    let mut map = StableGenMap::<TinyGenKey, u32>::new();
+
+    // Cycle a single slot until its generation overflows and retires (gen = 0)
+    loop {
+        let (key, _) = map.insert(42);
+        if key.data().generation() == u8::MAX {
+            map.remove(key); // this overflow-retires the slot (sets gen to 0)
+            break;
+        }
+        map.remove(key);
+    }
+
+    // Insert a second value so the map isn't empty
+    let (k2, _) = map.insert(99);
+    assert_eq!(map.len(), 1);
+
+    // clear() must not UB/panic when iterating over the retired slot
+    map.clear();
+    assert_eq!(map.len(), 0);
+    assert!(map.get(k2).is_none());
+}
+
+#[test]
 fn stale_key_after_generation_overflow_is_not_accepted_stable_deref_gen_map() {
     let mut map = BoxStableDerefMap::<TinyDerefGenKey, u32>::new();
     let mut next_value;
