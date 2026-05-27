@@ -32,12 +32,12 @@ macro_rules! impl_key_piece {
                 fn into_usize(self) -> usize {
                     self as usize // converting to usize is ok, since it is impossible for self to be higher than usize when used within this crate,
                     // unless a dev uses unsafe magic
-                    //  It is up to the dev making the key size to consider if their choice of Gen/Idx type might go above usize. it wont cause UB if they dont.
+                    //  It is up to the dev making the key size to consider if their choice of Gen/Idx type might go above usize. it won't cause UB if they don't.
                     // Just bugs, and it will only happen if someone decides to create a key outside insert
                 }
                 fn from_usize(v: usize) -> Self {
                     Self::try_from(v).unwrap_or_else(|_| panic!("")) // this should panic.
-                    // if the value of usize is higher than the max value of self, using "as" to cast will cap it to the max value of self, which may cause UB, bugs
+                    // if the value of usize is higher than the max value of self, using "as" to cast will cap it to the max value of self, which may cause bugs and/or UB
                 }
             }
         )*
