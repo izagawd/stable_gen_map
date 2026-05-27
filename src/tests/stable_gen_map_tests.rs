@@ -2,7 +2,6 @@ use crate::key::DefaultKey;
 use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
 use crate::stable_gen_map::StableGenMap;
-use std::cell::Cell;
 use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -358,7 +357,7 @@ fn drop_is_called_exactly_once_per_element() {
 }
 #[test]
 fn into_iter_consumes_and_yields_owned_values() {
-    let mut map: Map<i32> = StableGenMap::new();
+    let map: Map<i32> = StableGenMap::new();
 
     for i in 0..40 {
         let (_k, _) = map.insert(i);
@@ -628,10 +627,6 @@ fn get_returns_none_during_insert_even_while_resizing() {
     assert_eq!(r.as_str(), "done");
 }
 
-fn idx_of(k: DefaultKey) -> <DefaultKey as Key>::Idx {
-    k.key_data.idx
-}
-
 // 4. Removing a key invalidates it forever, even after lots of inserts
 //    and slot growth that reuse free slots.
 #[test]
@@ -747,7 +742,7 @@ fn remove_nonexistent_returns_none() {
 fn drops_happen_on_remove_and_on_map_drop() {
     static DROPS: AtomicUsize = AtomicUsize::new(0);
 
-    struct CountDrop(&'static AtomicUsize, u32);
+    struct CountDrop(&'static AtomicUsize);
     impl Drop for CountDrop {
         fn drop(&mut self) {
             self.0.fetch_add(1, Ordering::SeqCst);
@@ -758,10 +753,10 @@ fn drops_happen_on_remove_and_on_map_drop() {
     DROPS.store(0, Ordering::SeqCst);
 
     let mut map = StableGenMap::<DefaultKey, CountDrop>::new();
-    let (k1, _) = map.insert(CountDrop(drops, 1));
+    let (k1, _) = map.insert(CountDrop(drops));
 
-    let (_k2, _) = map.insert(CountDrop(drops, 2));
-    let (_k3, _) = map.insert(CountDrop(drops, 3));
+    let (_k2, _) = map.insert(CountDrop(drops));
+    let (_k3, _) = map.insert(CountDrop(drops));
 
     // Removing one should drop exactly one.
     assert_eq!(map.remove(k1).is_some(), true);

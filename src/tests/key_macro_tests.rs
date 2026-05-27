@@ -19,11 +19,6 @@ crate::new_key_type! {
     struct KeyB;
 }
 
-// Public visibility
-crate::new_key_type! {
-    pub struct PubKey;
-}
-
 // Custom types with pub visibility
 crate::new_key_type! {
     pub struct PubSmallKey(u16, u16);

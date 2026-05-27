@@ -175,7 +175,7 @@ impl<'a, C: SlotStorage> Drop for FreeGuard<'a, C> {
             {
                 slot.generation = checked_add;
                 let old_head = self.map.next_free.get();
-                unsafe { slot.storage.set_vacant(old_head) };
+                slot.storage.set_vacant(old_head);
                 self.map.next_free.set(Some(self.idx));
             }
         }
@@ -195,6 +195,12 @@ impl<C: SlotStorage> GenMap<C> {
             next_free: Cell::new(None),
             num_elements: Cell::new(0),
         }
+    }
+    
+    /// Returns true if the map is empty
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Creates a new map with the given pre-allocated capacity.
@@ -470,16 +476,12 @@ impl<C: SlotStorage> GenMap<C> {
         let next_free = args.next_free;
         let key_data = args.key.data();
 
-        if DO_GENERATION_CHECK {
-            if slot.generation != key_data.generation {
+        if DO_GENERATION_CHECK
+            && slot.generation != key_data.generation {
                 return None;
             }
-        }
 
-        let value = match slot.take_occupied() {
-            Some(v) => v,
-            None => return None,
-        };
+        let value = slot.take_occupied()?;
 
         num_elements.set(num_elements.get() - 1);
 
@@ -747,7 +749,7 @@ impl<'a, C: SlotStorage> Iterator for IterMut<'a, C> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(slot_cell) = self.inner.next() {
+        for slot_cell in self.inner.by_ref() {
             let idx = self.idx;
             self.idx += 1;
 
@@ -868,7 +870,7 @@ impl<C: SlotStorage> Iterator for IntoIter<C> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(mut slot_cell) = self.inner.next() {
+        for mut slot_cell in self.inner.by_ref() {
             let idx = self.idx;
             self.idx += 1;
 

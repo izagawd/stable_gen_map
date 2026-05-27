@@ -1,4 +1,3 @@
-#![allow(warnings)]
 #![cfg_attr(feature = "castable", feature(ptr_metadata))]
 #![cfg_attr(feature = "castable", feature(coerce_unsized))]
 #![cfg_attr(feature = "castable", feature(unsize))]

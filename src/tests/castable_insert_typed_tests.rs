@@ -1,4 +1,4 @@
-use crate::cast_key::{CastKey, StableCastKey};
+use crate::cast_key::StableCastKey;
 use crate::key::DefaultKey;
 use crate::stable_cast_map::StableBoxCastMap;
 

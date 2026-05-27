@@ -11,7 +11,6 @@ fn clone_empty_map() {
     let c = m.clone();
     assert_eq!(c.len(), 0);
 }
-use std::rc::Rc;
 
 // ...
 
@@ -149,7 +148,7 @@ mod clone_efficiently_stable_tests {
         let p1 = map.get(k1).unwrap() as *const String;
         let p3 = map.get(k3).unwrap() as *const String;
 
-        let mut clone = map.clone_efficiently_mut();
+        let clone = map.clone_efficiently_mut();
 
         // Same logical contents.
         assert_eq!(clone.len(), len_before);
@@ -192,7 +191,7 @@ mod clone_efficiently_stable_tests {
         assert_eq!(*removed, 20);
         let len_before = map.len();
 
-        let mut clone = map.clone_efficiently_mut();
+        let clone = map.clone_efficiently_mut();
 
         assert_eq!(clone.len(), len_before);
         assert_eq!(clone.get(k1), Some(&10));

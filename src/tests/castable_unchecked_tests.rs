@@ -1,5 +1,5 @@
-use crate::cast_key::{CastKey, StableCastKey};
-use crate::key::{DefaultKey, Key};
+use crate::cast_key::StableCastKey;
+use crate::key::DefaultKey;
 use crate::stable_cast_map::StableBoxCastMap;
 use crate::unsafe_cast_map::UnsafeBoxCastMap;
 use std::any::Any;

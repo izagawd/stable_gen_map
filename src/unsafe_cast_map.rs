@@ -16,7 +16,7 @@ use std::ptr::Pointee;
 
 use crate::cast_key::CastKey;
 use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
-use crate::key::{DefaultKey, Key};
+use crate::key::Key;
 use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
 
@@ -81,6 +81,12 @@ where
         Self {
             inner: GenMap::new(),
         }
+    }
+
+    /// Returns true if the map is empty
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 
     /// Creates a new map with the given pre-allocated capacity.
@@ -509,7 +515,7 @@ where
         C::Stored: DerefMut,
     {
         self.inner.retain(|inner_key, stored| {
-            let reference: &C::Output = &**stored;
+            let reference: &C::Output = stored;
             let patched = to_castable::<C>(inner_key, reference);
             f(patched, stored.deref_mut())
         })

@@ -20,7 +20,7 @@ pub unsafe trait DerefGenMapPromise: Deref {}
 unsafe impl<T: ?Sized> DerefGenMapPromise for Box<T> {}
 unsafe impl<T: ?Sized> DerefGenMapPromise for Rc<T> {}
 unsafe impl<T: ?Sized> DerefGenMapPromise for Arc<T> {}
-unsafe impl<'a, T: ?Sized> DerefGenMapPromise for &'a T {}
+unsafe impl<T: ?Sized> DerefGenMapPromise for &T {}
 
 // ─── DerefSlot ───────────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise> SlotStorage for DerefSlot<K, Ptr> {
 
     #[inline]
     unsafe fn stored_mut(&mut self) -> &mut Ptr {
-        &mut *self.0.occupied
+        &mut self.0.occupied
     }
 
     #[inline]
@@ -132,7 +132,7 @@ unsafe impl<T: Clone> SmartPtrCloneable for Box<T> {
         Some(Box::new(reference.clone()))
     }
 }
-unsafe impl<'a, T: ?Sized> SmartPtrCloneable for &'a T {
+unsafe impl<T: ?Sized> SmartPtrCloneable for &T {
     const KIND: SmartPtrKind = SmartPtrKind::Shared;
     unsafe fn clone_from_reference(_: &T) -> Option<Self> {
         None

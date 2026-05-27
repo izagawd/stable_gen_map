@@ -125,12 +125,12 @@ fn deref_get_by_index_only_matches_key_get() {
 fn can_clone_deref_shared_items_even_if_dereffed_value_doesnt_implement_clone() {
     struct Foo; // foo doesnt implement clone
 
-    let mut deref = StableDerefMap::<DefaultKey, _>::new();
+    let deref = StableDerefMap::<DefaultKey, _>::new();
     deref.insert(Rc::new(Foo));
     deref.insert(Rc::new(Foo));
     let _ = deref.clone();
 
-    let mut deref = StableDerefMap::<DefaultKey, _>::new();
+    let deref = StableDerefMap::<DefaultKey, _>::new();
     deref.insert(Arc::new(Foo));
     deref.insert(Arc::new(Foo));
     let _ = deref.clone();
@@ -176,7 +176,7 @@ fn deref_drop_is_called_exactly_once_per_element() {
 }
 #[test]
 fn stable_into_iter_consumes_and_yields_boxes() {
-    let mut map: StableMap<String> = BoxStableDerefMap::new();
+    let map: StableMap<String> = BoxStableDerefMap::new();
 
     for i in 0..3 {
         let (_k, _) = map.insert(Box::new(format!("v{}", i)));
@@ -402,7 +402,6 @@ fn stable_try_insert_with_key_panic_reuses_reserved_new_slot() {
 
 use crate::key::DefaultKey;
 use crate::stable_deref_map::{BoxStableDerefMap, StableDerefMap};
-use std::cell::Cell;
 use std::fmt::Display;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -628,7 +627,6 @@ fn drops_happen_on_remove_and_on_map_drop() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::key::DefaultKey;
     use crate::stable_deref_map::BoxStableDerefMap;
     use std::collections::HashSet;

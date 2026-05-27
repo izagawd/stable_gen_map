@@ -20,7 +20,7 @@ pub unsafe trait KeyPiece:
     + Rem<Output = Self>
     + CheckedAdd
 {
-    fn into_usize(self: Self) -> usize;
+    fn into_usize(self) -> usize;
 
     fn from_usize(v: usize) -> Self;
 }

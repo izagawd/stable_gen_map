@@ -93,7 +93,7 @@ mod clone_efficiently_tests {
         let p1 = map.get(k_keep_1).unwrap() as *const String;
         let p2 = map.get(k_keep_2).unwrap() as *const String;
 
-        let mut clone = map.clone_efficiently_mut();
+        let clone = map.clone_efficiently_mut();
 
         assert_eq!(clone.len(), len_before);
         assert_eq!(clone.len(), map.len());
@@ -140,7 +140,7 @@ mod clone_efficiently_tests {
         let len_before = map.len();
         assert_eq!(len_before, 2);
 
-        let mut clone = map.clone_efficiently_mut();
+        let clone = map.clone_efficiently_mut();
         assert_eq!(clone.len(), len_before);
 
         // k2 should be invalid in both.

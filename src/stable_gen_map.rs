@@ -1,8 +1,7 @@
 use crate::gen_map::{GenMap, Slot};
-use crate::key::{is_occupied_by_generation, Key, KeyData};
+use crate::key::{is_occupied_by_generation, Key};
 use crate::slot_item::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
-use num_traits::{CheckedAdd, One, Zero};
-use std::cell::{Cell, UnsafeCell};
+use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
 
 // ─── BoxedSlot ───────────────────────────────────────────────────────────────
@@ -44,12 +43,12 @@ unsafe impl<K: Key, T> SlotStorage for BoxedSlot<K, T> {
 
     #[inline]
     unsafe fn ref_output(&self) -> &T {
-        &*self.0.occupied
+        &self.0.occupied
     }
 
     #[inline]
     unsafe fn stored_mut(&mut self) -> &mut T {
-        &mut *self.0.occupied
+        &mut self.0.occupied
     }
 
     #[inline]
@@ -61,7 +60,7 @@ unsafe impl<K: Key, T> SlotStorage for BoxedSlot<K, T> {
 unsafe impl<K: Key, T> SlotStorageMutOutput for BoxedSlot<K, T> {
     #[inline]
     unsafe fn mut_output(&mut self) -> &mut T {
-        &mut *self.0.occupied
+        &mut self.0.occupied
     }
 }
 

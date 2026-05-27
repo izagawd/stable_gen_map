@@ -44,7 +44,7 @@ pub struct DefaultKey {
 
 impl From<KeyData<u32, u32>> for DefaultKey {
     fn from(key_data: KeyData<u32, u32>) -> Self {
-        DefaultKey { key_data: key_data }
+        DefaultKey { key_data }
     }
 }
 
