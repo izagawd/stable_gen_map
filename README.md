@@ -24,11 +24,13 @@ use stable_gen_map::stable_gen_map::StableGenMap;
 fn main() {
   let map = StableGenMap::<DefaultKey, String>::new();
 
-  // insert() only needs &self, and returns a stable &T
-  let (key_a, ref_a) = map.insert("hello".into());
-  let (key_b, ref_b) = map.insert("world".into());
+  // insert() only needs &self
+  let key_a = map.insert("hello".into());
+  let key_b = map.insert("world".into());
 
-  // Both references are alive simultaneously — no borrow conflict
+  // get() also only needs &self, so references coexist with further inserts
+  let ref_a = map.get(key_a).unwrap();
+  let ref_b = map.get(key_b).unwrap();
   println!("{ref_a} {ref_b}");
 
   // References survive further inserts, even if the backing Vec reallocates
@@ -49,9 +51,9 @@ fn main() {
 
 ## What you get
 
-- `insert(&self, value: T) -> (K, &T)`
-- `insert_with_key(&self, f: impl FnOnce(K) -> T) -> (K, &T)`
-- `try_insert_with_key(&self, f: impl FnOnce(K) -> Result<T, E>) -> Result<(K, &T), E>`
+- `insert(&self, value: T) -> K`
+- `insert_with_key(&self, f: impl FnOnce(K) -> T) -> K`
+- `try_insert_with_key(&self, f: impl FnOnce(K) -> Result<T, E>) -> Result<K, E>`
 
 All of these only need `&self`, not `&mut self`.
 
@@ -118,7 +120,7 @@ Rough comparison:
 
 | Crate                             | Insert API                              |             Removals                           |    Main focus            |
 |----------------------------------|------------------------------------------|----------------------------|-------------------------------|
-| `stable_gen_map::StableGenMap`   | `fn insert(&self, T) -> (K, &T)`         | Yes (But with &mut this time) | Stable `&T` across growth, single-threaded      |
+| `stable_gen_map::StableGenMap`   | `fn insert(&self, T) -> K`               | Yes (But with &mut this time) | Stable `&T` across growth, single-threaded      |
 | `slotmap::SlotMap`               | `fn insert(&mut self, V) -> K`           | Yes (with &mut)            | General-purpose generational map                |
 | `generational_arena::Arena`      | `fn insert(&mut self, T) -> Index`       | Yes (with &mut)            | Simple arena with deletion                      |
 | `slab::Slab`                     | `fn insert(&mut self, T) -> usize`       | Yes (with &mut)            | Reusable indices, pre-allocated storage         |
@@ -175,9 +177,8 @@ fn main() {
     let map: CastMap = CastMap::new();
 
     // Insert a concrete type into a dyn Any map.
-    let (dog_key, dog_ref) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let dog_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
     // dog_key: StableCastKey<Dog>
-    // dog_ref: &Dog
 
     // Upcast the key when you need the erased form.
     let dyn_key: StableCastKey<dyn Any> = dog_key.upcast::<dyn Any>();
@@ -215,7 +216,7 @@ struct Dog { name: String }
 Since `StableCastKey` stores pointer metadata directly (not inside a `NonNull`), implicit `CoerceUnsized` is not available. Instead, use the `.upcast()` method:
 
 ```rust
-let concrete_key: StableCastKey<Dog> = map.insert_sized(Box::new(dog)).0;
+let concrete_key: StableCastKey<Dog> = map.insert_sized(Box::new(dog));
 let erased_key: StableCastKey<dyn Any> = concrete_key.upcast::<dyn Any>();
 ```
 
