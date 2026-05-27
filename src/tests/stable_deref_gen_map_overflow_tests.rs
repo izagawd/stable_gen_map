@@ -19,7 +19,7 @@ fn stable_gen_map_into_iter_handles_max_live_generation_without_panicking() {
 
     loop {
         let next_value = map.len() as u32;
-        let (key, _) = map.insert(next_value);
+        let key = map.insert(next_value);
 
         if key.data().generation() == u8::MAX {
             break;
@@ -49,7 +49,7 @@ fn clear_after_generation_overflow_does_not_panic() {
 
     // Cycle a single slot until its generation overflows and retires (gen = 0)
     loop {
-        let (key, _) = map.insert(42);
+        let key = map.insert(42);
         if key.data().generation() == u8::MAX {
             map.remove(key); // this overflow-retires the slot (sets gen to 0)
             break;
@@ -58,7 +58,7 @@ fn clear_after_generation_overflow_does_not_panic() {
     }
 
     // Insert a second value so the map isn't empty
-    let (k2, _) = map.insert(99);
+    let k2 = map.insert(99);
     assert_eq!(map.len(), 1);
 
     // clear() must not UB/panic when iterating over the retired slot
@@ -73,7 +73,7 @@ fn stale_key_after_generation_overflow_is_not_accepted_stable_deref_gen_map() {
     let mut next_value;
     let overflow_key = loop {
         next_value = map.len() as u32;
-        let (key, _) = map.insert(Box::new(next_value));
+        let key = map.insert(Box::new(next_value));
 
         if key.data().generation() == u8::MAX {
             break key;
@@ -91,7 +91,8 @@ fn stale_key_after_generation_overflow_is_not_accepted_stable_deref_gen_map() {
     assert!(map.get_mut(overflow_key).is_none());
 
     // Ensure reinsertion doesn't revive it
-    let (_new_key, value_ref) = map.insert(Box::new(999));
+    let new_key = map.insert(Box::new(999));
+    let value_ref = map.get(new_key).unwrap();
     assert_eq!(*value_ref, 999);
 
     assert!(map.get(overflow_key).is_none());

@@ -20,9 +20,9 @@ fn clone_preserves_live_entries_and_len_and_allocates_new_boxes() {
     // type StableMap<T> = BoxStableDerefMap<DefaultKey, T>;
     let mut map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-    let (k1, _) = map.insert(Box::new(10));
-    let (k2, _) = map.insert(Box::new(20));
-    let (k3, _) = map.insert(Box::new(30));
+    let k1 = map.insert(Box::new(10));
+    let k2 = map.insert(Box::new(20));
+    let k3 = map.insert(Box::new(30));
 
     // Remove one entry to exercise the free-list state.
     assert!(map.remove(k2).is_some());
@@ -72,7 +72,7 @@ fn clone_with_rc_clones_rc_not_inner_value() {
     // clone the Rc (bump refcount), not deep-clone the inner String.
     let map: BoxStableDerefMap<DefaultKey, Rc<String>> = BoxStableDerefMap::new();
 
-    let (k, _) = map.insert(Box::new(Rc::new("hello".to_string())));
+    let k = map.insert(Box::new(Rc::new("hello".to_string())));
 
     // One Rc in the map.
     assert_eq!(
@@ -134,9 +134,9 @@ mod clone_efficiently_stable_tests {
     fn clone_efficiently_copies_all_live_entries_and_not_aliasing() {
         let mut map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
 
-        let (k1, _) = map.insert(Box::new("one".to_owned()));
-        let (k2, _) = map.insert(Box::new("two".to_owned()));
-        let (k3, _) = map.insert(Box::new("three".to_owned()));
+        let k1 = map.insert(Box::new("one".to_owned()));
+        let k2 = map.insert(Box::new("two".to_owned()));
+        let k3 = map.insert(Box::new("three".to_owned()));
 
         // Create a hole in the free list.
         let removed = map.remove(k2).unwrap();
@@ -182,9 +182,9 @@ mod clone_efficiently_stable_tests {
     fn clone_efficiently_preserves_free_list_structure_but_independent() {
         let mut map: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
 
-        let (k1, _) = map.insert(Box::new(10));
-        let (k2, _) = map.insert(Box::new(20)); // we'll remove this one
-        let (k3, _) = map.insert(Box::new(30));
+        let k1 = map.insert(Box::new(10));
+        let k2 = map.insert(Box::new(20)); // we'll remove this one
+        let k3 = map.insert(Box::new(30));
 
         // Remove middle slot to seed the free list.
         let removed = map.remove(k2).unwrap();
@@ -199,9 +199,9 @@ mod clone_efficiently_stable_tests {
         assert!(clone.get(k2).is_none());
 
         // Insert into original: should reuse the freed slot.
-        let (new_k_orig, _) = map.insert(Box::new(99));
+        let new_k_orig = map.insert(Box::new(99));
         // Insert into clone: should reuse the *same* index in the clone.
-        let (new_k_clone, _) = clone.insert(Box::new(99));
+        let new_k_clone = clone.insert(Box::new(99));
 
         let kd_old = k2.data();
         let kd_orig = new_k_orig.data();
@@ -231,9 +231,9 @@ mod clone_efficiently_stable_tests {
 fn clone_basic_contents_equal_but_independent() {
     let mut m: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
 
-    let (k1, _) = m.insert(Box::new(10));
-    let (k2, _) = m.insert(Box::new(20));
-    let (k3, _) = m.insert(Box::new(30));
+    let k1 = m.insert(Box::new(10));
+    let k2 = m.insert(Box::new(20));
+    let k3 = m.insert(Box::new(30));
 
     assert_eq!(m.len(), 3);
 
@@ -252,7 +252,7 @@ fn clone_basic_contents_equal_but_independent() {
     assert_eq!(c.get(k2), Some(&20));
 
     // inserting into original doesn't affect clone
-    let (k4, _) = m.insert(Box::new(40));
+    let k4 = m.insert(Box::new(40));
     assert_eq!(m.get(k4), Some(&40));
     assert_eq!(c.get(k4), None);
 }
@@ -261,9 +261,9 @@ fn clone_basic_contents_equal_but_independent() {
 fn clone_with_holes_preserves_logical_state() {
     let mut m: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
 
-    let (k1, _) = m.insert(Box::new(1));
-    let (k2, _) = m.insert(Box::new(2));
-    let (k3, _) = m.insert(Box::new(3));
+    let k1 = m.insert(Box::new(1));
+    let k2 = m.insert(Box::new(2));
+    let k3 = m.insert(Box::new(3));
 
     // create a hole
     let removed = m.remove(k2).unwrap();
@@ -273,7 +273,7 @@ fn clone_with_holes_preserves_logical_state() {
     assert_eq!(m.get(k2), None);
 
     // possibly reuse the hole
-    let (k4, _) = m.insert(Box::new(4));
+    let k4 = m.insert(Box::new(4));
     assert_eq!(m.len(), 3);
 
     let c = m.clone();
@@ -324,11 +324,11 @@ fn stable_clone_handles_reentrant_t_clone_two() {
     // Let Reentrant::clone know which map to mutate.
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
 
-    let (k1, _) = m.insert(Box::new(Reentrant { val: 1 }));
-    let (k2, _) = m.insert(Box::new(Reentrant { val: 2 }));
+    let k1 = m.insert(Box::new(Reentrant { val: 1 }));
+    let k2 = m.insert(Box::new(Reentrant { val: 2 }));
 
-    let (k3, _) = m.insert(Box::new(Reentrant { val: 1 }));
-    let (k4, _) = m.insert(Box::new(Reentrant { val: 2 }));
+    let k3 = m.insert(Box::new(Reentrant { val: 1 }));
+    let k4 = m.insert(Box::new(Reentrant { val: 2 }));
 
     // making two slots initialized  but free (THIS IS VERY IMPORTANT)
     m.remove(k3);
@@ -375,8 +375,8 @@ fn stable_clone_handles_reentrant_t_clone() {
     // Let Reentrant::clone know which map to mutate.
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
 
-    let (k1, _) = m.insert(Box::new(Reentrant { val: 1 }));
-    let (k2, _) = m.insert(Box::new(Reentrant { val: 2 }));
+    let k1 = m.insert(Box::new(Reentrant { val: 1 }));
+    let k2 = m.insert(Box::new(Reentrant { val: 2 }));
 
     // Before clone: 2 entries
     assert_eq!(m.len(), 2);

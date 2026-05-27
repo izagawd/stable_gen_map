@@ -92,9 +92,9 @@ fn drain_empty_map() {
 #[test]
 fn drain_yields_all_elements() {
     let mut map: Map = StableDerefMap::new();
-    let (k1, _) = map.insert(Box::new(10));
-    let (k2, _) = map.insert(Box::new(20));
-    let (k3, _) = map.insert(Box::new(30));
+    let k1 = map.insert(Box::new(10));
+    let k2 = map.insert(Box::new(20));
+    let k3 = map.insert(Box::new(30));
 
     let mut items: Vec<_> = map.drain().collect();
     items.sort_by_key(|(_, v)| **v);
@@ -109,8 +109,8 @@ fn drain_yields_all_elements() {
 #[test]
 fn drain_empties_map() {
     let mut map: Map = StableDerefMap::new();
-    let (k1, _) = map.insert(Box::new(1));
-    let (k2, _) = map.insert(Box::new(2));
+    let k1 = map.insert(Box::new(1));
+    let k2 = map.insert(Box::new(2));
 
     let _ = map.drain();
 
@@ -122,8 +122,8 @@ fn drain_empties_map() {
 #[test]
 fn drain_invalidates_old_keys() {
     let mut map: Map = StableDerefMap::new();
-    let (k1, _) = map.insert(Box::new(42));
-    let (k2, _) = map.insert(Box::new(99));
+    let k1 = map.insert(Box::new(42));
+    let k2 = map.insert(Box::new(99));
 
     let _: Vec<_> = map.drain().collect();
 
@@ -134,12 +134,12 @@ fn drain_invalidates_old_keys() {
 #[test]
 fn drain_allows_reuse_of_indices() {
     let mut map: Map = StableDerefMap::new();
-    let (k1, _) = map.insert(Box::new(100));
+    let k1 = map.insert(Box::new(100));
     let k1_data = k1.data();
 
     let _: Vec<_> = map.drain().collect();
 
-    let (k2, _) = map.insert(Box::new(200));
+    let k2 = map.insert(Box::new(200));
     let k2_data = k2.data();
 
     assert_eq!(k2_data.idx.into_usize(), k1_data.idx.into_usize());
@@ -151,9 +151,9 @@ fn drain_allows_reuse_of_indices() {
 #[test]
 fn drain_with_gaps_from_prior_removes() {
     let mut map: Map = StableDerefMap::new();
-    let (k1, _) = map.insert(Box::new(1));
-    let (_, _) = map.insert(Box::new(2));
-    let (k3, _) = map.insert(Box::new(3));
+    let k1 = map.insert(Box::new(1));
+    let _ = map.insert(Box::new(2));
+    let k3 = map.insert(Box::new(3));
 
     map.remove(k1);
 
@@ -170,9 +170,9 @@ fn drain_with_gaps_from_prior_removes() {
 #[test]
 fn drain_drop_cleans_up_remaining() {
     let mut map: Map = StableDerefMap::new();
-    let (k1, _) = map.insert(Box::new(1));
-    let (k2, _) = map.insert(Box::new(2));
-    let (k3, _) = map.insert(Box::new(3));
+    let k1 = map.insert(Box::new(1));
+    let k2 = map.insert(Box::new(2));
+    let k3 = map.insert(Box::new(3));
 
     {
         let mut drain = map.drain();
@@ -194,7 +194,7 @@ fn drain_then_insert_works() {
     let _: Vec<_> = map.drain().collect();
     assert_eq!(map.len(), 0);
 
-    let (k, _) = map.insert(Box::new(42));
+    let k = map.insert(Box::new(42));
     assert_eq!(map.len(), 1);
     assert_eq!(*map.get(k).unwrap(), 42);
 }
@@ -264,9 +264,9 @@ fn drain_with_gaps_drops_only_occupied_exactly_once() {
     let tracker = DropTracker::new();
 
     let mut map = StableDerefMap::<DefaultKey, Box<DropItem>>::new();
-    let (k0, _) = map.insert(tracker.make_item()); // id 0
-    let (_, _) = map.insert(tracker.make_item()); // id 1
-    let (_, _) = map.insert(tracker.make_item()); // id 2
+    let k0 = map.insert(tracker.make_item()); // id 0
+    let _ = map.insert(tracker.make_item()); // id 1
+    let _ = map.insert(tracker.make_item()); // id 2
 
     map.remove(k0);
     assert_eq!(tracker.total_dropped(), 1);

@@ -8,8 +8,8 @@ type Map = BoxStableDerefMap<DefaultKey, i32>;
 fn retain_keeps_all_and_can_mutate_values() {
     let mut map: Map = StableDerefMap::new();
 
-    let (k1, _) = map.insert(Box::new(10));
-    let (k2, _) = map.insert(Box::new(20));
+    let k1 = map.insert(Box::new(10));
+    let k2 = map.insert(Box::new(20));
 
     // Keep everything, mutate values.
     map.retain(|_, v| {
@@ -26,9 +26,9 @@ fn retain_keeps_all_and_can_mutate_values() {
 fn retain_removes_some_and_len_tracks() {
     let mut map: Map = StableDerefMap::new();
 
-    let (k1, _) = map.insert(Box::new(1));
-    let (k2, _) = map.insert(Box::new(2));
-    let (k3, _) = map.insert(Box::new(3));
+    let k1 = map.insert(Box::new(1));
+    let k2 = map.insert(Box::new(2));
+    let k3 = map.insert(Box::new(3));
 
     // Keep only even values.
     map.retain(|_, v| **v % 2 == 0);
@@ -45,7 +45,7 @@ fn retain_removes_some_and_len_tracks() {
 fn retain_respects_generations_and_reuses_indices() {
     let mut map: Map = StableDerefMap::new();
 
-    let (k1, _) = map.insert(Box::new(42));
+    let k1 = map.insert(Box::new(42));
     let k1_data = k1.data();
 
     // Remove k1 via retain.
@@ -56,7 +56,7 @@ fn retain_respects_generations_and_reuses_indices() {
     assert_eq!(map.len(), 0);
 
     // Insert a new element; it should reuse the same idx but with bumped generation.
-    let (k2, _) = map.insert(Box::new(99));
+    let k2 = map.insert(Box::new(99));
     let k2_data = k2.data();
 
     assert_eq!(k2_data.idx.into_usize(), k1_data.idx.into_usize());

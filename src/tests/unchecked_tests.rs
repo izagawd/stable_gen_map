@@ -7,9 +7,9 @@ use crate::stable_gen_map::StableGenMap;
 #[test]
 fn get_unchecked_returns_correct_value() {
     let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k1, _) = map.insert(10);
-    let (k2, _) = map.insert(20);
-    let (k3, _) = map.insert(30);
+    let k1 = map.insert(10);
+    let k2 = map.insert(20);
+    let k3 = map.insert(30);
 
     unsafe {
         assert_eq!(*map.get_unchecked(k1), 10);
@@ -23,7 +23,7 @@ fn get_unchecked_agrees_with_get() {
     let map: StableGenMap<DefaultKey, String> = StableGenMap::new();
     let mut keys = Vec::new();
     for i in 0..100 {
-        let (k, _) = map.insert(format!("item_{i}"));
+        let k = map.insert(format!("item_{i}"));
         keys.push(k);
     }
 
@@ -38,11 +38,11 @@ fn get_unchecked_agrees_with_get() {
 #[test]
 fn get_unchecked_after_remove_and_reinsert() {
     let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k1, _) = map.insert(100);
-    let (k2, _) = map.insert(200);
+    let k1 = map.insert(100);
+    let k2 = map.insert(200);
 
     map.remove(k1);
-    let (k3, _) = map.insert(300);
+    let k3 = map.insert(300);
 
     unsafe {
         assert_eq!(*map.get_unchecked(k2), 200);
@@ -55,7 +55,7 @@ fn get_unchecked_after_remove_and_reinsert() {
 #[test]
 fn get_unchecked_mut_returns_mutable_ref() {
     let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(42);
+    let k = map.insert(42);
 
     unsafe {
         *map.get_unchecked_mut(k) = 99;
@@ -66,8 +66,8 @@ fn get_unchecked_mut_returns_mutable_ref() {
 #[test]
 fn get_unchecked_mut_multiple_keys() {
     let mut map: StableGenMap<DefaultKey, String> = StableGenMap::new();
-    let (k1, _) = map.insert("hello".to_string());
-    let (k2, _) = map.insert("world".to_string());
+    let k1 = map.insert("hello".to_string());
+    let k2 = map.insert("world".to_string());
 
     unsafe {
         map.get_unchecked_mut(k1).push_str("!");
@@ -83,7 +83,7 @@ fn get_unchecked_mut_multiple_keys() {
 #[test]
 fn get_slot_returns_occupied_slot() {
     let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(42);
+    let k = map.insert(42);
     let idx = k.data().idx;
 
     unsafe {
@@ -97,7 +97,7 @@ fn get_slot_returns_occupied_slot() {
 #[test]
 fn get_slot_returns_vacant_slot_after_remove() {
     let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(42);
+    let k = map.insert(42);
     let idx = k.data().idx;
     map.remove(k);
 
@@ -121,7 +121,7 @@ fn get_slot_returns_none_for_out_of_bounds() {
 #[test]
 fn get_slot_ref_output_matches_get() {
     let map: StableGenMap<DefaultKey, String> = StableGenMap::new();
-    let (k, _) = map.insert("hello".to_string());
+    let k = map.insert("hello".to_string());
     let idx = k.data().idx;
 
     unsafe {
@@ -137,8 +137,8 @@ fn get_slot_ref_output_matches_get() {
 #[test]
 fn get_slot_unchecked_returns_same_as_get_slot() {
     let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k1, _) = map.insert(10);
-    let (k2, _) = map.insert(20);
+    let k1 = map.insert(10);
+    let k2 = map.insert(20);
     let idx1 = k1.data().idx;
     let idx2 = k2.data().idx;
 
@@ -158,7 +158,7 @@ fn get_slot_unchecked_returns_same_as_get_slot() {
 #[test]
 fn get_slot_unchecked_can_observe_vacant_slot() {
     let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(42);
+    let k = map.insert(42);
     let idx = k.data().idx;
     map.remove(k);
 
@@ -174,7 +174,7 @@ fn get_slot_unchecked_can_observe_vacant_slot() {
 #[test]
 fn get_slot_as_cell_returns_cell() {
     let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(42);
+    let k = map.insert(42);
     let idx = k.data().idx;
 
     unsafe {
@@ -198,7 +198,7 @@ fn get_slot_as_cell_none_for_out_of_bounds() {
 #[test]
 fn get_slot_as_cell_unchecked_matches() {
     let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(77);
+    let k = map.insert(77);
     let idx = k.data().idx;
 
     unsafe {
@@ -216,7 +216,7 @@ fn get_slot_as_cell_unchecked_matches() {
 #[test]
 fn get_slot_mut_can_modify_value() {
     let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(42);
+    let k = map.insert(42);
     let idx = k.data().idx;
 
     unsafe {
@@ -239,7 +239,7 @@ fn get_slot_mut_none_for_out_of_bounds() {
 #[test]
 fn get_slot_unchecked_mut_can_modify_value() {
     let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(42);
+    let k = map.insert(42);
     let idx = k.data().idx;
 
     unsafe {
@@ -254,7 +254,7 @@ fn get_slot_unchecked_mut_can_modify_value() {
 #[test]
 fn slot_storage_returns_slot_item_ref() {
     let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(55);
+    let k = map.insert(55);
     let idx = k.data().idx;
 
     unsafe {
@@ -267,7 +267,7 @@ fn slot_storage_returns_slot_item_ref() {
 #[test]
 fn slot_generation_mut_can_be_read() {
     let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let (k, _) = map.insert(55);
+    let k = map.insert(55);
     let idx = k.data().idx;
 
     unsafe {
@@ -285,7 +285,7 @@ fn get_unchecked_works_with_deref_map() {
     use crate::stable_deref_map::BoxStableDerefMap;
 
     let map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
-    let (k, _) = map.insert(Box::new("hello".to_string()));
+    let k = map.insert(Box::new("hello".to_string()));
 
     unsafe {
         assert_eq!(map.get_unchecked(k), "hello");
@@ -297,7 +297,7 @@ fn get_unchecked_mut_works_with_deref_map() {
     use crate::stable_deref_map::BoxStableDerefMap;
 
     let mut map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
-    let (k, _) = map.insert(Box::new("hello".to_string()));
+    let k = map.insert(Box::new("hello".to_string()));
 
     unsafe {
         map.get_unchecked_mut(k).push_str(" world");
@@ -310,7 +310,7 @@ fn get_slot_on_deref_map() {
     use crate::stable_deref_map::BoxStableDerefMap;
 
     let map: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
-    let (k, _) = map.insert(Box::new(77));
+    let k = map.insert(Box::new(77));
     let idx = k.data().idx;
 
     unsafe {
@@ -325,7 +325,7 @@ fn get_slot_mut_on_deref_map() {
     use crate::stable_deref_map::BoxStableDerefMap;
 
     let mut map: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
-    let (k, _) = map.insert(Box::new(77));
+    let k = map.insert(Box::new(77));
     let idx = k.data().idx;
 
     unsafe {

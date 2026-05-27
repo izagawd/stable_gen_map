@@ -32,9 +32,12 @@ mod snapshot_stablegen_tests {
     fn snapshot_contains_all_items_and_matches_get() {
         let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-        let (_k1, r1) = map.insert(Box::new(10));
-        let (_k2, r2) = map.insert(Box::new(20));
-        let (_k3, r3) = map.insert(Box::new(30));
+        let k1 = map.insert(Box::new(10));
+        let r1 = map.get(k1).unwrap();
+        let k2 = map.insert(Box::new(20));
+        let r2 = map.get(k2).unwrap();
+        let k3 = map.insert(Box::new(30));
+        let r3 = map.get(k3).unwrap();
 
         assert_eq!(*r1, 10);
         assert_eq!(*r2, 20);
@@ -61,14 +64,14 @@ mod snapshot_stablegen_tests {
     fn snapshot_ignores_future_inserts() {
         let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-        let (k1, _) = map.insert(Box::new(1));
-        let (k2, _) = map.insert(Box::new(2));
+        let k1 = map.insert(Box::new(1));
+        let k2 = map.insert(Box::new(2));
 
         let snap = map.snapshot();
         let refs = map.snapshot_refs();
         let keys = map.snapshot_keys();
 
-        let (k3, _) = map.insert(Box::new(3)); // after snapshots
+        let k3 = map.insert(Box::new(3)); // after snapshots
 
         assert_eq!(map.len(), 3);
         assert_eq!(snap.len(), 2);
@@ -90,9 +93,12 @@ mod snapshot_stablegen_tests {
 fn snapshot_contains_all_items_and_matches_get() {
     let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-    let (_k1, r1) = map.insert(Box::new(10));
-    let (_k2, r2) = map.insert(Box::new(20));
-    let (_k3, r3) = map.insert(Box::new(30));
+    let k1 = map.insert(Box::new(10));
+    let r1 = map.get(k1).unwrap();
+    let k2 = map.insert(Box::new(20));
+    let r2 = map.get(k2).unwrap();
+    let k3 = map.insert(Box::new(30));
+    let r3 = map.get(k3).unwrap();
 
     assert_eq!(*r1, 10);
     assert_eq!(*r2, 20);
@@ -117,12 +123,12 @@ fn snapshot_contains_all_items_and_matches_get() {
 fn snapshot_ignores_future_inserts() {
     let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-    let (k1, _) = map.insert(Box::new(1));
-    let (k2, _) = map.insert(Box::new(2));
+    let k1 = map.insert(Box::new(1));
+    let k2 = map.insert(Box::new(2));
 
     let snap = map.snapshot();
 
-    let (k3, _) = map.insert(Box::new(3)); // inserted after snapshot
+    let k3 = map.insert(Box::new(3)); // inserted after snapshot
 
     assert_eq!(map.len(), 3);
     assert_eq!(snap.len(), 2);

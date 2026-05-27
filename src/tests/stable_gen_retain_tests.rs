@@ -7,8 +7,8 @@ type Map = StableGenMap<DefaultKey, i32>;
 #[test]
 fn retain_keeps_all_in_map() {
     let mut map: Map = StableGenMap::new();
-    let (k1, _) = map.insert(10);
-    let (k2, _) = map.insert(20);
+    let k1 = map.insert(10);
+    let k2 = map.insert(20);
 
     map.retain(|_, v| {
         *v += 1;
@@ -24,9 +24,9 @@ fn retain_keeps_all_in_map() {
 fn retain_removes_some_in_map() {
     let mut map: Map = StableGenMap::new();
 
-    let (k1, _) = map.insert(1);
-    let (k2, _) = map.insert(2);
-    let (k3, _) = map.insert(3);
+    let k1 = map.insert(1);
+    let k2 = map.insert(2);
+    let k3 = map.insert(3);
 
     map.retain(|_, v| *v % 2 == 0);
 
@@ -40,14 +40,14 @@ fn retain_removes_some_in_map() {
 fn retain_reuses_indices_and_bumps_generation_in_map() {
     let mut map: Map = StableGenMap::new();
 
-    let (k1, _) = map.insert(42);
+    let k1 = map.insert(42);
     let k1_data = k1.data();
 
     map.retain(|key, _| key != k1);
     assert!(map.get(k1).is_none());
     assert_eq!(map.len(), 0);
 
-    let (k2, _) = map.insert(99);
+    let k2 = map.insert(99);
     let k2_data = k2.data();
 
     // Index should be reused, generation must bump.

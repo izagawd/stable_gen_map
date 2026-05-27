@@ -24,7 +24,8 @@ fn snapshot_covers_all_items_and_matches_get() {
     // Insert enough to spill into multiple slots
     let mut keys = Vec::new();
     for i in 0..(SLOTS * 3 + 1) as i32 {
-        let (k, r) = map.insert(i);
+        let k = map.insert(i);
+        let r = map.get(k).unwrap();
         assert_eq!(*r, i);
         keys.push(k);
     }
@@ -51,12 +52,12 @@ fn snapshot_covers_all_items_and_matches_get() {
 fn snapshot_ignores_future_inserts() {
     let map = Map::new();
 
-    let (k1, _) = map.insert(10);
-    let (k2, _) = map.insert(20);
+    let k1 = map.insert(10);
+    let k2 = map.insert(20);
 
     let snap = map.snapshot();
 
-    let (k3, _) = map.insert(30); // after snapshot
+    let k3 = map.insert(30); // after snapshot
 
     assert_eq!(map.len(), 3);
     assert_eq!(snap.len(), 2);
@@ -126,7 +127,7 @@ fn snapshot_keys_contains_all_keys() {
 
     let mut inserted_keys = Vec::new();
     for i in 0..(SLOTS * 3 + 1) as i32 {
-        let (k, _) = map.insert(i);
+        let k = map.insert(i);
         inserted_keys.push(k);
     }
 
@@ -146,12 +147,12 @@ fn snapshot_keys_contains_all_keys() {
 fn snapshot_keys_ignores_future_inserts() {
     let map = Map::new();
 
-    let (k1, _) = map.insert(1);
-    let (k2, _) = map.insert(2);
+    let k1 = map.insert(1);
+    let k2 = map.insert(2);
 
     let keys = map.snapshot_keys();
 
-    let (k3, _) = map.insert(3);
+    let k3 = map.insert(3);
 
     assert_eq!(map.len(), 3);
     assert_eq!(keys.len(), 2);

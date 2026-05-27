@@ -156,14 +156,14 @@ where
 
     // ── insert ──────────────────────────────────────────────────────────
 
-    /// Inserts a value and returns its [`StableCastKey`] alongside a reference.
+    /// Inserts a value and returns its [`StableCastKey`].
     #[inline]
     pub fn insert(
         &self,
         value: C::Stored,
-    ) -> (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output) {
-        let (key, reference) = self.inner.insert(value);
-        (stabilize(key, self.map_id), reference)
+    ) -> StableCastKey<C::Output, KeyOfStorage<C>> {
+        let key = self.inner.insert(value);
+        stabilize(key, self.map_id)
     }
 
     /// Inserts a value produced by `func`, which receives the backing key.
@@ -171,9 +171,9 @@ where
     pub fn insert_with_key(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> C::Stored,
-    ) -> (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output) {
-        let (key, reference) = self.inner.insert_with_key(func);
-        (stabilize(key, self.map_id), reference)
+    ) -> StableCastKey<C::Output, KeyOfStorage<C>> {
+        let key = self.inner.insert_with_key(func);
+        stabilize(key, self.map_id)
     }
 
     /// Like [`insert_with_key`](Self::insert_with_key) but the closure may fail.
@@ -181,9 +181,9 @@ where
     pub fn try_insert_with_key<E>(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> Result<C::Stored, E>,
-    ) -> Result<(StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output), E> {
-        let (key, reference) = self.inner.try_insert_with_key(func)?;
-        Ok((stabilize(key, self.map_id), reference))
+    ) -> Result<StableCastKey<C::Output, KeyOfStorage<C>>, E> {
+        let key = self.inner.try_insert_with_key(func)?;
+        Ok(stabilize(key, self.map_id))
     }
 
     // ── insert_sized ────────────────────────────────────────────────────
@@ -193,16 +193,13 @@ where
     pub fn insert_sized<ConcretePtr>(
         &self,
         value: ConcretePtr,
-    ) -> (
-        StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
-        &ConcretePtr::Target,
-    )
+    ) -> StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
     {
-        let (key, reference) = self.inner.insert_sized(value);
-        (stabilize(key, self.map_id), reference)
+        let key = self.inner.insert_sized(value);
+        stabilize(key, self.map_id)
     }
 
     /// Like [`insert_sized`](Self::insert_sized) but the closure receives a typed key.
@@ -210,19 +207,16 @@ where
     pub fn insert_sized_with_key<ConcretePtr>(
         &self,
         func: impl FnOnce(StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>) -> ConcretePtr,
-    ) -> (
-        StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
-        &ConcretePtr::Target,
-    )
+    ) -> StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
     {
         let map_id = self.map_id;
-        let (key, reference) = self
+        let key = self
             .inner
             .insert_sized_with_key(|ck| func(stabilize(ck, map_id)));
-        (stabilize(key, self.map_id), reference)
+        stabilize(key, self.map_id)
     }
 
     /// Fallible version of [`insert_sized_with_key`](Self::insert_sized_with_key).
@@ -230,22 +224,16 @@ where
     pub fn try_insert_sized_with_key<ConcretePtr, E>(
         &self,
         func: impl FnOnce(StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>) -> Result<ConcretePtr, E>,
-    ) -> Result<
-        (
-            StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
-            &ConcretePtr::Target,
-        ),
-        E,
-    >
+    ) -> Result<StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>, E>
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
     {
         let map_id = self.map_id;
-        let (key, reference) = self
+        let key = self
             .inner
             .try_insert_sized_with_key(|ck| func(stabilize(ck, map_id)))?;
-        Ok((stabilize(key, self.map_id), reference))
+        Ok(stabilize(key, self.map_id))
     }
 
     // ── insert_as ───────────────────────────────────────────────────────
@@ -255,16 +243,13 @@ where
     pub fn insert_as<SourcePtr>(
         &self,
         value: SourcePtr,
-    ) -> (
-        StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
-        &SourcePtr::Target,
-    )
+    ) -> StableCastKey<SourcePtr::Target, KeyOfStorage<C>>
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
     {
-        let (key, reference) = self.inner.insert_as(value);
-        (stabilize(key, self.map_id), reference)
+        let key = self.inner.insert_as(value);
+        stabilize(key, self.map_id)
     }
 
     /// Like [`insert_as`](Self::insert_as) but the closure receives the backing key.
@@ -272,16 +257,13 @@ where
     pub fn insert_as_with_key<SourcePtr>(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> SourcePtr,
-    ) -> (
-        StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
-        &SourcePtr::Target,
-    )
+    ) -> StableCastKey<SourcePtr::Target, KeyOfStorage<C>>
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
     {
-        let (key, reference) = self.inner.insert_as_with_key(func);
-        (stabilize(key, self.map_id), reference)
+        let key = self.inner.insert_as_with_key(func);
+        stabilize(key, self.map_id)
     }
 
     /// Fallible version of [`insert_as_with_key`](Self::insert_as_with_key).
@@ -289,19 +271,13 @@ where
     pub fn try_insert_as_with_key<SourcePtr, E>(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> Result<SourcePtr, E>,
-    ) -> Result<
-        (
-            StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
-            &SourcePtr::Target,
-        ),
-        E,
-    >
+    ) -> Result<StableCastKey<SourcePtr::Target, KeyOfStorage<C>>, E>
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
     {
-        let (key, reference) = self.inner.try_insert_as_with_key(func)?;
-        Ok((stabilize(key, self.map_id), reference))
+        let key = self.inner.try_insert_as_with_key(func)?;
+        Ok(stabilize(key, self.map_id))
     }
 
     // ── inner accessors ─────────────────────────────────────────────────
