@@ -39,11 +39,9 @@ macro_rules! impl_key_piece {
                     Self::try_from(v).unwrap_or_else(
                         |_|
                         panic!(
-                            "{} value {} overflows {} (max {})",
-                            std::any::type_name::<Self>(),
+                            "{} does not fit in {}",
                             v,
-                            std::any::type_name::<Self>(),
-                            Self::MAX
+                            std::any::type_name::<Self>()
                         )
                     ) // this should panic, if the value of usize is higher than the max value of self, using "as" to cast will cap it to the max value of self, which may cause bugs and/or UB
                 }
