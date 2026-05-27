@@ -36,7 +36,7 @@ Great for patterns that rely on shared mutability on a single thread, and remove
   A safe wrapper around `UnsafeCastMap` that supports **type-erased heterogeneous storage** (e.g. `Box<dyn Any>`) with castable keys. Each map has a unique `MapId` assigned on creation, and every `StableCastKey` carries the map's id so that cross-map misuse returns `None` instead of causing UB. The type parameter `C` is the per-slot storage strategy (a `SlotStorage` implementor such as `DerefSlot<K, Box<dyn Any>>`). Use the convenience alias `StableBoxCastMap<K, T>` for the common `Box`-based case. See the [Castable maps](#the-castable-feature-nightly-only) section below.
 
 - **`UnsafeCastMap<C>`** *(requires the `castable` feature, nightly only)*  
-  The low-level building block for `StableCastMap`. Provides the same typed lookups via `CastKey`, but `get`, `get_mut`, and `downcast_key` are `unsafe` because no map-id check is performed. Useful when you are building your own safe abstraction on top (e.g. a GC). Use `UnsafeBoxCastMap<K, T>` for the common case.
+  The low-level building block for `StableCastMap`. Provides the same typed lookups via `CastKey`, but `get`, `get_mut`, and `downcast_key` are `unsafe` because no map-id check is performed. Useful when you are building your own safe abstraction on top. Use `UnsafeBoxCastMap<K, T>` for the common case.
 
 Keys implement the `Key` trait; you can use the provided `DefaultKey` or define your own (e.g. with smaller index / generation types).
 
