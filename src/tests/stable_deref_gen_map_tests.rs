@@ -29,7 +29,12 @@ fn stable_len_tracks_insert_remove_and_clear() {
 
     // Removing a bogus key (wrong idx/generation) must not change len.
     let mut bogus = k2;
-    bogus.key_data.generation = bogus.key_data.generation.wrapping_add(1);
+    bogus.key_data.generation = bogus
+        .key_data
+        .generation()
+        .wrapping_add(1)
+        .as_non_zero()
+        .unwrap();
     assert!(map.remove(bogus).is_none());
     assert_eq!(
         map.len(),
@@ -401,8 +406,10 @@ fn stable_try_insert_with_key_panic_reuses_reserved_new_slot() {
 }
 
 use crate::key::DefaultKey;
+use crate::key_piece::KeyPiece;
 use crate::stable_deref_map::{BoxStableDerefMap, StableDerefMap};
 use std::fmt::Display;
+use std::num::NonZero;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -527,14 +534,19 @@ fn remove_nonexistent_returns_none() {
     let bogus = DefaultKey {
         key_data: KeyData {
             idx: 999_999,
-            generation: 0,
+            generation: NonZero::new(42).unwrap(),
         },
     };
     assert!(map.remove(bogus).is_none());
 
     let (k, _) = map.insert(Box::new(1));
     let mut bad = k;
-    bad.key_data.generation = bad.key_data.generation.wrapping_add(1);
+    bad.key_data.generation = bad
+        .key_data
+        .generation()
+        .wrapping_add(1)
+        .as_non_zero()
+        .unwrap();
     assert!(
         map.remove(bad).is_none(),
         "wrong generation should not remove"

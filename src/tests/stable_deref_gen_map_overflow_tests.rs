@@ -21,7 +21,7 @@ fn stable_gen_map_into_iter_handles_max_live_generation_without_panicking() {
         let next_value = map.len() as u32;
         let (key, _) = map.insert(next_value);
 
-        if key.data().generation == u8::MAX {
+        if key.data().generation() == u8::MAX {
             break;
         }
 
@@ -51,7 +51,7 @@ fn stale_key_after_generation_overflow_is_not_accepted_stable_deref_gen_map() {
         next_value = map.len() as u32;
         let (key, _) = map.insert(Box::new(next_value));
 
-        if key.data().generation == u8::MAX {
+        if key.data().generation() == u8::MAX {
             break key;
         }
 

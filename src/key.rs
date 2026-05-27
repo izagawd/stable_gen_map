@@ -1,23 +1,21 @@
 use crate::key_piece::KeyPiece;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct KeyData<Idx, Generation> {
+pub struct KeyData<Idx: KeyPiece, Generation: KeyPiece> {
     pub(crate) idx: Idx,
-    pub(crate) generation: Generation,
+    pub(crate) generation: Generation::AsNonZero,
 }
 
-impl<Idx, Generation> KeyData<Idx, Generation> {
-    pub fn generation(&self) -> Generation
-    where
-        Generation: Copy,
-    {
+impl<Idx: KeyPiece, Generation: KeyPiece> KeyData<Idx, Generation> {
+    pub fn generation(&self) -> Generation {
+        self.generation.into()
+    }
+
+    pub fn generation_non_zero(&self) -> Generation::AsNonZero {
         self.generation
     }
 
-    pub fn index(&self) -> Idx
-    where
-        Idx: Copy,
-    {
+    pub fn index(&self) -> Idx {
         self.idx
     }
 }
