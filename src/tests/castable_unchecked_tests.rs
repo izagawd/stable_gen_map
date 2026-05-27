@@ -1,11 +1,11 @@
-use crate::cast_key::{CastKey, StableCastKey};
-use crate::key::Key;
-use crate::stable_cast_map::StableCastMap;
-use crate::unsafe_cast_map::UnsafeCastMap;
+use crate::cast_key::StableCastKey;
+use crate::key::DefaultKey;
+use crate::stable_cast_map::StableBoxCastMap;
+use crate::unsafe_cast_map::UnsafeBoxCastMap;
 use std::any::Any;
 
-type SafeMap = StableCastMap<Box<dyn Any>>;
-type UnsafeMap = UnsafeCastMap<Box<dyn Any>>;
+type SafeMap = StableBoxCastMap<DefaultKey, dyn Any>;
+type UnsafeMap = UnsafeBoxCastMap<DefaultKey, dyn Any>;
 
 #[derive(Debug, PartialEq)]
 struct Dog {

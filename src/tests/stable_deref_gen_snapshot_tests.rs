@@ -14,7 +14,6 @@ fn snapshot_on_empty_map_is_empty() {
 
 #[cfg(test)]
 mod snapshot_stablegen_tests {
-    use super::*;
     use crate::key::DefaultKey;
     use crate::stable_deref_map::BoxStableDerefMap;
     use std::collections::HashSet;
@@ -33,9 +32,9 @@ mod snapshot_stablegen_tests {
     fn snapshot_contains_all_items_and_matches_get() {
         let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-        let (k1, r1) = map.insert(Box::new(10));
-        let (k2, r2) = map.insert(Box::new(20));
-        let (k3, r3) = map.insert(Box::new(30));
+        let (_k1, r1) = map.insert(Box::new(10));
+        let (_k2, r2) = map.insert(Box::new(20));
+        let (_k3, r3) = map.insert(Box::new(30));
 
         assert_eq!(*r1, 10);
         assert_eq!(*r2, 20);

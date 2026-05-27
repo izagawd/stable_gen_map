@@ -1,11 +1,10 @@
 //! Castable key types for use with [`UnsafeCastMap`](crate::unsafe_cast_map::UnsafeCastMap)
 //! and [`StableCastMap`](crate::stable_cast_map::StableCastMap).
 //!
-//! - [`CastKey<T>`] stores pointer metadata alongside a generational index.
+//! - [`CastKey<T, K>`] stores pointer metadata alongside a generational index.
 //!   It is the bare key used by `UnsafeCastMap`.
-//! - [`StableCastKey<T>`] wraps a `CastKey` and adds a [`MapId`](crate::map_id::MapId),
+//! - [`StableCastKey<T, K>`] wraps a `CastKey` and adds a [`MapId`](crate::map_id::MapId),
 //!   making it safe to use with `StableCastMap` (cross-map misuse returns `None`).
-//! - [`InnerCastMapKey`] is the plain inner key used by the backing `GenMap`.
 //!
 //! Neither `CastKey` nor `StableCastKey` is a [`Key`](crate::key::Key).
 //! The cast map wrappers handle conversion at the boundary.
@@ -13,57 +12,31 @@
 //! # Sizes (64-bit)
 //! - `CastKey<SizedType>`: 8 bytes (KeyData only, metadata is `()`)
 //! - `CastKey<dyn Trait>`: 16 bytes (KeyData + vtable pointer)
-//! - `StableCastKey<T>`: `CastKey<T>` + 8 bytes (MapId)
+//! - `StableCastKey<T, K>`: `CastKey<T, K>` + 8 bytes (MapId)
 
-use std::fs::Metadata;
 use std::ptr::Pointee;
 
-use crate::key::{Key, KeyData};
-use crate::key_piece::KeyPiece;
+use crate::key::{DefaultKey, Key, KeyData};
 
-// ─── InnerCastMapKey ──────────────────────────────────────────────────────────
-
-/// A plain key used as the inner key for cast maps
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct InnerCastMapKey<Idx, Gen> {
-    pub(crate) key_data: KeyData<Idx, Gen>,
-}
-
-impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> From<KeyData<Idx, Gen>>
-    for InnerCastMapKey<Idx, Gen>
-{
-    fn from(key_data: KeyData<Idx, Gen>) -> Self {
-        Self { key_data }
-    }
-}
-
-unsafe impl<Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> Key for InnerCastMapKey<Idx, Gen> {
-    type Idx = Idx;
-    type Gen = Gen;
-
-    #[inline]
-    fn data(&self) -> KeyData<Idx, Gen> {
-        self.key_data
-    }
-}
-
-// ─── CastKey<T, Idx, Gen> ──────────────────────────────────────────────
+// ─── CastKey<T, K> ──────────────────────────────────────────────────────
 
 /// A key parameterised over `T: ?Sized` that stores `T`'s pointer
 /// metadata alongside a generational index.
 ///
 /// The index and generation types default to `u32`.
-pub struct CastKey<T: ?Sized + Pointee, Idx = u32, Gen = u32>
+///
+/// `K` is the backing key type (defaults to [`DefaultKey`]).
+pub struct CastKey<T: ?Sized + Pointee, K: Key = DefaultKey>
 where
     <T as Pointee>::Metadata: Copy,
 {
-    pub(crate) key_data: KeyData<Idx, Gen>,
+    pub(crate) key_data: KeyData<K::Idx, K::Gen>,
     pub(crate) metadata: <T as Pointee>::Metadata,
 }
 
 // ── Manual trait impls ──────────────────────────────────────────────────
 
-impl<T: ?Sized + Pointee, Idx: Copy, Gen: Copy> Clone for CastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> Clone for CastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
 {
@@ -73,16 +46,14 @@ where
     }
 }
 
-impl<T: ?Sized + Pointee, Idx: Copy, Gen: Copy> Copy for CastKey<T, Idx, Gen> where
-    <T as Pointee>::Metadata: Copy
-{
-}
+impl<T: ?Sized + Pointee, K: Key> Copy for CastKey<T, K> where <T as Pointee>::Metadata: Copy {}
 
-impl<T: ?Sized + Pointee, Idx, Gen> std::fmt::Debug for CastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> std::fmt::Debug for CastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
-    KeyData<Idx, Gen>: std::fmt::Debug,
+    KeyData<K::Idx, K::Gen>: std::fmt::Debug,
 {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CastKey")
             .field("key_data", &self.key_data)
@@ -90,27 +61,28 @@ where
     }
 }
 
-impl<T: ?Sized + Pointee, Idx, Gen> PartialEq for CastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> PartialEq for CastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
-    KeyData<Idx, Gen>: PartialEq,
+    KeyData<K::Idx, K::Gen>: PartialEq,
 {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.key_data == other.key_data
     }
 }
 
-impl<T: ?Sized + Pointee, Idx, Gen> Eq for CastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> Eq for CastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
-    KeyData<Idx, Gen>: Eq,
+    KeyData<K::Idx, K::Gen>: Eq,
 {
 }
 
-impl<T: ?Sized + Pointee, Idx, Gen> std::hash::Hash for CastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> std::hash::Hash for CastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
-    KeyData<Idx, Gen>: std::hash::Hash,
+    KeyData<K::Idx, K::Gen>: std::hash::Hash,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.key_data.hash(state);
@@ -119,13 +91,13 @@ where
 
 // ── Methods ────────────────────────────────────────────────────────────
 
-impl<T: ?Sized + Pointee, Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> CastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> CastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
 {
     /// Returns the generational key data.
     #[inline]
-    pub fn key_data(&self) -> KeyData<Idx, Gen> {
+    pub fn key_data(&self) -> KeyData<K::Idx, K::Gen> {
         self.key_data
     }
 
@@ -135,13 +107,11 @@ where
         self.metadata
     }
 
-    /// Strips pointer metadata, producing the inner key used by
-    /// the backing `GenMap`.
+    /// Strips pointer metadata, producing the backing [`Key`] used by
+    /// the `GenMap`.
     #[inline]
-    pub fn inner_key(&self) -> InnerCastMapKey<Idx, Gen> {
-        InnerCastMapKey {
-            key_data: self.key_data,
-        }
+    pub fn inner_key(&self) -> K {
+        K::from(self.key_data)
     }
 
     /// Upcasts the key's metadata from `T` to `U` where `T: Unsize<U>`.
@@ -149,7 +119,7 @@ where
     /// This enables converting e.g. `CastKey<Dog>` to `CastKey<dyn Any>`
     /// without needing a data pointer.
     #[inline]
-    pub fn upcast<U: ?Sized + Pointee>(self) -> CastKey<U, Idx, Gen>
+    pub fn upcast<U: ?Sized + Pointee>(self) -> CastKey<U, K>
     where
         T: std::marker::Unsize<U>,
         <U as Pointee>::Metadata: Copy,
@@ -167,7 +137,10 @@ where
     /// # Safety
     /// `metadata` must be valid for the allocation identified by the key.
     #[inline]
-    pub unsafe fn from_parts(data: KeyData<Idx, Gen>, metadata: <T as Pointee>::Metadata) -> Self {
+    pub unsafe fn from_parts(
+        data: KeyData<K::Idx, K::Gen>,
+        metadata: <T as Pointee>::Metadata,
+    ) -> Self {
         Self {
             key_data: data,
             metadata,
@@ -175,21 +148,21 @@ where
     }
 }
 
-// ─── StableCastKey<T, Idx, Gen> ────────────────────────────────────────
+// ─── StableCastKey<T, K> ─────────────────────────────────────────────────
 
 /// A [`CastKey`] paired with a [`MapId`](crate::map_id::MapId) so that
 /// cross-map misuse is caught at runtime rather than being UB.
-pub struct StableCastKey<T: ?Sized + Pointee, Idx = u32, Gen = u32>
+pub struct StableCastKey<T: ?Sized + Pointee, K: Key = DefaultKey>
 where
     <T as Pointee>::Metadata: Copy,
 {
-    pub(crate) inner: CastKey<T, Idx, Gen>,
+    pub(crate) inner: CastKey<T, K>,
     pub(crate) map_id: crate::map_id::MapId,
 }
 
 // ── Manual trait impls ──────────────────────────────────────────────────
 
-impl<T: ?Sized + Pointee, Idx: Copy, Gen: Copy> Clone for StableCastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> Clone for StableCastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
 {
@@ -199,16 +172,14 @@ where
     }
 }
 
-impl<T: ?Sized + Pointee, Idx: Copy, Gen: Copy> Copy for StableCastKey<T, Idx, Gen> where
-    <T as Pointee>::Metadata: Copy
-{
-}
+impl<T: ?Sized + Pointee, K: Key> Copy for StableCastKey<T, K> where <T as Pointee>::Metadata: Copy {}
 
-impl<T: ?Sized + Pointee, Idx, Gen> std::fmt::Debug for StableCastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> std::fmt::Debug for StableCastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
-    KeyData<Idx, Gen>: std::fmt::Debug,
+    KeyData<K::Idx, K::Gen>: std::fmt::Debug,
 {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StableCastKey")
             .field("key_data", &self.inner.key_data)
@@ -217,27 +188,28 @@ where
     }
 }
 
-impl<T: ?Sized + Pointee, Idx, Gen> PartialEq for StableCastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> PartialEq for StableCastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
-    KeyData<Idx, Gen>: PartialEq,
+    KeyData<K::Idx, K::Gen>: PartialEq,
 {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner.key_data == other.inner.key_data && self.map_id == other.map_id
     }
 }
 
-impl<T: ?Sized + Pointee, Idx, Gen> Eq for StableCastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> Eq for StableCastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
-    KeyData<Idx, Gen>: Eq,
+    KeyData<K::Idx, K::Gen>: Eq,
 {
 }
 
-impl<T: ?Sized + Pointee, Idx, Gen> std::hash::Hash for StableCastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> std::hash::Hash for StableCastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
-    KeyData<Idx, Gen>: std::hash::Hash,
+    KeyData<K::Idx, K::Gen>: std::hash::Hash,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.inner.key_data.hash(state);
@@ -247,38 +219,26 @@ where
 
 // ── Methods ────────────────────────────────────────────────────────────
 
-impl<T: ?Sized + Pointee, Idx: Copy + KeyPiece, Gen: Copy + KeyPiece> StableCastKey<T, Idx, Gen>
+impl<T: ?Sized + Pointee, K: Key> StableCastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
 {
     /// Constructs a `StableCastKey` from its raw cast key and map id.
     ///
-    /// This is intended for cases where the caller has already proven that the
-    /// key parts came from the same map and that the stored pointer metadata is
-    /// valid for `T`.
-    ///
     /// # Safety
-    ///
     /// The caller must ensure that `map_id` identifies the map that owns the slot
-    /// addressed by `cast_key.inner_key()`.
-    ///
-    /// If a lookup with the returned key succeeds, the metadata stored in
-    /// `cast_key` must be valid for viewing the slot's stored value as `T`.
-    /// For example, when `T` is a trait object, the stored metadata must be the
-    /// correct vtable for the actual value in that slot.
-    ///
-    /// Supplying metadata from a different type, a different slot, or a different
-    /// map may cause safe lookup methods to construct an invalid reference, which
-    /// is undefined behavior.
-    pub unsafe fn from_parts(cast_key: CastKey<T, Idx, Gen>, map_id: crate::map_id::MapId) -> Self {
+    /// addressed by `cast_key.inner_key()`, and that the metadata is valid for `T`.
+    #[inline]
+    pub unsafe fn from_parts(cast_key: CastKey<T, K>, map_id: crate::map_id::MapId) -> Self {
         StableCastKey {
             inner: cast_key,
             map_id,
         }
     }
+
     /// Returns the generational key data.
     #[inline]
-    pub fn key_data(&self) -> KeyData<Idx, Gen> {
+    pub fn key_data(&self) -> KeyData<K::Idx, K::Gen> {
         self.inner.key_data
     }
 
@@ -294,16 +254,15 @@ where
         self.map_id
     }
 
-    /// Strips pointer metadata and map id, producing the inner key used by
-    /// the backing `GenMap`.
+    /// Strips pointer metadata and map id, producing the backing [`Key`].
     #[inline]
-    pub fn inner_key(&self) -> InnerCastMapKey<Idx, Gen> {
+    pub fn inner_key(&self) -> K {
         self.inner.inner_key()
     }
 
     /// Returns the underlying [`CastKey`] without the map id.
     #[inline]
-    pub fn cast_key(&self) -> CastKey<T, Idx, Gen> {
+    pub fn cast_key(&self) -> CastKey<T, K> {
         self.inner
     }
 
@@ -311,7 +270,7 @@ where
     ///
     /// The map id is preserved.
     #[inline]
-    pub fn upcast<U: ?Sized + Pointee>(self) -> StableCastKey<U, Idx, Gen>
+    pub fn upcast<U: ?Sized + Pointee>(self) -> StableCastKey<U, K>
     where
         T: std::marker::Unsize<U>,
         <U as Pointee>::Metadata: Copy,

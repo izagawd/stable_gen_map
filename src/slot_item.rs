@@ -4,21 +4,24 @@ use std::mem::ManuallyDrop;
 // ─── SlotData (shared union) ─────────────────────────────────────────────────
 
 /// The underlying union stored in each slot.
-/// `S` is the stored payload type (`T` for BoxedSlot, `D` for DerefSlot).
+/// `S` is the stored payload type (`T` for BoxedSlot, `Ptr` for DerefSlot).
 pub(crate) union SlotData<S, K: Key> {
     pub(crate) occupied: ManuallyDrop<S>,
     pub(crate) vacant: Option<K::Idx>,
 }
 
-// ─── trait: SlotItem ─────────────────────────────────────────────────────────
+// ─── trait: SlotStorage ─────────────────────────────────────────────────────────
 
 /// Abstracts the per-slot storage strategy.
 ///
 /// # Safety
 /// Implementations must guarantee that references returned by
-/// [`ref_output`](SlotItem::ref_output) survive reallocation of the `Vec`
+/// [`ref_output`](SlotStorage::ref_output) survive reallocation of the `Vec`
 /// that owns the `Slot`.
-pub unsafe trait SlotItem<K: Key>: Sized {
+pub unsafe trait SlotStorage: Sized {
+    /// The key type used by the map that owns this slot.
+    type Key: Key;
+
     /// What `insert` accepts and `remove` / `drain` return.
     type Stored;
 
@@ -26,18 +29,18 @@ pub unsafe trait SlotItem<K: Key>: Sized {
     /// (`get` / `Index` return `&Self::Output`).
     type Output: ?Sized;
 
-    fn new_vacant(next: Option<K::Idx>) -> Self;
+    fn new_vacant(next: Option<<Self::Key as Key>::Idx>) -> Self;
 
     /// # Safety: slot must be vacant.
-    unsafe fn get_vacant(&self) -> Option<K::Idx>;
+    unsafe fn get_vacant(&self) -> Option<<Self::Key as Key>::Idx>;
 
     /// # Safety: slot must be vacant.
-    unsafe fn set_vacant(&mut self, next: Option<K::Idx>);
+    unsafe fn set_vacant(&mut self, next: Option<<Self::Key as Key>::Idx>);
 
     /// # Safety: slot must be vacant / reserved (not occupied).
     unsafe fn write_occupied(&mut self, value: Self::Stored);
 
-    /// Takes the value out, leaving the item in a vacant-like state.
+    /// Takes the value out, leaving the storage in a vacant-like state.
     /// # Safety: slot must be occupied.
     unsafe fn take_occupied(&mut self) -> Self::Stored;
 
@@ -45,7 +48,7 @@ pub unsafe trait SlotItem<K: Key>: Sized {
     unsafe fn ref_output(&self) -> &Self::Output;
 
     /// Mutable reference to the *stored* value (the `ManuallyDrop` payload).
-    /// For `BoxedSlot` this is `&mut T`; for `DerefSlot` this is `&mut D`.
+    /// For `BoxedSlot` this is `&mut T`; for `DerefSlot` this is `&mut Ptr`.
     /// # Safety: slot must be occupied.
     unsafe fn stored_mut(&mut self) -> &mut Self::Stored;
 
@@ -57,8 +60,8 @@ pub unsafe trait SlotItem<K: Key>: Sized {
 /// Slot items that can provide `&mut Self::Output`.
 ///
 /// # Safety
-/// Same pointer-stability guarantees as [`SlotItem`].
-pub unsafe trait SlotItemMutOutput<K: Key>: SlotItem<K> {
+/// Same pointer-stability guarantees as [`SlotStorage`].
+pub unsafe trait SlotStorageMutOutput: SlotStorage {
     /// # Safety: slot must be occupied.
     unsafe fn mut_output(&mut self) -> &mut Self::Output;
 }
@@ -66,9 +69,9 @@ pub unsafe trait SlotItemMutOutput<K: Key>: SlotItem<K> {
 /// Slot items that can be cloned without going through a two-phase snapshot.
 ///
 /// # Safety
-/// `clone_item` must correctly reproduce the slot's payload.
-pub unsafe trait SlotItemClone<K: Key>: SlotItem<K> {
-    /// Clone the slot item.
+/// `clone_storage` must correctly reproduce the slot's payload.
+pub unsafe trait SlotStorageClone: SlotStorage {
+    /// Clone the slot storage.
     /// # Safety: `is_occupied` must truthfully reflect the slot state.
-    unsafe fn clone_item(&self, is_occupied: bool) -> Self;
+    unsafe fn clone_storage(&self, is_occupied: bool) -> Self;
 }

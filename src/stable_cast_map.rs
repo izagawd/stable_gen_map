@@ -9,13 +9,14 @@
 use std::any::Any;
 use std::cell::UnsafeCell;
 use std::collections::TryReserveError;
-use std::ops::{DerefMut, Index, IndexMut};
+use std::ops::{Deref, DerefMut};
 use std::ptr::Pointee;
 
-use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
-use crate::gen_map::Slot;
-use crate::key_piece::KeyPiece;
+use crate::cast_key::{CastKey, StableCastKey};
+use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
+use crate::key::Key;
 use crate::map_id::MapId;
+use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
@@ -23,10 +24,7 @@ use crate::unsafe_cast_map::UnsafeCastMap;
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 #[inline]
-fn stabilize<T: ?Sized + Pointee, Idx: Copy, Gen: Copy>(
-    key: CastKey<T, Idx, Gen>,
-    map_id: MapId,
-) -> StableCastKey<T, Idx, Gen>
+fn stabilize<T: ?Sized + Pointee, K: Key>(key: CastKey<T, K>, map_id: MapId) -> StableCastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
 {
@@ -38,31 +36,28 @@ where
 /// A safe wrapper around [`UnsafeCastMap`] that checks a per-map
 /// [`MapId`] on every keyed access.
 ///
-/// - `D`: the smart pointer type, e.g. `Box<dyn Any>`.
-/// - `Idx`: index type (default `u32`).
-/// - `Gen`: generation type (default `u32`).
-pub struct StableCastMap<D, Idx = u32, Gen = u32>
+/// `C` is the per-slot storage strategy (e.g.
+/// [`DerefSlot<DefaultKey, Box<dyn Any>>`]).
+pub struct StableCastMap<C: SlotStorage>
 where
-    D: DerefGenMapPromise,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
 {
-    inner: UnsafeCastMap<D, Idx, Gen>,
+    inner: UnsafeCastMap<C>,
     map_id: MapId,
 }
 
 // ─── Clone ──────────────────────────────────────────────────────────────────
 
-impl<D, Idx, Gen> Clone for StableCastMap<D, Idx, Gen>
+impl<C: SlotStorage> Clone for StableCastMap<C>
 where
-    D: DerefGenMapPromise + crate::stable_deref_map::SmartPtrCloneable,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+    UnsafeCastMap<C>: Clone,
 {
     /// Clones the map.
     ///
     /// The clone receives a fresh map identity. Keys from the original are
     /// **not** valid on the clone; use iteration to obtain new keys.
+    #[inline]
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -73,11 +68,9 @@ where
 
 // ─── Basic methods ──────────────────────────────────────────────────────────
 
-impl<D, Idx, Gen> StableCastMap<D, Idx, Gen>
+impl<C: SlotStorage> StableCastMap<C>
 where
-    D: DerefGenMapPromise,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
 {
     /// Creates a new, empty map with a fresh [`MapId`].
     #[inline]
@@ -86,6 +79,12 @@ where
             inner: UnsafeCastMap::new(),
             map_id: MapId::next(),
         }
+    }
+
+    /// Returns true if the map is empty
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 
     /// Creates a new map with the given pre-allocated capacity.
@@ -103,26 +102,31 @@ where
         self.map_id
     }
 
+    /// Reserves capacity for at least `additional` more elements.
     #[inline]
     pub fn reserve(&self, additional: usize) {
         self.inner.reserve(additional);
     }
 
+    /// Tries to reserve capacity for at least `additional` more elements.
     #[inline]
     pub fn try_reserve(&self, additional: usize) -> Result<(), TryReserveError> {
         self.inner.try_reserve(additional)
     }
 
+    /// Returns how many slots the backing storage can hold before reallocating.
     #[inline]
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
     }
 
+    /// Returns the number of occupied elements.
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    /// Removes all elements from the map.
     #[inline]
     pub fn clear(&mut self) {
         self.inner.clear();
@@ -131,18 +135,18 @@ where
 
 // ─── Core operations ────────────────────────────────────────────────────────
 
-impl<D, Idx, Gen> StableCastMap<D, Idx, Gen>
+impl<C: SlotStorage> StableCastMap<C>
 where
-    D: DerefGenMapPromise,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+    <C::Output as Pointee>::Metadata: Copy,
 {
+    /// Attempts to downcast a `StableCastKey<dyn Any>` to a concrete type.
+    /// Returns `None` if the key belongs to a different map or the type doesn't match.
     #[inline]
     pub fn downcast_key<Concrete: 'static>(
         &self,
-        key: StableCastKey<dyn Any, Idx, Gen>,
-    ) -> Option<StableCastKey<Concrete, Idx, Gen>> {
+        key: StableCastKey<dyn Any, KeyOfStorage<C>>,
+    ) -> Option<StableCastKey<Concrete, KeyOfStorage<C>>> {
         if key.map_id != self.map_id {
             return None;
         }
@@ -152,59 +156,67 @@ where
 
     // ── insert ──────────────────────────────────────────────────────────
 
+    /// Inserts a value and returns its [`StableCastKey`] alongside a reference.
     #[inline]
-    pub fn insert(&self, value: D) -> (StableCastKey<D::Target, Idx, Gen>, &D::Target) {
+    pub fn insert(
+        &self,
+        value: C::Stored,
+    ) -> (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output) {
         let (key, reference) = self.inner.insert(value);
         (stabilize(key, self.map_id), reference)
     }
 
+    /// Inserts a value produced by `func`, which receives the backing key.
     #[inline]
     pub fn insert_with_key(
         &self,
-        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> D,
-    ) -> (StableCastKey<D::Target, Idx, Gen>, &D::Target) {
+        func: impl FnOnce(KeyOfStorage<C>) -> C::Stored,
+    ) -> (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output) {
         let (key, reference) = self.inner.insert_with_key(func);
         (stabilize(key, self.map_id), reference)
     }
 
+    /// Like [`insert_with_key`](Self::insert_with_key) but the closure may fail.
     #[inline]
     pub fn try_insert_with_key<E>(
         &self,
-        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> Result<D, E>,
-    ) -> Result<(StableCastKey<D::Target, Idx, Gen>, &D::Target), E> {
+        func: impl FnOnce(KeyOfStorage<C>) -> Result<C::Stored, E>,
+    ) -> Result<(StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output), E> {
         let (key, reference) = self.inner.try_insert_with_key(func)?;
         Ok((stabilize(key, self.map_id), reference))
     }
 
     // ── insert_sized ────────────────────────────────────────────────────
 
+    /// Inserts a concrete-typed smart pointer, returning a typed [`StableCastKey`].
     #[inline]
-    pub fn insert_sized<ConcreteD>(
+    pub fn insert_sized<ConcretePtr>(
         &self,
-        value: ConcreteD,
+        value: ConcretePtr,
     ) -> (
-        StableCastKey<ConcreteD::Target, Idx, Gen>,
-        &ConcreteD::Target,
+        StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+        &ConcretePtr::Target,
     )
     where
-        ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
-        ConcreteD::Target: Sized,
+        ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
+        ConcretePtr::Target: Sized,
     {
         let (key, reference) = self.inner.insert_sized(value);
         (stabilize(key, self.map_id), reference)
     }
 
+    /// Like [`insert_sized`](Self::insert_sized) but the closure receives a typed key.
     #[inline]
-    pub fn insert_sized_with_key<ConcreteD>(
+    pub fn insert_sized_with_key<ConcretePtr>(
         &self,
-        func: impl FnOnce(StableCastKey<ConcreteD::Target, Idx, Gen>) -> ConcreteD,
+        func: impl FnOnce(StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>) -> ConcretePtr,
     ) -> (
-        StableCastKey<ConcreteD::Target, Idx, Gen>,
-        &ConcreteD::Target,
+        StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+        &ConcretePtr::Target,
     )
     where
-        ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
-        ConcreteD::Target: Sized,
+        ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
+        ConcretePtr::Target: Sized,
     {
         let map_id = self.map_id;
         let (key, reference) = self
@@ -213,35 +225,21 @@ where
         (stabilize(key, self.map_id), reference)
     }
 
-    /// Gets the inner `UnsafeCastMap` as owned
-    pub fn inner(self) -> UnsafeCastMap<D, Idx, Gen> {
-        self.inner
-    }
-
-    /// Gets the inner `UnsafeCastMap` as a mutable reference
-    pub fn inner_mut(&mut self) -> &mut UnsafeCastMap<D, Idx, Gen> {
-        &mut self.inner
-    }
-
-    /// Gets the inner `UnsafeCastMap` as a shared reference
-    pub fn inner_ref(&self) -> &UnsafeCastMap<D, Idx, Gen> {
-        &self.inner
-    }
-
+    /// Fallible version of [`insert_sized_with_key`](Self::insert_sized_with_key).
     #[inline]
-    pub fn try_insert_sized_with_key<ConcreteD, E>(
+    pub fn try_insert_sized_with_key<ConcretePtr, E>(
         &self,
-        func: impl FnOnce(StableCastKey<ConcreteD::Target, Idx, Gen>) -> Result<ConcreteD, E>,
+        func: impl FnOnce(StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>) -> Result<ConcretePtr, E>,
     ) -> Result<
         (
-            StableCastKey<ConcreteD::Target, Idx, Gen>,
-            &ConcreteD::Target,
+            StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+            &ConcretePtr::Target,
         ),
         E,
     >
     where
-        ConcreteD: std::ops::CoerceUnsized<D> + std::ops::Deref,
-        ConcreteD::Target: Sized,
+        ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
+        ConcretePtr::Target: Sized,
     {
         let map_id = self.map_id;
         let (key, reference) = self
@@ -252,70 +250,105 @@ where
 
     // ── insert_as ───────────────────────────────────────────────────────
 
+    /// Inserts a smart pointer, preserving the source pointer's metadata.
     #[inline]
-    pub fn insert_as<SourceD>(
+    pub fn insert_as<SourcePtr>(
         &self,
-        value: SourceD,
-    ) -> (StableCastKey<SourceD::Target, Idx, Gen>, &SourceD::Target)
+        value: SourcePtr,
+    ) -> (
+        StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
+        &SourcePtr::Target,
+    )
     where
-        SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
-        SourceD::Target: Pointee<Metadata: Copy>,
+        SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
+        SourcePtr::Target: Pointee<Metadata: Copy>,
     {
         let (key, reference) = self.inner.insert_as(value);
         (stabilize(key, self.map_id), reference)
     }
 
+    /// Like [`insert_as`](Self::insert_as) but the closure receives the backing key.
     #[inline]
-    pub fn insert_as_with_key<SourceD>(
+    pub fn insert_as_with_key<SourcePtr>(
         &self,
-        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> SourceD,
-    ) -> (StableCastKey<SourceD::Target, Idx, Gen>, &SourceD::Target)
+        func: impl FnOnce(KeyOfStorage<C>) -> SourcePtr,
+    ) -> (
+        StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
+        &SourcePtr::Target,
+    )
     where
-        SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
-        SourceD::Target: Pointee<Metadata: Copy>,
+        SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
+        SourcePtr::Target: Pointee<Metadata: Copy>,
     {
         let (key, reference) = self.inner.insert_as_with_key(func);
         (stabilize(key, self.map_id), reference)
     }
 
+    /// Fallible version of [`insert_as_with_key`](Self::insert_as_with_key).
     #[inline]
-    pub fn try_insert_as_with_key<SourceD, E>(
+    pub fn try_insert_as_with_key<SourcePtr, E>(
         &self,
-        func: impl FnOnce(InnerCastMapKey<Idx, Gen>) -> Result<SourceD, E>,
-    ) -> Result<(StableCastKey<SourceD::Target, Idx, Gen>, &SourceD::Target), E>
+        func: impl FnOnce(KeyOfStorage<C>) -> Result<SourcePtr, E>,
+    ) -> Result<
+        (
+            StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
+            &SourcePtr::Target,
+        ),
+        E,
+    >
     where
-        SourceD: std::ops::CoerceUnsized<D> + std::ops::Deref,
-        SourceD::Target: Pointee<Metadata: Copy>,
+        SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
+        SourcePtr::Target: Pointee<Metadata: Copy>,
     {
         let (key, reference) = self.inner.try_insert_as_with_key(func)?;
         Ok((stabilize(key, self.map_id), reference))
     }
 
+    // ── inner accessors ─────────────────────────────────────────────────
+
+    /// Consumes this map and returns the underlying [`UnsafeCastMap`].
+    #[inline]
+    pub fn inner(self) -> UnsafeCastMap<C> {
+        self.inner
+    }
+
+    /// Returns a mutable reference to the underlying [`UnsafeCastMap`].
+    #[inline]
+    pub fn inner_mut(&mut self) -> &mut UnsafeCastMap<C> {
+        &mut self.inner
+    }
+
+    /// Returns a shared reference to the underlying [`UnsafeCastMap`].
+    #[inline]
+    pub fn inner_ref(&self) -> &UnsafeCastMap<C> {
+        &self.inner
+    }
+
     // ── get_by_index_only ───────────────────────────────────────────────
 
+    /// Looks up by slot index only (ignores generation).
     #[inline]
     pub fn get_by_index_only(
         &self,
-        idx: Idx,
-    ) -> Option<(StableCastKey<D::Target, Idx, Gen>, &D::Target)> {
+        idx: IdxOfStorage<C>,
+    ) -> Option<(StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         let (key, reference) = self.inner.get_by_index_only(idx)?;
         Some((stabilize(key, self.map_id), reference))
     }
 
+    /// Mutable version of [`get_by_index_only`](Self::get_by_index_only).
     #[inline]
     pub fn get_by_index_only_mut(
         &mut self,
-        idx: Idx,
-    ) -> Option<(StableCastKey<D::Target, Idx, Gen>, &mut D::Target)>
+        idx: IdxOfStorage<C>,
+    ) -> Option<(StableCastKey<C::Output, KeyOfStorage<C>>, &mut C::Output)>
     where
-        D: DerefMut,
+        C: SlotStorageMutOutput,
     {
         let (key, reference) = self.inner.get_by_index_only_mut(idx)?;
         Some((stabilize(key, self.map_id), reference))
     }
-
     // ── get_slot ────────────────────────────────────────────────────────
-
     /// Returns a reference to the raw [`Slot`] at the given index.
     ///
     /// Performs bounds checking. Returns `None` if out of bounds.
@@ -329,13 +362,9 @@ where
     /// requires `&self` and may reallocate the backing storage, which
     /// invalidates all previously obtained slot references.
     #[inline]
-    pub unsafe fn get_slot(
-        &self,
-        idx: Idx,
-    ) -> Option<&Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+    pub unsafe fn get_slot(&self, idx: IdxOfStorage<C>) -> Option<&Slot<C>> {
         self.inner.get_slot(idx)
     }
-
     /// Returns a reference to the raw [`Slot`] without bounds checking.
     ///
     /// # Safety
@@ -347,13 +376,9 @@ where
     /// requires `&self` and may reallocate the backing storage, which
     /// invalidates all previously obtained slot references.
     #[inline]
-    pub unsafe fn get_slot_unchecked(
-        &self,
-        idx: Idx,
-    ) -> &Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>> {
+    pub unsafe fn get_slot_unchecked(&self, idx: IdxOfStorage<C>) -> &Slot<C> {
         self.inner.get_slot_unchecked(idx)
     }
-
     /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
     /// at the given index.
     ///
@@ -368,14 +393,9 @@ where
     /// requires `&self` and may reallocate the backing storage, which
     /// invalidates all previously obtained references.
     #[inline]
-    pub unsafe fn get_slot_as_cell(
-        &self,
-        idx: Idx,
-    ) -> Option<&UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>>>
-    {
+    pub unsafe fn get_slot_as_cell(&self, idx: IdxOfStorage<C>) -> Option<&UnsafeCell<Slot<C>>> {
         self.inner.get_slot_as_cell(idx)
     }
-
     /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
     /// without bounds checking.
     ///
@@ -388,13 +408,9 @@ where
     /// requires `&self` and may reallocate the backing storage, which
     /// invalidates all previously obtained references.
     #[inline]
-    pub unsafe fn get_slot_as_cell_unchecked(
-        &self,
-        idx: Idx,
-    ) -> &UnsafeCell<Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+    pub unsafe fn get_slot_as_cell_unchecked(&self, idx: IdxOfStorage<C>) -> &UnsafeCell<Slot<C>> {
         self.inner.get_slot_as_cell_unchecked(idx)
     }
-
     /// Returns a mutable reference to the raw [`Slot`] at the given index.
     ///
     /// Performs bounds checking. Returns `None` if out of bounds.
@@ -404,13 +420,9 @@ where
     /// must not use this to violate map invariants, and must check
     /// occupancy before accessing the slot's value.
     #[inline]
-    pub unsafe fn get_slot_mut(
-        &mut self,
-        idx: Idx,
-    ) -> Option<&mut Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>>> {
+    pub unsafe fn get_slot_mut(&mut self, idx: IdxOfStorage<C>) -> Option<&mut Slot<C>> {
         self.inner.get_slot_mut(idx)
     }
-
     /// Returns a mutable reference to the raw [`Slot`] without bounds checking.
     ///
     /// # Safety
@@ -418,20 +430,16 @@ where
     /// - The caller must not use this to violate map invariants, and must
     ///   check occupancy before accessing the slot's value.
     #[inline]
-    pub unsafe fn get_slot_unchecked_mut(
-        &mut self,
-        idx: Idx,
-    ) -> &mut Slot<DerefSlot<D, InnerCastMapKey<Idx, Gen>>, InnerCastMapKey<Idx, Gen>> {
+    pub unsafe fn get_slot_unchecked_mut(&mut self, idx: IdxOfStorage<C>) -> &mut Slot<C> {
         self.inner.get_slot_unchecked_mut(idx)
     }
-
     /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
     /// the `&mut self` borrow prevents the stored type's `Clone` from
     /// mutating the map.
     #[inline]
     pub fn clone_efficiently_mut(&mut self) -> Self
     where
-        D: Clone,
+        C: SlotStorageClone,
     {
         Self {
             inner: self.inner.clone_efficiently_mut(),
@@ -439,12 +447,14 @@ where
         }
     }
 
-    /// A more efficient clone than `Clone::clone`, but **UB** if the `Clone`
-    /// implementation of the stored type mutates the map.
+    /// Efficient clone with a fresh [`MapId`]. **UB** if `Clone` mutates the map.
+    ///
+    /// # Safety
+    /// The stored type's `Clone` must not call any method on this map.
     #[inline]
     pub unsafe fn clone_efficiently(&self) -> Self
     where
-        D: Clone,
+        C: SlotStorageClone,
     {
         Self {
             inner: self.inner.clone_efficiently(),
@@ -454,40 +464,46 @@ where
 
     // ── inner-key access ──────────────────────────────────────────────
 
+    /// Shared-reference lookup using the backing [`Key`] directly (no map-id check).
     #[inline]
-    pub fn get_by_inner_key(&self, key: InnerCastMapKey<Idx, Gen>) -> Option<&D::Target> {
+    pub fn get_by_inner_key(&self, key: KeyOfStorage<C>) -> Option<&C::Output> {
         self.inner.get_by_inner_key(key)
     }
 
+    /// Mutable-reference lookup using the backing [`Key`] directly.
     #[inline]
-    pub fn get_by_inner_key_mut(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<&mut D::Target>
+    pub fn get_by_inner_key_mut(&mut self, key: KeyOfStorage<C>) -> Option<&mut C::Output>
     where
-        D: DerefMut,
+        C: SlotStorageMutOutput,
     {
         self.inner.get_by_inner_key_mut(key)
     }
 
+    /// Removes an element by its backing [`Key`].
     #[inline]
-    pub fn remove_by_inner_key(&mut self, key: InnerCastMapKey<Idx, Gen>) -> Option<D> {
+    pub fn remove_by_inner_key(&mut self, key: KeyOfStorage<C>) -> Option<C::Stored> {
         self.inner.remove_by_inner_key(key)
     }
 
+    /// Converts a backing [`Key`] into a [`StableCastKey`] by reading pointer
+    /// metadata from the stored value. Returns `None` if the key is stale.
     #[inline]
     pub fn cast_key_of(
         &self,
-        inner: InnerCastMapKey<Idx, Gen>,
-    ) -> Option<StableCastKey<D::Target, Idx, Gen>> {
+        inner: KeyOfStorage<C>,
+    ) -> Option<StableCastKey<C::Output, KeyOfStorage<C>>> {
         let key = self.inner.cast_key_of(inner)?;
         Some(stabilize(key, self.map_id))
     }
 
     // ── retain ──────────────────────────────────────────────────────────
 
+    /// Retains only elements for which `f(key, &mut output)` returns `true`.
     #[inline]
     pub fn retain<F>(&mut self, mut f: F)
     where
-        F: FnMut(StableCastKey<D::Target, Idx, Gen>, &mut D::Target) -> bool,
-        D: DerefMut,
+        F: FnMut(StableCastKey<C::Output, KeyOfStorage<C>>, &mut C::Output) -> bool,
+        C::Stored: DerefMut,
     {
         let map_id = self.map_id;
         self.inner.retain(|ck, val| f(stabilize(ck, map_id), val));
@@ -495,8 +511,9 @@ where
 
     // ── snapshot ────────────────────────────────────────────────────────
 
+    /// Returns a snapshot of all `(StableCastKey, &output)` pairs.
     #[inline]
-    pub fn snapshot(&self) -> Vec<(StableCastKey<D::Target, Idx, Gen>, &D::Target)> {
+    pub fn snapshot(&self) -> Vec<(StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         unsafe {
             let map_id = self.map_id;
             let mut vec = Vec::with_capacity(self.inner.len());
@@ -509,13 +526,15 @@ where
         }
     }
 
+    /// Returns a snapshot of `&output` references only.
     #[inline]
-    pub fn snapshot_refs(&self) -> Vec<&D::Target> {
+    pub fn snapshot_refs(&self) -> Vec<&C::Output> {
         self.inner.snapshot_refs()
     }
 
+    /// Returns a snapshot of all [`StableCastKey`]s.
     #[inline]
-    pub fn snapshot_keys(&self) -> Vec<StableCastKey<D::Target, Idx, Gen>> {
+    pub fn snapshot_keys(&self) -> Vec<StableCastKey<C::Output, KeyOfStorage<C>>> {
         unsafe {
             let map_id = self.map_id;
             let mut vec = Vec::with_capacity(self.inner.len());
@@ -530,12 +549,14 @@ where
 
     // ── iter_unsafe ─────────────────────────────────────────────────────
 
+    /// Shared iterator over all occupied elements.
+    ///
     /// # Safety
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
     pub unsafe fn iter_unsafe(
         &self,
-    ) -> impl Iterator<Item = (StableCastKey<D::Target, Idx, Gen>, &D::Target)> {
+    ) -> impl Iterator<Item = (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         let map_id = self.map_id;
         self.inner
             .iter_unsafe()
@@ -544,8 +565,9 @@ where
 
     // ── iter_mut ────────────────────────────────────────────────────────
 
+    /// Mutable iterator over all occupied elements.
     #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<'_, D, Idx, Gen> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, C> {
         IterMut {
             inner: self.inner.iter_mut(),
             map_id: self.map_id,
@@ -554,8 +576,9 @@ where
 
     // ── drain ───────────────────────────────────────────────────────────
 
+    /// Draining iterator. Removes all elements and yields them.
     #[inline]
-    pub fn drain(&mut self) -> Drain<'_, D, Idx, Gen> {
+    pub fn drain(&mut self) -> Drain<'_, C> {
         Drain {
             inner: self.inner.drain(),
             map_id: self.map_id,
@@ -565,15 +588,15 @@ where
 
 // ─── Cross-typed lookups (safe — map-id validated) ──────────────────────────
 
-impl<D, Idx, Gen> StableCastMap<D, Idx, Gen>
+impl<C: SlotStorage> StableCastMap<C>
 where
-    D: DerefGenMapPromise,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+    <C::Output as Pointee>::Metadata: Copy,
 {
+    /// Typed lookup by [`StableCastKey`]. Returns `None` if the key belongs
+    /// to a different map or the slot is no longer occupied.
     #[inline]
-    pub fn get<T: ?Sized + Pointee>(&self, key: StableCastKey<T, Idx, Gen>) -> Option<&T>
+    pub fn get<T: ?Sized + Pointee>(&self, key: StableCastKey<T, KeyOfStorage<C>>) -> Option<&T>
     where
         <T as Pointee>::Metadata: Copy,
     {
@@ -583,14 +606,15 @@ where
         unsafe { self.inner.get(key.inner) }
     }
 
+    /// Mutable typed lookup by [`StableCastKey`].
     #[inline]
     pub fn get_mut<T: ?Sized + Pointee>(
         &mut self,
-        key: StableCastKey<T, Idx, Gen>,
+        key: StableCastKey<T, KeyOfStorage<C>>,
     ) -> Option<&mut T>
     where
         <T as Pointee>::Metadata: Copy,
-        D: std::ops::DerefMut,
+        C: SlotStorageMutOutput,
     {
         if key.map_id != self.map_id {
             return None;
@@ -603,9 +627,12 @@ where
     /// # Safety
     /// - The key's index must be in bounds.
     /// - The slot at that index must be occupied with the matching generation.
-    /// - The key's metadata must be valid for the data stored at that slot.
+    /// - The key's pointer metadata must be valid for the data in that slot.
     #[inline]
-    pub unsafe fn get_unchecked<T: ?Sized + Pointee>(&self, key: StableCastKey<T, Idx, Gen>) -> &T
+    pub unsafe fn get_unchecked<T: ?Sized + Pointee>(
+        &self,
+        key: StableCastKey<T, KeyOfStorage<C>>,
+    ) -> &T
     where
         <T as Pointee>::Metadata: Copy,
     {
@@ -617,21 +644,26 @@ where
     /// # Safety
     /// - The key's index must be in bounds.
     /// - The slot at that index must be occupied with the matching generation.
-    /// - The key's metadata must be valid for the data stored at that slot.
+    /// - The key's pointer metadata must be valid for the data in that slot.
     #[inline]
     pub unsafe fn get_unchecked_mut<T: ?Sized + Pointee>(
         &mut self,
-        key: StableCastKey<T, Idx, Gen>,
+        key: StableCastKey<T, KeyOfStorage<C>>,
     ) -> &mut T
     where
         <T as Pointee>::Metadata: Copy,
-        D: std::ops::DerefMut,
+        C: SlotStorageMutOutput,
     {
         self.inner.get_unchecked_mut(key.inner)
     }
 
+    /// Removes an element by its [`StableCastKey`]. Returns `None` if the key
+    /// belongs to a different map.
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(&mut self, key: StableCastKey<T, Idx, Gen>) -> Option<D>
+    pub fn remove<T: ?Sized + Pointee>(
+        &mut self,
+        key: StableCastKey<T, KeyOfStorage<C>>,
+    ) -> Option<C::Stored>
     where
         <T as Pointee>::Metadata: Copy,
     {
@@ -644,61 +676,59 @@ where
 
 // ─── Index / IndexMut ───────────────────────────────────────────────────────
 
-impl<D, Idx, Gen> Index<StableCastKey<D::Target, Idx, Gen>> for StableCastMap<D, Idx, Gen>
+impl<C: SlotStorage> std::ops::Index<StableCastKey<C::Output, KeyOfStorage<C>>> for StableCastMap<C>
 where
-    D: DerefGenMapPromise,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+    <C::Output as Pointee>::Metadata: Copy,
 {
-    type Output = D::Target;
+    type Output = C::Output;
 
-    fn index(&self, key: StableCastKey<D::Target, Idx, Gen>) -> &Self::Output {
+    #[inline]
+    fn index(&self, key: StableCastKey<C::Output, KeyOfStorage<C>>) -> &Self::Output {
         self.get(key).unwrap()
     }
 }
 
-impl<D, Idx, Gen> IndexMut<StableCastKey<D::Target, Idx, Gen>> for StableCastMap<D, Idx, Gen>
+impl<C: SlotStorage + SlotStorageMutOutput>
+    std::ops::IndexMut<StableCastKey<C::Output, KeyOfStorage<C>>> for StableCastMap<C>
 where
-    D: DerefGenMapPromise + std::ops::DerefMut,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+    <C::Output as Pointee>::Metadata: Copy,
 {
-    fn index_mut(&mut self, key: StableCastKey<D::Target, Idx, Gen>) -> &mut Self::Output {
+    #[inline]
+    fn index_mut(&mut self, key: StableCastKey<C::Output, KeyOfStorage<C>>) -> &mut Self::Output {
         self.get_mut(key).unwrap()
     }
 }
 
-/// Convenience alias: [`StableCastMap`] storing `Box<T>`.
-pub type StableBoxCastMap<T, Idx = u32, Gen = u32> = StableCastMap<Box<T>, Idx, Gen>;
+/// Convenience alias: [`StableCastMap`] using `Box<T>` with a configurable key.
+pub type StableBoxCastMap<K, T> = StableCastMap<DerefSlot<K, Box<T>>>;
 
 // ─── IterMut ────────────────────────────────────────────────────────────────
 
-pub struct IterMut<'a, D, Idx = u32, Gen = u32>
+pub struct IterMut<'a, C: SlotStorage>
 where
-    D: DerefGenMapPromise,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
 {
-    inner: unsafe_cast_map::IterMut<'a, D, Idx, Gen>,
+    inner: unsafe_cast_map::IterMut<'a, C>,
     map_id: MapId,
 }
 
-impl<'a, D, Idx, Gen> Iterator for IterMut<'a, D, Idx, Gen>
+impl<'a, C: SlotStorage> Iterator for IterMut<'a, C>
 where
-    D: DerefGenMapPromise + DerefMut,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise + DerefMut + 'a,
+    <C::Stored as Deref>::Target: 'a,
+    <C::Output as Pointee>::Metadata: Copy,
 {
-    type Item = (StableCastKey<D::Target, Idx, Gen>, &'a mut D::Target);
+    type Item = (StableCastKey<C::Output, KeyOfStorage<C>>, &'a mut C::Output);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let (ck, val) = self.inner.next()?;
         Some((stabilize(ck, self.map_id), val))
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
     }
@@ -706,30 +736,28 @@ where
 
 // ─── Drain ──────────────────────────────────────────────────────────────────
 
-pub struct Drain<'a, D, Idx = u32, Gen = u32>
+pub struct Drain<'a, C: SlotStorage>
 where
-    D: DerefGenMapPromise,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
 {
-    inner: unsafe_cast_map::Drain<'a, D, Idx, Gen>,
+    inner: unsafe_cast_map::Drain<'a, C>,
     map_id: MapId,
 }
 
-impl<'a, D, Idx, Gen> Iterator for Drain<'a, D, Idx, Gen>
+impl<'a, C: SlotStorage> Iterator for Drain<'a, C>
 where
-    D: DerefGenMapPromise,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+    <C::Output as Pointee>::Metadata: Copy,
 {
-    type Item = (StableCastKey<D::Target, Idx, Gen>, D);
+    type Item = (StableCastKey<C::Output, KeyOfStorage<C>>, C::Stored);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let (ck, val) = self.inner.next()?;
         Some((stabilize(ck, self.map_id), val))
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
     }
@@ -737,45 +765,42 @@ where
 
 // ─── IntoIter (owning) ─────────────────────────────────────────────────────
 
-pub struct IntoIter<D, Idx = u32, Gen = u32>
+pub struct IntoIter<C: SlotStorage>
 where
-    D: DerefGenMapPromise,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
 {
-    inner: unsafe_cast_map::IntoIter<D, Idx, Gen>,
+    inner: unsafe_cast_map::IntoIter<C>,
     map_id: MapId,
 }
 
-impl<D, Idx, Gen> Iterator for IntoIter<D, Idx, Gen>
+impl<C: SlotStorage> Iterator for IntoIter<C>
 where
-    D: DerefGenMapPromise,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+    <C::Output as Pointee>::Metadata: Copy,
 {
-    type Item = (StableCastKey<D::Target, Idx, Gen>, D);
+    type Item = (StableCastKey<C::Output, KeyOfStorage<C>>, C::Stored);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let (ck, val) = self.inner.next()?;
         Some((stabilize(ck, self.map_id), val))
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
     }
 }
 
-impl<D, Idx, Gen> IntoIterator for StableCastMap<D, Idx, Gen>
+impl<C: SlotStorage> IntoIterator for StableCastMap<C>
 where
-    D: DerefGenMapPromise,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+    <C::Output as Pointee>::Metadata: Copy,
 {
-    type Item = (StableCastKey<D::Target, Idx, Gen>, D);
-    type IntoIter = IntoIter<D, Idx, Gen>;
+    type Item = (StableCastKey<C::Output, KeyOfStorage<C>>, C::Stored);
+    type IntoIter = IntoIter<C>;
 
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
             inner: self.inner.into_iter(),
@@ -784,15 +809,14 @@ where
     }
 }
 
-impl<'a, D, Idx, Gen> IntoIterator for &'a mut StableCastMap<D, Idx, Gen>
+impl<'a, C: SlotStorage> IntoIterator for &'a mut StableCastMap<C>
 where
-    D: DerefGenMapPromise + DerefMut,
-    <D::Target as Pointee>::Metadata: Copy,
-    Idx: Copy + KeyPiece,
-    Gen: Copy + KeyPiece,
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise + DerefMut + 'a,
+    <C::Stored as Deref>::Target: 'a,
+    <C::Output as Pointee>::Metadata: Copy,
 {
-    type Item = (StableCastKey<D::Target, Idx, Gen>, &'a mut D::Target);
-    type IntoIter = IterMut<'a, D, Idx, Gen>;
+    type Item = (StableCastKey<C::Output, KeyOfStorage<C>>, &'a mut C::Output);
+    type IntoIter = IterMut<'a, C>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
