@@ -3,6 +3,7 @@ use crate::key::{Key, KeyData};
 use crate::key_piece::KeyPiece;
 use crate::stable_gen_map::StableGenMap;
 use std::collections::HashSet;
+use std::num::NonZero;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -411,7 +412,12 @@ fn len_tracks_insert_remove_and_clear() {
 
     // Removing bogus generation must not change len.
     let mut bad = k2;
-    bad.key_data.generation = bad.key_data.generation.wrapping_add(1);
+    bad.key_data.generation = bad
+        .key_data
+        .generation()
+        .wrapping_add(1)
+        .try_into()
+        .unwrap();
     assert!(normal_map.remove(bad).is_none());
     assert_eq!(
         normal_map.len(),
@@ -720,7 +726,7 @@ fn remove_nonexistent_returns_none() {
     let bogus = DefaultKey {
         key_data: KeyData {
             idx: 999_999,
-            generation: 0,
+            generation: NonZero::new(42).unwrap(),
         },
     };
     assert!(map.remove(bogus).is_none());
@@ -728,7 +734,12 @@ fn remove_nonexistent_returns_none() {
     // Wrong generation for an otherwise valid slot.
     let (k, _) = map.insert(1);
     let mut bad = k;
-    bad.key_data.generation = bad.key_data.generation.wrapping_add(1);
+    bad.key_data.generation = bad
+        .key_data
+        .generation()
+        .wrapping_add(1)
+        .try_into()
+        .unwrap();
     assert!(
         map.remove(bad).is_none(),
         "wrong generation should not remove anything"

@@ -14,7 +14,7 @@ fn stale_key_after_generation_overflow_is_not_accepted_stable_gen_map() {
         next_value = map.len() as u32;
         let (key, _) = map.insert(next_value);
 
-        if key.data().generation == u8::MAX {
+        if key.data().generation() == u8::MAX {
             break key;
         }
 
