@@ -46,10 +46,7 @@ where
     }
 }
 
-impl<T: ?Sized + Pointee, K: Key> Copy for CastKey<T, K> where
-    <T as Pointee>::Metadata: Copy
-{
-}
+impl<T: ?Sized + Pointee, K: Key> Copy for CastKey<T, K> where <T as Pointee>::Metadata: Copy {}
 
 impl<T: ?Sized + Pointee, K: Key> std::fmt::Debug for CastKey<T, K>
 where
@@ -140,7 +137,10 @@ where
     /// # Safety
     /// `metadata` must be valid for the allocation identified by the key.
     #[inline]
-    pub unsafe fn from_parts(data: KeyData<K::Idx, K::Gen>, metadata: <T as Pointee>::Metadata) -> Self {
+    pub unsafe fn from_parts(
+        data: KeyData<K::Idx, K::Gen>,
+        metadata: <T as Pointee>::Metadata,
+    ) -> Self {
         Self {
             key_data: data,
             metadata,
@@ -172,10 +172,7 @@ where
     }
 }
 
-impl<T: ?Sized + Pointee, K: Key> Copy for StableCastKey<T, K> where
-    <T as Pointee>::Metadata: Copy
-{
-}
+impl<T: ?Sized + Pointee, K: Key> Copy for StableCastKey<T, K> where <T as Pointee>::Metadata: Copy {}
 
 impl<T: ?Sized + Pointee, K: Key> std::fmt::Debug for StableCastKey<T, K>
 where

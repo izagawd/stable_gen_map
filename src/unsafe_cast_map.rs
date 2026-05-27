@@ -188,7 +188,10 @@ where
     pub fn insert_sized<ConcretePtr>(
         &self,
         value: ConcretePtr,
-    ) -> (CastKey<ConcretePtr::Target, KeyOfStorage<C>>, &ConcretePtr::Target)
+    ) -> (
+        CastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+        &ConcretePtr::Target,
+    )
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
@@ -201,7 +204,10 @@ where
     pub fn insert_sized_with_key<ConcretePtr>(
         &self,
         func: impl FnOnce(CastKey<ConcretePtr::Target, KeyOfStorage<C>>) -> ConcretePtr,
-    ) -> (CastKey<ConcretePtr::Target, KeyOfStorage<C>>, &ConcretePtr::Target)
+    ) -> (
+        CastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+        &ConcretePtr::Target,
+    )
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
@@ -215,28 +221,35 @@ where
     pub fn try_insert_sized_with_key<ConcretePtr, E>(
         &self,
         func: impl FnOnce(CastKey<ConcretePtr::Target, KeyOfStorage<C>>) -> Result<ConcretePtr, E>,
-    ) -> Result<(CastKey<ConcretePtr::Target, KeyOfStorage<C>>, &ConcretePtr::Target), E>
+    ) -> Result<
+        (
+            CastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+            &ConcretePtr::Target,
+        ),
+        E,
+    >
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
     {
         let mut saved_key: Option<CastKey<ConcretePtr::Target, KeyOfStorage<C>>> = None;
 
-        let (_, erased_ref) = self
-            .inner
-            .try_insert_with_key(|inner_key| -> Result<C::Stored, E> {
-                let typed_key = CastKey {
-                    key_data: inner_key.data(),
-                    metadata: (),
-                };
-                saved_key = Some(typed_key);
-                let concrete: ConcretePtr = func(typed_key)?;
-                Ok(concrete)
-            })?;
+        let (_, erased_ref) =
+            self.inner
+                .try_insert_with_key(|inner_key| -> Result<C::Stored, E> {
+                    let typed_key = CastKey {
+                        key_data: inner_key.data(),
+                        metadata: (),
+                    };
+                    saved_key = Some(typed_key);
+                    let concrete: ConcretePtr = func(typed_key)?;
+                    Ok(concrete)
+                })?;
 
         let key = saved_key.unwrap();
-        let concrete_ref: &ConcretePtr::Target =
-            unsafe { &*(erased_ref as *const C::Output as *const () as *const ConcretePtr::Target) };
+        let concrete_ref: &ConcretePtr::Target = unsafe {
+            &*(erased_ref as *const C::Output as *const () as *const ConcretePtr::Target)
+        };
         Ok((key, concrete_ref))
     }
     // ── insert_as ───────────────────────────────────────────────────────
@@ -247,7 +260,10 @@ where
     pub fn insert_as<SourcePtr>(
         &self,
         value: SourcePtr,
-    ) -> (CastKey<SourcePtr::Target, KeyOfStorage<C>>, &SourcePtr::Target)
+    ) -> (
+        CastKey<SourcePtr::Target, KeyOfStorage<C>>,
+        &SourcePtr::Target,
+    )
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
@@ -260,7 +276,10 @@ where
     pub fn insert_as_with_key<SourcePtr>(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> SourcePtr,
-    ) -> (CastKey<SourcePtr::Target, KeyOfStorage<C>>, &SourcePtr::Target)
+    ) -> (
+        CastKey<SourcePtr::Target, KeyOfStorage<C>>,
+        &SourcePtr::Target,
+    )
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
@@ -274,7 +293,13 @@ where
     pub fn try_insert_as_with_key<SourcePtr, E>(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> Result<SourcePtr, E>,
-    ) -> Result<(CastKey<SourcePtr::Target, KeyOfStorage<C>>, &SourcePtr::Target), E>
+    ) -> Result<
+        (
+            CastKey<SourcePtr::Target, KeyOfStorage<C>>,
+            &SourcePtr::Target,
+        ),
+        E,
+    >
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
@@ -285,7 +310,8 @@ where
             self.inner
                 .try_insert_with_key(|inner_key| -> Result<C::Stored, E> {
                     let concrete: SourcePtr = func(inner_key)?;
-                    saved_metadata = Some(std::ptr::metadata(&*concrete as *const SourcePtr::Target));
+                    saved_metadata =
+                        Some(std::ptr::metadata(&*concrete as *const SourcePtr::Target));
                     Ok(concrete)
                 })?;
 
@@ -465,7 +491,10 @@ where
     ///
     /// Returns `None` if the inner key is stale.
     #[inline]
-    pub fn cast_key_of(&self, inner: KeyOfStorage<C>) -> Option<CastKey<C::Output, KeyOfStorage<C>>> {
+    pub fn cast_key_of(
+        &self,
+        inner: KeyOfStorage<C>,
+    ) -> Option<CastKey<C::Output, KeyOfStorage<C>>> {
         let reference: &C::Output = self.inner.get(inner)?;
         Some(to_castable::<C>(inner, reference))
     }
@@ -493,9 +522,11 @@ where
     pub fn snapshot(&self) -> Vec<(CastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
-            vec.extend(self.inner.iter_unsafe().map(|(inner_key, reference)| {
-                (to_castable::<C>(inner_key, reference), reference)
-            }));
+            vec.extend(
+                self.inner.iter_unsafe().map(|(inner_key, reference)| {
+                    (to_castable::<C>(inner_key, reference), reference)
+                }),
+            );
             vec
         }
     }
@@ -534,9 +565,9 @@ where
     pub unsafe fn iter_unsafe(
         &self,
     ) -> impl Iterator<Item = (CastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
-        self.inner.iter_unsafe().map(move |(inner_key, reference)| {
-            (to_castable::<C>(inner_key, reference), reference)
-        })
+        self.inner
+            .iter_unsafe()
+            .map(move |(inner_key, reference)| (to_castable::<C>(inner_key, reference), reference))
     }
 
     // ── iter_mut ────────────────────────────────────────────────────────
@@ -650,7 +681,10 @@ where
 
     /// Removes an element by its [`CastKey`], returning the owned smart pointer.
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(&mut self, key: CastKey<T, KeyOfStorage<C>>) -> Option<C::Stored>
+    pub fn remove<T: ?Sized + Pointee>(
+        &mut self,
+        key: CastKey<T, KeyOfStorage<C>>,
+    ) -> Option<C::Stored>
     where
         <T as Pointee>::Metadata: Copy,
     {

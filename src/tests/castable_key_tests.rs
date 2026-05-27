@@ -1,7 +1,7 @@
 use crate::cast_key::{CastKey, StableCastKey};
 use crate::key::DefaultKey;
-use crate::stable_cast_map::StableBoxCastMap;
 use crate::key::Key;
+use crate::stable_cast_map::StableBoxCastMap;
 
 use std::any::Any;
 use std::collections::HashSet;

@@ -1,8 +1,8 @@
-use crate::cast_key::{CastKey, StableCastKey};
-use crate::key::Key;
-use crate::stable_cast_map::{StableCastMap, StableBoxCastMap};
-use crate::stable_deref_map::DerefSlot;
+use crate::cast_key::StableCastKey;
 use crate::key::DefaultKey;
+use crate::key::Key;
+use crate::stable_cast_map::{StableBoxCastMap, StableCastMap};
+use crate::stable_deref_map::DerefSlot;
 use std::any::Any;
 
 type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;

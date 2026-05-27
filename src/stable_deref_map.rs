@@ -1,8 +1,7 @@
 use crate::gen_map::{GenMap, Slot};
-use crate::key::{is_occupied_by_generation, Key, KeyData};
+use crate::key::{is_occupied_by_generation, Key};
 use crate::slot_item::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
-use num_traits::{CheckedAdd, One, Zero};
-use std::cell::{Cell, UnsafeCell};
+use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
@@ -162,9 +161,7 @@ pub type BoxStableDerefMap<K, T> = StableDerefMap<K, Box<T>>;
 
 // ─── Clone (two strategies) ──────────────────────────────────────────────────
 
-impl<K: Key, Ptr: DerefGenMapPromise + SmartPtrCloneable> Clone
-    for StableDerefMap<K, Ptr>
-{
+impl<K: Key, Ptr: DerefGenMapPromise + SmartPtrCloneable> Clone for StableDerefMap<K, Ptr> {
     #[inline]
     fn clone(&self) -> Self {
         unsafe {

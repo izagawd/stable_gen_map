@@ -1,10 +1,10 @@
 use crate::key::{is_occupied_by_generation, Key, KeyData};
+use crate::key_piece::KeyPiece;
 use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::collections::TryReserveError;
 use std::ops::{Index, IndexMut};
-use crate::key_piece::KeyPiece;
 // ─── Private type-level shortcuts ────────────────────────────────────────────
 // These reduce the verbosity of double-associated-type projections.
 
@@ -395,7 +395,10 @@ impl<C: SlotStorage> GenMap<C> {
     /// Inserts a value produced by `func`, which receives the key that will
     /// identify the inserted element.
     #[inline]
-    pub fn insert_with_key(&self, func: impl FnOnce(KeyOfStorage<C>) -> C::Stored) -> (KeyOfStorage<C>, &C::Output) {
+    pub fn insert_with_key(
+        &self,
+        func: impl FnOnce(KeyOfStorage<C>) -> C::Stored,
+    ) -> (KeyOfStorage<C>, &C::Output) {
         self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
     }
 
@@ -700,7 +703,10 @@ impl<C: SlotStorageMutOutput> GenMap<C> {
 
     /// Mutable lookup by index only (ignores generation).
     #[inline]
-    pub fn get_by_index_only_mut(&mut self, idx: IdxOfStorage<C>) -> Option<(KeyOfStorage<C>, &mut C::Output)> {
+    pub fn get_by_index_only_mut(
+        &mut self,
+        idx: IdxOfStorage<C>,
+    ) -> Option<(KeyOfStorage<C>, &mut C::Output)> {
         let slot = self.slots.get_mut().get_mut(idx.into_usize())?.get_mut();
         if is_occupied_by_generation(slot.generation) {
             Some((

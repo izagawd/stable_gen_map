@@ -24,10 +24,7 @@ use crate::unsafe_cast_map::UnsafeCastMap;
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 #[inline]
-fn stabilize<T: ?Sized + Pointee, K: Key>(
-    key: CastKey<T, K>,
-    map_id: MapId,
-) -> StableCastKey<T, K>
+fn stabilize<T: ?Sized + Pointee, K: Key>(key: CastKey<T, K>, map_id: MapId) -> StableCastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
 {
@@ -83,9 +80,7 @@ where
             map_id: MapId::next(),
         }
     }
-
-    /// Creates a new map with a fresh [`MapId`] and pre-allocated capacity.
-    #[inline]
+    
     /// Creates a new map with the given pre-allocated capacity.
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
@@ -157,7 +152,10 @@ where
 
     /// Inserts a value and returns its [`StableCastKey`] alongside a reference.
     #[inline]
-    pub fn insert(&self, value: C::Stored) -> (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output) {
+    pub fn insert(
+        &self,
+        value: C::Stored,
+    ) -> (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output) {
         let (key, reference) = self.inner.insert(value);
         (stabilize(key, self.map_id), reference)
     }
@@ -189,7 +187,10 @@ where
     pub fn insert_sized<ConcretePtr>(
         &self,
         value: ConcretePtr,
-    ) -> (StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>, &ConcretePtr::Target)
+    ) -> (
+        StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+        &ConcretePtr::Target,
+    )
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
@@ -203,7 +204,10 @@ where
     pub fn insert_sized_with_key<ConcretePtr>(
         &self,
         func: impl FnOnce(StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>) -> ConcretePtr,
-    ) -> (StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>, &ConcretePtr::Target)
+    ) -> (
+        StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+        &ConcretePtr::Target,
+    )
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
@@ -220,7 +224,13 @@ where
     pub fn try_insert_sized_with_key<ConcretePtr, E>(
         &self,
         func: impl FnOnce(StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>) -> Result<ConcretePtr, E>,
-    ) -> Result<(StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>, &ConcretePtr::Target), E>
+    ) -> Result<
+        (
+            StableCastKey<ConcretePtr::Target, KeyOfStorage<C>>,
+            &ConcretePtr::Target,
+        ),
+        E,
+    >
     where
         ConcretePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         ConcretePtr::Target: Sized,
@@ -239,7 +249,10 @@ where
     pub fn insert_as<SourcePtr>(
         &self,
         value: SourcePtr,
-    ) -> (StableCastKey<SourcePtr::Target, KeyOfStorage<C>>, &SourcePtr::Target)
+    ) -> (
+        StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
+        &SourcePtr::Target,
+    )
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
@@ -253,7 +266,10 @@ where
     pub fn insert_as_with_key<SourcePtr>(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> SourcePtr,
-    ) -> (StableCastKey<SourcePtr::Target, KeyOfStorage<C>>, &SourcePtr::Target)
+    ) -> (
+        StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
+        &SourcePtr::Target,
+    )
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
@@ -267,7 +283,13 @@ where
     pub fn try_insert_as_with_key<SourcePtr, E>(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> Result<SourcePtr, E>,
-    ) -> Result<(StableCastKey<SourcePtr::Target, KeyOfStorage<C>>, &SourcePtr::Target), E>
+    ) -> Result<
+        (
+            StableCastKey<SourcePtr::Target, KeyOfStorage<C>>,
+            &SourcePtr::Target,
+        ),
+        E,
+    >
     where
         SourcePtr: std::ops::CoerceUnsized<C::Stored> + Deref,
         SourcePtr::Target: Pointee<Metadata: Copy>,
@@ -460,7 +482,10 @@ where
     /// Converts a backing [`Key`] into a [`StableCastKey`] by reading pointer
     /// metadata from the stored value. Returns `None` if the key is stale.
     #[inline]
-    pub fn cast_key_of(&self, inner: KeyOfStorage<C>) -> Option<StableCastKey<C::Output, KeyOfStorage<C>>> {
+    pub fn cast_key_of(
+        &self,
+        inner: KeyOfStorage<C>,
+    ) -> Option<StableCastKey<C::Output, KeyOfStorage<C>>> {
         let key = self.inner.cast_key_of(inner)?;
         Some(stabilize(key, self.map_id))
     }
@@ -598,7 +623,10 @@ where
     /// - The slot at that index must be occupied with the matching generation.
     /// - The key's pointer metadata must be valid for the data in that slot.
     #[inline]
-    pub unsafe fn get_unchecked<T: ?Sized + Pointee>(&self, key: StableCastKey<T, KeyOfStorage<C>>) -> &T
+    pub unsafe fn get_unchecked<T: ?Sized + Pointee>(
+        &self,
+        key: StableCastKey<T, KeyOfStorage<C>>,
+    ) -> &T
     where
         <T as Pointee>::Metadata: Copy,
     {
@@ -626,7 +654,10 @@ where
     /// Removes an element by its [`StableCastKey`]. Returns `None` if the key
     /// belongs to a different map.
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(&mut self, key: StableCastKey<T, KeyOfStorage<C>>) -> Option<C::Stored>
+    pub fn remove<T: ?Sized + Pointee>(
+        &mut self,
+        key: StableCastKey<T, KeyOfStorage<C>>,
+    ) -> Option<C::Stored>
     where
         <T as Pointee>::Metadata: Copy,
     {
@@ -652,8 +683,8 @@ where
     }
 }
 
-impl<C: SlotStorage + SlotStorageMutOutput> std::ops::IndexMut<StableCastKey<C::Output, KeyOfStorage<C>>>
-    for StableCastMap<C>
+impl<C: SlotStorage + SlotStorageMutOutput>
+    std::ops::IndexMut<StableCastKey<C::Output, KeyOfStorage<C>>> for StableCastMap<C>
 where
     C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
     <C::Output as Pointee>::Metadata: Copy,
