@@ -36,8 +36,16 @@ macro_rules! impl_key_piece {
                     // Just bugs, and it will only happen if someone decides to create a key outside insert
                 }
                 fn from_usize(v: usize) -> Self {
-                    Self::try_from(v).unwrap_or_else(|_| panic!("")) // this should panic.
-                    // if the value of usize is higher than the max value of self, using "as" to cast will cap it to the max value of self, which may cause bugs and/or UB
+                    Self::try_from(v).unwrap_or_else(
+                        |_|
+                        panic!(
+                            "{} value {} overflows {} (max {})",
+                            std::any::type_name::<Self>(),
+                            v,
+                            std::any::type_name::<Self>(),
+                            Self::MAX
+                        )
+                    ) // this should panic, if the value of usize is higher than the max value of self, using "as" to cast will cap it to the max value of self, which may cause bugs and/or UB
                 }
             }
         )*

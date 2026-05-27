@@ -196,7 +196,7 @@ impl<C: SlotStorage> GenMap<C> {
             num_elements: Cell::new(0),
         }
     }
-    
+
     /// Returns true if the map is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -476,10 +476,9 @@ impl<C: SlotStorage> GenMap<C> {
         let next_free = args.next_free;
         let key_data = args.key.data();
 
-        if DO_GENERATION_CHECK
-            && slot.generation != key_data.generation {
-                return None;
-            }
+        if DO_GENERATION_CHECK && slot.generation != key_data.generation {
+            return None;
+        }
 
         let value = slot.take_occupied()?;
 

@@ -14,7 +14,7 @@ use std::ptr::Pointee;
 
 use crate::cast_key::{CastKey, StableCastKey};
 use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
-use crate::key::{Key};
+use crate::key::Key;
 use crate::map_id::MapId;
 use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
@@ -86,7 +86,7 @@ where
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
-    
+
     /// Creates a new map with the given pre-allocated capacity.
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
