@@ -21,7 +21,8 @@ fn clear_does_not_reuse_keys_default_slots() {
     // First batch of inserts: collect all keys.
     let mut old_keys = HashSet::new();
     for i in 0..N {
-        let (k, r) = map.insert(i as i32);
+        let k = map.insert(i as i32);
+        let r = map.get(k).unwrap();
         assert_eq!(*r, i as i32);
         assert!(old_keys.insert(k), "duplicate key during initial inserts");
     }
@@ -43,7 +44,8 @@ fn clear_does_not_reuse_keys_default_slots() {
     // Second batch of inserts: collect new keys.
     let mut new_keys = HashSet::new();
     for i in 0..N {
-        let (k, r) = map.insert(10_000 + i as i32);
+        let k = map.insert(10_000 + i as i32);
+        let r = map.get(k).unwrap();
         assert_eq!(*r, 10_000 + i as i32);
         assert!(new_keys.insert(k), "duplicate key during second inserts");
     }
@@ -66,7 +68,7 @@ fn clear_does_not_reuse_any_previous_key_even_after_prior_removes() {
 
     // Insert N, record keys.
     for i in 0..N {
-        let (k, _) = map.insert(i as i32);
+        let k = map.insert(i as i32);
         all_keys_before_clear.insert(k);
         keys.push(k);
     }
@@ -81,7 +83,7 @@ fn clear_does_not_reuse_any_previous_key_even_after_prior_removes() {
 
     // Insert some more; this will reuse free slots and bump generations.
     for i in 0..N {
-        let (k, _) = map.insert(1_000 + i as i32);
+        let k = map.insert(1_000 + i as i32);
         all_keys_before_clear.insert(k);
     }
 
@@ -92,7 +94,7 @@ fn clear_does_not_reuse_any_previous_key_even_after_prior_removes() {
     // Insert a new batch after clear.
     let mut new_keys = HashSet::new();
     for i in 0..N {
-        let (k, _) = map.insert(20_000 + i as i32);
+        let k = map.insert(20_000 + i as i32);
         new_keys.insert(k);
     }
 
@@ -110,7 +112,7 @@ fn try_insert_with_key_err_reuses_reserved_new_slot() {
     let map: Map<i32> = StableGenMap::new();
 
     // Empty map → allocates first slot, then returns Err.
-    let res: Result<(DefaultKey, &i32), &'static str> =
+    let res: Result<DefaultKey, &'static str> =
         map.try_insert_with_key(|_k| -> Result<i32, &'static str> {
             Err("oops in normal_map constructor")
         });
@@ -118,7 +120,8 @@ fn try_insert_with_key_err_reuses_reserved_new_slot() {
     assert!(res.is_err());
 
     // Next insert should reuse (idx=0).
-    let (k_ok, v_ok) = map.insert(123);
+    let k_ok = map.insert(123);
+    let v_ok = map.get(k_ok).unwrap();
     let kd = k_ok.data();
 
     assert_eq!(
@@ -132,7 +135,7 @@ fn try_insert_with_key_err_reuses_reserved_new_slot() {
 fn get_by_index_only_round_trips_index_and_key() {
     let map = StableGenMap::<DefaultKey, _>::new();
 
-    let (k, _) = map.insert(777);
+    let k = map.insert(777);
     let idx = k.data().idx;
 
     let (k2, v) = map.get_by_index_only(idx).expect("slot should be occupied");
@@ -144,7 +147,7 @@ fn get_by_index_only_round_trips_index_and_key() {
 fn get_by_index_only_returns_none_for_vacant_slot() {
     let mut map = StableGenMap::<DefaultKey, _>::new();
 
-    let (k, _) = map.insert(42);
+    let k = map.insert(42);
     let idx = k.data().idx;
 
     let _ = map.remove(k);
@@ -166,7 +169,8 @@ fn try_insert_with_key_panic_reuses_reserved_new_slot() {
     assert!(res.is_err(), "panic should be caught by catch_unwind");
 
     // First real insert must reuse that first slot.
-    let (k_ok, v_ok) = map.insert(123);
+    let k_ok = map.insert(123);
+    let v_ok = map.get(k_ok).unwrap();
     let kd = k_ok.data();
 
     assert_eq!(
@@ -185,17 +189,18 @@ fn nested_try_insert_with_key_uses_distinct_slots() {
     // Record the inner key created inside the outer try_insert_with_key closure.
     let inner_key_cell: Cell<Option<DefaultKey>> = Cell::new(None);
 
-    let res: Result<(DefaultKey, &i32), ()> = map.try_insert_with_key::<()>(|_outer_key| {
+    let res: Result<DefaultKey, ()> = map.try_insert_with_key::<()>(|_outer_key| {
         // Nested insert_with_key inside the closure.
-        let (inner_key, inner_ref) = map.insert_with_key(|_k| 111);
+        let inner_key = map.insert_with_key(|_k| 111);
         inner_key_cell.set(Some(inner_key));
-        assert_eq!(*inner_ref, 111);
+        assert_eq!(*map.get(inner_key).unwrap(), 111);
 
         // Outer value.
         Ok(222)
     });
 
-    let (outer_key, outer_ref) = res.unwrap();
+    let outer_key = res.unwrap();
+    let outer_ref = map.get(outer_key).unwrap();
     let inner_key = inner_key_cell.get().expect("inner key must be recorded");
 
     // Both entries must exist and have the correct values.
@@ -239,7 +244,8 @@ fn iter_mut_yields_valid_keys_and_values() {
     // Insert enough items to span multiple slots
     let mut expected = Vec::new();
     for i in 0..1_000 {
-        let (k, v) = map.insert(i);
+        let k = map.insert(i);
+        let v = map.get(k).unwrap();
         assert_eq!(*v, i);
         assert_eq!(i, *map.get(k).unwrap());
         expected.push((k, i));
@@ -274,7 +280,8 @@ fn iter_mut_yields_valid_keys_and_values() {
 fn remove_reuses_same_slot_with_bumped_generation() {
     let mut map = StableGenMap::<TestKey, i32>::new();
 
-    let (k1, v1) = map.insert(10);
+    let k1 = map.insert(10);
+    let v1 = map.get(k1).unwrap();
     assert_eq!(*v1, 10);
 
     assert_eq!(map.len(), 1);
@@ -285,7 +292,8 @@ fn remove_reuses_same_slot_with_bumped_generation() {
     assert!(map.get(k1).is_none());
 
     // Insert again: should reuse slot, but with a bumped generation.
-    let (k2, v2) = map.insert(20);
+    let k2 = map.insert(20);
+    let v2 = map.get(k2).unwrap();
     assert_eq!(*v2, 20);
     assert_eq!(map.len(), 1);
 
@@ -301,7 +309,7 @@ fn iter_mut_can_modify_all_values() {
     let mut map: Map<i32> = StableGenMap::new();
 
     for i in 0..40 {
-        let (_k, _) = map.insert(i);
+        let _k = map.insert(i);
     }
 
     for (_k, v) in map.iter_mut() {
@@ -332,7 +340,7 @@ fn drop_is_called_exactly_once_per_element() {
         let mut keys = Vec::new();
         for _ in 0..100 {
             let dc = DropCounter(drops.clone());
-            let (k, _) = map.insert(dc);
+            let k = map.insert(dc);
             keys.push(k);
         }
 
@@ -346,7 +354,7 @@ fn drop_is_called_exactly_once_per_element() {
         // Insert again to stress free list reuse
         for _ in 0..50 {
             let dc = DropCounter(drops.clone());
-            let (_k, _) = map.insert(dc);
+            let _k = map.insert(dc);
         }
 
         // Map drops here
@@ -361,7 +369,7 @@ fn into_iter_consumes_and_yields_owned_values() {
     let map: Map<i32> = StableGenMap::new();
 
     for i in 0..40 {
-        let (_k, _) = map.insert(i);
+        let _k = map.insert(i);
     }
 
     let mut seen: Vec<i32> = map.into_iter().map(|(_k, v)| v).collect();
@@ -389,10 +397,10 @@ fn len_tracks_insert_remove_and_clear() {
     let normal_map: Map<i32> = StableGenMap::new();
     assert_eq!(normal_map.len(), 0, "new normal_map map must start empty");
 
-    let (k1, _) = normal_map.insert(10);
+    let k1 = normal_map.insert(10);
     assert_eq!(normal_map.len(), 1, "one insert increments len to 1");
 
-    let (k2, _) = normal_map.insert(20);
+    let k2 = normal_map.insert(20);
     assert_eq!(normal_map.len(), 2, "two inserts increments len to 2");
 
     // Move into mutable binding.
@@ -436,7 +444,7 @@ fn len_unchanged_on_try_insert_new_slot_err_and_panic() {
     assert_eq!(normal_map.len(), 0);
 
     // No free slots yet → this hits the "add new slot" branch.
-    let res: Result<(DefaultKey, &i32), &'static str> =
+    let res: Result<DefaultKey, &'static str> =
         normal_map.try_insert_with_key(|_k| -> Result<i32, &'static str> {
             Err("oops in normal_map constructor")
         });
@@ -462,7 +470,8 @@ fn len_unchanged_on_try_insert_new_slot_err_and_panic() {
     );
 
     // After those failures, a normal insert must bump len to 1.
-    let (_k_ok, _v_ok) = normal_map.insert(123);
+    let _k_ok = normal_map.insert(123);
+    let _v_ok = normal_map.get(_k_ok).unwrap();
     assert_eq!(
         normal_map.len(),
         1,
@@ -475,7 +484,7 @@ fn try_insert_with_key_error_reuses_free_slot() {
     let normal_map: Map<i32> = StableGenMap::new();
 
     // First insert through the simple insert API so we can remove it.
-    let (k1, _) = normal_map.insert(1);
+    let k1 = normal_map.insert(1);
 
     // Move to a mutable binding for remove.
     let mut normal_map = normal_map;
@@ -486,7 +495,7 @@ fn try_insert_with_key_error_reuses_free_slot() {
     assert!(normal_map.get(k1).is_none());
 
     // Now there is exactly one free slot recorded in `free` for that idx
-    let res_err: Result<(DefaultKey, &i32), &'static str> = (&normal_map as &Map<i32>)
+    let res_err: Result<DefaultKey, &'static str> = (&normal_map as &Map<i32>)
         .try_insert_with_key(|_k| -> Result<i32, &'static str> { Err("oops") });
 
     assert!(res_err.is_err());
@@ -515,8 +524,8 @@ fn try_insert_with_key_error_reuses_free_slot() {
 fn get_mut_respects_generation() {
     let normal_map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
 
-    let (k1, _) = normal_map.insert(1);
-    let (k2, _) = normal_map.insert(2);
+    let k1 = normal_map.insert(1);
+    let k2 = normal_map.insert(2);
 
     let mut normal_map = normal_map;
 
@@ -533,7 +542,7 @@ fn get_mut_respects_generation() {
     assert!(normal_map.get_mut(k1).is_none());
 
     // Next insert should reuse the same  idx with incremented generation.
-    let (k1_new, _) = normal_map.insert(99);
+    let k1_new = normal_map.insert(99);
     let old = k1.data();
     let new = k1_new.data();
 
@@ -556,7 +565,8 @@ fn get_mut_respects_generation() {
 fn stable_ref_survives_many_vec_and_resizes() {
     let map = StableGenMap::<DefaultKey, String>::new();
 
-    let (k, r) = map.insert("root".to_string());
+    let k = map.insert("root".to_string());
+    let r = map.get(k).unwrap();
     let p_before = (r as *const String) as usize;
 
     // Force plenty of internal growth and new slots.
@@ -578,7 +588,7 @@ fn stable_ref_survives_many_vec_and_resizes() {
 #[test]
 fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
     let mut map = StableGenMap::<DefaultKey, i32>::new();
-    let (k_old, _) = map.insert(111);
+    let k_old = map.insert(111);
 
     let idx_old = k_old.key_data.idx;
 
@@ -588,7 +598,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
     assert_eq!(map.remove(k_old), Some(111));
 
     // Reinsert into the freed slot using insert_with; inside, blow up the Vec.
-    let (k_new, r_new) = map.insert_with_key(|k_self| {
+    let k_new = map.insert_with_key(|k_self| {
         // While inserting, the slot must not be visible.
         assert!(map.get(k_self).is_none());
 
@@ -599,6 +609,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
 
         222
     });
+    let r_new = map.get(k_new).unwrap();
 
     assert_eq!(*r_new, 222);
     assert_eq!(map.get(k_new), Some(&222));
@@ -618,7 +629,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
 fn get_returns_none_during_insert_even_while_resizing() {
     let map = StableGenMap::<DefaultKey, String>::new();
 
-    let (_k, r) = map.insert_with_key(|k_self| {
+    let _k = map.insert_with_key(|k_self| {
         // During the window where the slot is logically "inserting",
         // get() must not expose a partially-constructed value.
         assert!(map.get(k_self).is_none());
@@ -630,7 +641,7 @@ fn get_returns_none_during_insert_even_while_resizing() {
         "done".to_string()
     });
 
-    assert_eq!(r.as_str(), "done");
+    assert_eq!(map.get(_k).unwrap().as_str(), "done");
 }
 
 // 4. Removing a key invalidates it forever, even after lots of inserts
@@ -639,7 +650,7 @@ fn get_returns_none_during_insert_even_while_resizing() {
 fn remove_then_mass_insert_then_reuse_keeps_old_key_invalid() {
     let mut map = StableGenMap::<DefaultKey, i32>::new();
 
-    let (k1, _) = map.insert(1);
+    let k1 = map.insert(1);
     assert_eq!(map.remove(k1), Some(1));
     assert!(
         map.get(k1).is_none(),
@@ -667,18 +678,20 @@ fn get_during_insert_returns_none_and_reentrancy_is_ok() {
 
     let mut inner = None;
     let mut inner_ref = None;
-    let (k_outer, r_outer) = map.insert_with_key(|k| {
+    let k_outer = map.insert_with_key(|k| {
         // During construction, the slot is "inserting"; get() must return None.
         assert!(map.get(k).is_none());
 
         // Re-entrant insert while the first slot is "inserting".
-        let (_k2, r2) = map.insert("inner".to_string());
+        let _k2 = map.insert("inner".to_string());
+        let r2 = map.get(_k2).unwrap();
         inner = Some(_k2);
         inner_ref = Some(r2);
         assert_eq!(r2.as_str(), "inner");
 
         "outer".to_string()
     });
+    let r_outer = map.get(k_outer).unwrap();
 
     assert_eq!(r_outer.as_str(), "outer");
     assert_eq!(inner_ref.unwrap().as_str(), "inner");
@@ -692,7 +705,8 @@ fn get_during_insert_returns_none_and_reentrancy_is_ok() {
 fn remove_invalidates_old_key_and_reuse_bumps_generation() {
     let mut map = StableGenMap::<DefaultKey, i32>::new();
 
-    let (k1, r1) = map.insert(10);
+    let k1 = map.insert(10);
+    let r1 = map.get(k1).unwrap();
     assert_eq!(*r1, 10);
 
     let idx1 = k1.key_data.idx;
@@ -706,7 +720,8 @@ fn remove_invalidates_old_key_and_reuse_bumps_generation() {
     assert!(map.get(k1).is_none());
 
     // Insert again; free slot reused -> same idx, bumped generation.
-    let (k2, r2) = map.insert(20);
+    let k2 = map.insert(20);
+    let r2 = map.get(k2).unwrap();
     assert_eq!(*r2, 20);
 
     assert_eq!(k2.key_data.idx, idx1, "same slot reused (idx)");
@@ -732,7 +747,7 @@ fn remove_nonexistent_returns_none() {
     assert!(map.remove(bogus).is_none());
 
     // Wrong generation for an otherwise valid slot.
-    let (k, _) = map.insert(1);
+    let k = map.insert(1);
     let mut bad = k;
     bad.key_data.generation = bad
         .key_data
@@ -764,10 +779,10 @@ fn drops_happen_on_remove_and_on_map_drop() {
     DROPS.store(0, Ordering::SeqCst);
 
     let mut map = StableGenMap::<DefaultKey, CountDrop>::new();
-    let (k1, _) = map.insert(CountDrop(drops));
+    let k1 = map.insert(CountDrop(drops));
 
-    let (_k2, _) = map.insert(CountDrop(drops));
-    let (_k3, _) = map.insert(CountDrop(drops));
+    let _k2 = map.insert(CountDrop(drops));
+    let _k3 = map.insert(CountDrop(drops));
 
     // Removing one should drop exactly one.
     assert_eq!(map.remove(k1).is_some(), true);
@@ -783,8 +798,10 @@ fn drops_happen_on_remove_and_on_map_drop() {
 fn insert_and_insert_with_match_semantics() {
     let map = StableGenMap::<DefaultKey, String>::new();
 
-    let (k1, r1) = map.insert("X".into());
-    let (k2, r2) = map.insert_with_key(|_| "Y".into());
+    let k1 = map.insert("X".into());
+    let r1 = map.get(k1).unwrap();
+    let k2 = map.insert_with_key(|_| "Y".into());
+    let r2 = map.get(k2).unwrap();
 
     assert_eq!(r1.as_str(), "X");
     assert_eq!(r2.as_str(), "Y");
@@ -797,8 +814,8 @@ fn insert_and_insert_with_match_semantics() {
 fn index_operator_works() {
     let map = StableGenMap::<DefaultKey, String>::new();
 
-    let (k1, _) = map.insert("hello".to_string());
-    let (k2, _) = map.insert("world".to_string());
+    let k1 = map.insert("hello".to_string());
+    let k2 = map.insert("world".to_string());
 
     assert_eq!(&map[k1], "hello");
     assert_eq!(&map[k2], "world");

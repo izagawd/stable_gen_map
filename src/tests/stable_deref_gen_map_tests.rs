@@ -6,10 +6,10 @@ fn stable_len_tracks_insert_remove_and_clear() {
     let map: StableMap<i32> = BoxStableDerefMap::new();
     assert_eq!(map.len(), 0, "new map must start empty");
 
-    let (k1, _) = map.insert(Box::new(10));
+    let k1 = map.insert(Box::new(10));
     assert_eq!(map.len(), 1, "one insert increments len to 1");
 
-    let (k2, _) = map.insert(Box::new(20));
+    let k2 = map.insert(Box::new(20));
     assert_eq!(map.len(), 2, "two inserts increments len to 2");
 
     // Move to a mutable binding for remove/clear.
@@ -53,7 +53,7 @@ fn stable_len_unchanged_on_try_insert_new_slot_err_and_panic() {
     assert_eq!(map.len(), 0);
 
     // Map is empty → try_insert_with_key goes down the "new slot" branch.
-    let res: Result<(DefaultKey, &i32), &'static str> = map
+    let res: Result<DefaultKey, &'static str> = map
         .try_insert_with_key(|_k| -> Result<Box<i32>, &'static str> { Err("constructor failed") });
 
     assert!(res.is_err());
@@ -73,7 +73,8 @@ fn stable_len_unchanged_on_try_insert_new_slot_err_and_panic() {
     );
 
     // After those failures, a normal insert must still give len = 1.
-    let (_k_ok, _v_ok) = map.insert(Box::new(123));
+    let _k_ok = map.insert(Box::new(123));
+    let _v_ok = map.get(_k_ok).unwrap();
     assert_eq!(
         map.len(),
         1,
@@ -85,7 +86,7 @@ fn stable_iter_mut_can_modify_all_values() {
     let mut map: StableMap<i32> = BoxStableDerefMap::new();
 
     for i in 0..5 {
-        let (_k, _) = map.insert(Box::new(i));
+        let _k = map.insert(Box::new(i));
     }
 
     for (_k, v) in map.iter_mut() {
@@ -102,7 +103,7 @@ fn deref_get_by_index_only_matches_key_get() {
     let mut keys = Vec::new();
 
     for i in 0..10 {
-        let (k, _) = map.insert(Box::new(i));
+        let k = map.insert(Box::new(i));
         keys.push(k);
     }
 
@@ -160,7 +161,7 @@ fn deref_drop_is_called_exactly_once_per_element() {
         let mut keys = Vec::new();
 
         for _ in 0..50 {
-            let (k, _) = map.insert(Box::new(DropCounter(drops.clone())));
+            let k = map.insert(Box::new(DropCounter(drops.clone())));
             keys.push(k);
         }
 
@@ -184,7 +185,7 @@ fn stable_into_iter_consumes_and_yields_boxes() {
     let map: StableMap<String> = BoxStableDerefMap::new();
 
     for i in 0..3 {
-        let (_k, _) = map.insert(Box::new(format!("v{}", i)));
+        let _k = map.insert(Box::new(format!("v{}", i)));
     }
 
     let mut seen: Vec<String> = map
@@ -213,7 +214,7 @@ fn stable_try_insert_with_key_error_reuses_free_slot() {
     let map: StableMap<i32> = BoxStableDerefMap::new();
 
     // First insert via the simple insert API so we can remove it later.
-    let (k1, _) = map.insert(Box::new(1));
+    let k1 = map.insert(Box::new(1));
 
     // Move to a mutable binding so we can call remove.
     let mut map = map;
@@ -225,7 +226,7 @@ fn stable_try_insert_with_key_error_reuses_free_slot() {
 
     // Now we have one free slot at (idx = old_data.idx).
     // Call try_insert_with_key but make it return Err.
-    let res_err: Result<(DefaultKey, &i32), &'static str> = (&map as &StableMap<i32>)
+    let res_err: Result<DefaultKey, &'static str> = (&map as &StableMap<i32>)
         .try_insert_with_key(|_k| -> Result<Box<i32>, &'static str> { Err("oops") });
 
     assert!(res_err.is_err());
@@ -259,7 +260,8 @@ fn stable_ref_survives_many_vec_resizes() {
     // A big enough count to force multiple Vec growths.
     let map = BoxStableDerefMap::<DefaultKey, String>::new();
 
-    let (k, r) = map.insert(Box::new("root".to_string()));
+    let k = map.insert(Box::new("root".to_string()));
+    let r = map.get(k).unwrap();
     let p_before = (r as *const String) as usize;
 
     for i in 0..1_000 {
@@ -277,7 +279,7 @@ fn stable_ref_survives_many_vec_resizes() {
 fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
     // Hit the free-slot branch then cause a resize inside the closure.
     let mut map = BoxStableDerefMap::<DefaultKey, i32>::new();
-    let (k_old, _) = map.insert(Box::new(111));
+    let k_old = map.insert(Box::new(111));
     let idx = k_old.key_data.idx;
     let gen_old = k_old.key_data.generation;
 
@@ -285,7 +287,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
     assert_eq!(map.remove(k_old).map(|b| *b), Some(111));
 
     // Reinsert into the freed slot using insert_with; inside, blow up the Vec.
-    let (k_new, r_new) = map.insert_with_key(|k_self| {
+    let k_new = map.insert_with_key(|k_self| {
         // While inserting, the slot is marked "inserting": get() must hide it.
         assert!(map.get(k_self).is_none());
 
@@ -296,6 +298,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
 
         Box::new(222)
     });
+    let r_new = map.get(k_new).unwrap();
 
     assert_eq!(*r_new, 222);
     assert_eq!(map.get(k_new).copied(), Some(222));
@@ -309,7 +312,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
 fn get_returns_none_during_insert_even_while_resizing() {
     let map = BoxStableDerefMap::<DefaultKey, String>::new();
 
-    let (_k, r) = map.insert_with_key(|k_self| {
+    let _k = map.insert_with_key(|k_self| {
         // During the window where is_inserting=true, get() must return None.
         assert!(map.get(k_self).is_none());
 
@@ -321,14 +324,14 @@ fn get_returns_none_during_insert_even_while_resizing() {
         Box::new("done".to_string())
     });
 
-    assert_eq!(r.as_str(), "done");
+    assert_eq!(map.get(_k).unwrap().as_str(), "done");
 }
 
 #[test]
 fn remove_then_mass_insert_then_reuse_keeps_old_key_invalid() {
     let mut map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-    let (k1, _) = map.insert(Box::new(1));
+    let k1 = map.insert(Box::new(1));
     assert_eq!(map.remove(k1).map(|b| *b), Some(1));
     assert!(map.get(k1).is_none()); // old key invalid
 
@@ -346,7 +349,8 @@ fn trait_object_survives_resizes() {
     use core::fmt::Display;
 
     let map: BoxStableDerefMap<DefaultKey, dyn Display> = BoxStableDerefMap::new();
-    let (k, r) = map.insert(Box::new(String::from("hello")) as Box<dyn Display>);
+    let k = map.insert(Box::new(String::from("hello")) as Box<dyn Display>);
+    let r = map.get(k).unwrap();
     let p_before = (r as *const dyn Display) as *const () as usize;
 
     for i in 0..1_000 {
@@ -364,14 +368,15 @@ fn stable_try_insert_with_key_err_reuses_reserved_new_slot() {
     let map: StableMap<i32> = BoxStableDerefMap::new();
 
     // No free slots yet → this uses the "push new slot" branch.
-    let res: Result<(DefaultKey, &i32), &'static str> = map
+    let res: Result<DefaultKey, &'static str> = map
         .try_insert_with_key(|_k| -> Result<Box<i32>, &'static str> { Err("oops in constructor") });
 
     assert!(res.is_err());
 
     // After the error, the reserved slot must have been returned
     // to the free list and be reusable as idx 0.
-    let (k_ok, v_ok) = map.insert(Box::new(123));
+    let k_ok = map.insert(Box::new(123));
+    let v_ok = map.get(k_ok).unwrap();
     let kd = k_ok.data();
 
     assert_eq!(
@@ -395,7 +400,8 @@ fn stable_try_insert_with_key_panic_reuses_reserved_new_slot() {
     assert!(res.is_err(), "panic should be caught by catch_unwind");
 
     // Next insert should reuse idx 0, not silently leak it.
-    let (k_ok, v_ok) = map.insert(Box::new(123));
+    let k_ok = map.insert(Box::new(123));
+    let v_ok = map.get(k_ok).unwrap();
     let kd = k_ok.data();
 
     assert_eq!(
@@ -419,17 +425,19 @@ fn get_during_insert_returns_none_and_reentrancy_is_ok() {
 
     let mut inner = None;
     let mut inner_ref = None;
-    let (k_outer, r_outer) = map.insert_with_key(|k| {
+    let k_outer = map.insert_with_key(|k| {
         // During construction, the slot is "inserting"; get() must return None.
         assert!(map.get(k).is_none());
 
         // Re-entrant insert while the first slot is "inserting".
-        let (_k2, r2) = map.insert(Box::new("inner".to_string()));
+        let _k2 = map.insert(Box::new("inner".to_string()));
+        let r2 = map.get(_k2).unwrap();
         inner = Some(_k2);
         inner_ref = Some(r2);
         assert_eq!(r2.as_str(), "inner");
         Box::new("outer".to_string())
     });
+    let r_outer = map.get(k_outer).unwrap();
 
     assert_eq!(r_outer.as_str(), "outer");
     assert_eq!(inner_ref.unwrap().as_str(), "inner");
@@ -441,7 +449,8 @@ fn get_during_insert_returns_none_and_reentrancy_is_ok() {
 fn stable_ref_across_vec_growth() {
     let map = BoxStableDerefMap::<DefaultKey, String>::new();
 
-    let (k1, r1) = map.insert(Box::new("A".to_string()));
+    let k1 = map.insert(Box::new("A".to_string()));
+    let r1 = map.get(k1).unwrap();
     let p1 = (r1 as *const String) as usize;
 
     // Force multiple Vec growths.
@@ -458,7 +467,8 @@ fn stable_ref_across_vec_growth() {
 fn remove_invalidates_old_key_and_reuse_bumps_generation() {
     let mut map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-    let (k1, r1) = map.insert(Box::new(10));
+    let k1 = map.insert(Box::new(10));
+    let r1 = map.get(k1).unwrap();
     assert_eq!(*r1, 10);
 
     // Remove the only element; its index should go to the free list.
@@ -469,7 +479,8 @@ fn remove_invalidates_old_key_and_reuse_bumps_generation() {
     assert!(map.get(k1).is_none());
 
     // Insert again; free slot reused -> same idx, bumped generation.
-    let (k2, r2) = map.insert(Box::new(20));
+    let k2 = map.insert(Box::new(20));
+    let r2 = map.get(k2).unwrap();
     assert_eq!(*r2, 20);
 
     // We can assert on private fields here because these are unit tests.
@@ -483,7 +494,7 @@ fn remove_invalidates_old_key_and_reuse_bumps_generation() {
 #[test]
 fn stable_get_mut_respects_generation() {
     let map: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
-    let (k, _) = map.insert(Box::new(1));
+    let k = map.insert(Box::new(1));
 
     // Move into mutable binding.
     let mut map = map;
@@ -499,7 +510,7 @@ fn stable_get_mut_respects_generation() {
     assert!(map.get_mut(k).is_none());
 
     // Next insert should reuse the same idx but with bumped generation.
-    let (k_new, _) = map.insert(Box::new(99));
+    let k_new = map.insert(Box::new(99));
     let old = k.data();
     let new = k_new.data();
 
@@ -521,7 +532,8 @@ fn unsized_trait_object_storage() {
     // Test T: ?Sized via a trait object.
     let map: BoxStableDerefMap<DefaultKey, dyn Display> = BoxStableDerefMap::new();
 
-    let (k, r) = map.insert(Box::new(String::from("hello")) as Box<dyn Display>);
+    let k = map.insert(Box::new(String::from("hello")) as Box<dyn Display>);
+    let r = map.get(k).unwrap();
     assert_eq!(r.to_string(), "hello");
     assert_eq!(map.get(k).unwrap().to_string(), "hello");
 }
@@ -538,7 +550,7 @@ fn remove_nonexistent_returns_none() {
     };
     assert!(map.remove(bogus).is_none());
 
-    let (k, _) = map.insert(Box::new(1));
+    let k = map.insert(Box::new(1));
     let mut bad = k;
     bad.key_data.generation = bad
         .key_data
@@ -557,7 +569,7 @@ fn stable_try_insert_with_key_panic_reuses_free_slot() {
     let mut map: StableMap<i32> = BoxStableDerefMap::new();
 
     // Insert one, then remove it so its index goes onto the free list.
-    let (k1, _) = map.insert(Box::new(10));
+    let k1 = map.insert(Box::new(10));
 
     let old = k1.data();
     assert_eq!(map.remove(k1).map(|b| *b), Some(10));
@@ -602,7 +614,8 @@ fn stable_try_insert_with_key_panic_reuses_reserved_slot() {
 
     // Now do a normal insert; it should reuse index 0 rather than silently
     // leaking the reserved slot.
-    let (k_ok, v_ok) = map.insert(Box::new(123));
+    let k_ok = map.insert(Box::new(123));
+    let v_ok = map.get(k_ok).unwrap();
     let kd = k_ok.data();
 
     assert_eq!(kd.idx, 0, "first slot index should be reused after panic");
@@ -623,9 +636,9 @@ fn drops_happen_on_remove_and_on_map_drop() {
     DROPS.store(0, Ordering::SeqCst);
 
     let mut map = BoxStableDerefMap::<DefaultKey, CountDrop>::new();
-    let (k1, _) = map.insert(Box::new(CountDrop(drops)));
-    let (_k2, _) = map.insert(Box::new(CountDrop(drops)));
-    let (_k3, _) = map.insert(Box::new(CountDrop(drops)));
+    let k1 = map.insert(Box::new(CountDrop(drops)));
+    let _k2 = map.insert(Box::new(CountDrop(drops)));
+    let _k3 = map.insert(Box::new(CountDrop(drops)));
 
     // Removing one should drop exactly one.
     assert_eq!(map.remove(k1).is_some(), true);
@@ -652,7 +665,8 @@ mod tests {
         // Insert N elements and record their keys.
         let mut old_keys = HashSet::new();
         for i in 0..N {
-            let (k, r) = map.insert(Box::new(i as i32));
+            let k = map.insert(Box::new(i as i32));
+            let r = map.get(k).unwrap();
             assert_eq!(*r, i as i32);
             assert!(old_keys.insert(k), "duplicate key during initial inserts");
         }
@@ -674,7 +688,8 @@ mod tests {
         // Insert another N elements and collect new keys.
         let mut new_keys = HashSet::new();
         for i in 0..N {
-            let (k, r) = map.insert(Box::new(10_000 + i as i32));
+            let k = map.insert(Box::new(10_000 + i as i32));
+            let r = map.get(k).unwrap();
             assert_eq!(*r, 10_000 + i as i32);
             assert!(new_keys.insert(k), "duplicate key during second inserts");
         }
@@ -697,7 +712,7 @@ mod tests {
         // Insert N, record keys.
         let mut keys = Vec::new();
         for i in 0..N {
-            let (k, _) = map.insert(Box::new(i as i32));
+            let k = map.insert(Box::new(i as i32));
             keys.push(k);
             all_keys_before_clear.insert(k);
         }
@@ -712,7 +727,7 @@ mod tests {
 
         // Insert some more; this will reuse free slots and bump generations.
         for i in 0..N {
-            let (k, _) = map.insert(Box::new(1_000 + i as i32));
+            let k = map.insert(Box::new(1_000 + i as i32));
             all_keys_before_clear.insert(k);
         }
 
@@ -723,7 +738,7 @@ mod tests {
         // Insert a new batch after clear.
         let mut new_keys = HashSet::new();
         for i in 0..N {
-            let (k, _) = map.insert(Box::new(10_000 + i as i32));
+            let k = map.insert(Box::new(10_000 + i as i32));
             new_keys.insert(k);
         }
 
@@ -738,7 +753,7 @@ mod tests {
 fn get_by_index_only_round_trips_index_and_key() {
     let map = BoxStableDerefMap::<DefaultKey, _>::new();
 
-    let (k, _) = map.insert(Box::new(123));
+    let k = map.insert(Box::new(123));
     let idx = k.data().idx;
 
     let (k2, v) = map.get_by_index_only(idx).expect("slot should be occupied");
@@ -750,7 +765,8 @@ fn get_by_index_only_round_trips_index_and_key() {
 fn get_by_index_only_returns_none_for_vacant_slot() {
     let mut map = BoxStableDerefMap::<DefaultKey, _>::new();
 
-    let (k, _reff) = map.insert(Box::new(5));
+    let k = map.insert(Box::new(5));
+    let _reff = map.get(k).unwrap();
     let idx = k.data().idx;
 
     // Remove so the slot becomes vacant.
@@ -768,17 +784,18 @@ fn nested_try_insert_with_key_uses_distinct_slots() {
     // Record the inner key created inside the outer try_insert_with_key closure.
     let inner_key_cell: Cell<Option<DefaultKey>> = Cell::new(None);
 
-    let res: Result<(DefaultKey, &i32), ()> = map.try_insert_with_key::<_>(|_outer_key| {
+    let res: Result<DefaultKey, ()> = map.try_insert_with_key::<_>(|_outer_key| {
         // Nested insert_with_key inside the closure.
-        let (inner_key, inner_ref) = map.insert_with_key(|_k| Box::new(111));
+        let inner_key = map.insert_with_key(|_k| Box::new(111));
         inner_key_cell.set(Some(inner_key));
-        assert_eq!(*inner_ref, 111);
+        assert_eq!(*map.get(inner_key).unwrap(), 111);
 
         // Outer value.
         Ok::<Box<i32>, ()>(Box::new(222))
     });
 
-    let (outer_key, outer_ref) = res.unwrap();
+    let outer_key = res.unwrap();
+    let outer_ref = map.get(outer_key).unwrap();
     let inner_key = inner_key_cell.get().expect("inner key must be recorded");
 
     // Both entries must exist and have the correct values.
@@ -798,8 +815,10 @@ fn nested_try_insert_with_key_uses_distinct_slots() {
 fn insert_and_insert_with_match_semantics() {
     let map = BoxStableDerefMap::<DefaultKey, String>::new();
 
-    let (k1, r1) = map.insert(Box::new("X".into()));
-    let (k2, r2) = map.insert_with_key(|_| Box::new("Y".into()));
+    let k1 = map.insert(Box::new("X".into()));
+    let r1 = map.get(k1).unwrap();
+    let k2 = map.insert_with_key(|_| Box::new("Y".into()));
+    let r2 = map.get(k2).unwrap();
 
     assert_eq!(r1.as_str(), "X");
     assert_eq!(r2.as_str(), "Y");

@@ -17,9 +17,9 @@ fn clone_empty() {
 fn clone_basic_contents_equal_but_independent() {
     let mut m: Map = Map::new();
 
-    let (k1, _) = m.insert(10);
-    let (k2, _) = m.insert(20);
-    let (k3, _) = m.insert(30);
+    let k1 = m.insert(10);
+    let k2 = m.insert(20);
+    let k3 = m.insert(30);
 
     assert_eq!(m.len(), 3);
 
@@ -38,7 +38,7 @@ fn clone_basic_contents_equal_but_independent() {
     assert_eq!(c.get(k2), Some(&20));
 
     // inserting into original does not affect clone
-    let (k4, _) = m.insert(40);
+    let k4 = m.insert(40);
     assert_eq!(m.get(k4), Some(&40));
     assert_eq!(c.get(k4), None);
 }
@@ -71,7 +71,7 @@ mod clone_efficiently_tests {
         // Insert enough elements to resize
         let mut keys = Vec::new();
         for i in 0..1000 {
-            let (k, _) = map.insert(format!("val-{i}"));
+            let k = map.insert(format!("val-{i}"));
             keys.push(k);
         }
 
@@ -127,9 +127,9 @@ mod clone_efficiently_tests {
     fn clone_efficiently_preserves_free_list_structure_but_independent() {
         let mut map: Map<i32> = StableGenMap::new();
 
-        let (k1, _) = map.insert(10);
-        let (k2, _) = map.insert(20); // will be freed
-        let (k3, _) = map.insert(30);
+        let k1 = map.insert(10);
+        let k2 = map.insert(20); // will be freed
+        let k3 = map.insert(30);
 
         assert_eq!(map.len(), 3);
 
@@ -155,8 +155,8 @@ mod clone_efficiently_tests {
 
         // Insert in each: both should reuse the same encoded idx as k2 used,
         // but with generation bumped.
-        let (new_k_orig, _) = map.insert(99);
-        let (new_k_clone, _) = clone.insert(99);
+        let new_k_orig = map.insert(99);
+        let new_k_clone = clone.insert(99);
 
         let kd_orig = new_k_orig.data();
         let kd_clone = new_k_clone.data();
@@ -185,7 +185,7 @@ fn clone_preserves_all_keys_and_values() {
 
     let mut inserted = HashMap::new();
     for i in 0..16 {
-        let (k, _) = m.insert(i);
+        let k = m.insert(i);
         inserted.insert(k, i);
     }
 
@@ -214,9 +214,9 @@ fn clone_preserves_all_keys_and_values() {
 fn clone_respects_free_list_and_generations() {
     let mut m: Map = Map::new();
 
-    let (_k1, _) = m.insert(1);
-    let (k2, _) = m.insert(2);
-    let (_k3, _) = m.insert(3);
+    let _k1 = m.insert(1);
+    let k2 = m.insert(2);
+    let _k3 = m.insert(3);
 
     // Remove middle element to create a free slot
     let removed = m.remove(k2).unwrap();
@@ -230,9 +230,9 @@ fn clone_respects_free_list_and_generations() {
     let c = m.clone();
 
     // First insert in original should reuse the removed slot index
-    let (k_new_orig, _) = m.insert(99);
+    let k_new_orig = m.insert(99);
     // First insert in clone should also reuse that same index
-    let (k_new_clone, _) = c.insert(99);
+    let k_new_clone = c.insert(99);
 
     let new_orig_data = k_new_orig.data();
     let new_clone_data = k_new_clone.data();
@@ -253,7 +253,7 @@ fn clone_multi_slot() {
     // Force multiple resizes (SLOTS is small)
     let mut keys = Vec::new();
     for i in 0..1000 as i32 {
-        let (k, _) = m.insert(i);
+        let k = m.insert(i);
         keys.push((k, i));
     }
 
@@ -330,8 +330,8 @@ fn clone_handles_reentrant_t_clone() {
     // allow Reentrant::clone to find this map
     GLOBAL_MAP_PTR.set(&m as *const _);
 
-    let (k1, _) = m.insert(Reentrant { val: 1 });
-    let (k2, _) = m.insert(Reentrant { val: 2 });
+    let k1 = m.insert(Reentrant { val: 1 });
+    let k2 = m.insert(Reentrant { val: 2 });
 
     assert_eq!(m.len(), 2);
 
@@ -365,11 +365,11 @@ fn clone_handles_reentrant_t_clone_two() {
     // allow Reentrant::clone to find this map
     GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
 
-    let (k1, _) = m.insert(Reentrant { val: 1 });
-    let (k2, _) = m.insert(Reentrant { val: 2 });
+    let k1 = m.insert(Reentrant { val: 1 });
+    let k2 = m.insert(Reentrant { val: 2 });
 
-    let (k3, _) = m.insert(Reentrant { val: 1 });
-    let (k4, _) = m.insert(Reentrant { val: 2 });
+    let k3 = m.insert(Reentrant { val: 1 });
+    let k4 = m.insert(Reentrant { val: 2 });
 
     // making two slots initialized  but free (THIS IS VERY IMPORTANT)
     m.remove(k3);

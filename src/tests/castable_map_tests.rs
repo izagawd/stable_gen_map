@@ -22,7 +22,8 @@ struct Cat {
 #[test]
 fn insert_and_get_sized_through_dyn_any() {
     let map: CastMap = CastMap::new();
-    let (key, val_ref) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let val_ref = map.get(key).unwrap();
     assert_eq!(*val_ref.downcast_ref::<i32>().unwrap(), 42);
     let fetched = map.get(key).unwrap();
     assert_eq!(*fetched.downcast_ref::<i32>().unwrap(), 42);
@@ -31,9 +32,9 @@ fn insert_and_get_sized_through_dyn_any() {
 #[test]
 fn insert_multiple_types() {
     let map: CastMap = CastMap::new();
-    let (k1, _) = map.insert(Box::new(10u64) as Box<dyn Any>);
-    let (k2, _) = map.insert(Box::new("hello".to_string()) as Box<dyn Any>);
-    let (k3, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let k1 = map.insert(Box::new(10u64) as Box<dyn Any>);
+    let k2 = map.insert(Box::new("hello".to_string()) as Box<dyn Any>);
+    let k3 = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     assert_eq!(*map.get(k1).unwrap().downcast_ref::<u64>().unwrap(), 10);
     assert_eq!(
         map.get(k2).unwrap().downcast_ref::<String>().unwrap(),
@@ -50,7 +51,7 @@ fn insert_multiple_types() {
 #[test]
 fn get_with_concrete_key() {
     let map: CastMap = CastMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let dyn_key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let dog_key: StableCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Rex");
@@ -61,7 +62,7 @@ fn get_with_concrete_key() {
 #[test]
 fn remove_returns_value_and_invalidates_key() {
     let mut map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(99i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(99i32) as Box<dyn Any>);
     let removed = map.remove(key).unwrap();
     assert_eq!(*removed.downcast_ref::<i32>().unwrap(), 99);
     assert!(map.get(key).is_none());
@@ -71,7 +72,7 @@ fn remove_returns_value_and_invalidates_key() {
 #[test]
 fn remove_with_concrete_key() {
     let mut map: CastMap = CastMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let dyn_key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let dog_key: StableCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
     let removed = map.remove(dog_key).unwrap();
     assert_eq!(
@@ -85,7 +86,7 @@ fn remove_with_concrete_key() {
 #[test]
 fn stale_key_returns_none() {
     let mut map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(1i32) as Box<dyn Any>);
     map.remove(key);
     let _ = map.insert(Box::new(2i32) as Box<dyn Any>);
     assert!(map.get(key).is_none());
@@ -97,7 +98,7 @@ fn stale_key_returns_none() {
 fn key_from_different_map_returns_none() {
     let map_a: CastMap = CastMap::new();
     let map_b: CastMap = CastMap::new();
-    let (key_a, _) = map_a.insert(Box::new(1i32) as Box<dyn Any>);
+    let key_a = map_a.insert(Box::new(1i32) as Box<dyn Any>);
     let _ = map_b.insert(Box::new(2i32) as Box<dyn Any>);
     assert!(map_b.get(key_a).is_none());
 }
@@ -106,7 +107,7 @@ fn key_from_different_map_returns_none() {
 fn key_from_different_map_cannot_remove() {
     let map_a: CastMap = CastMap::new();
     let mut map_b: CastMap = CastMap::new();
-    let (key_a, _) = map_a.insert(Box::new(1i32) as Box<dyn Any>);
+    let key_a = map_a.insert(Box::new(1i32) as Box<dyn Any>);
     let _ = map_b.insert(Box::new(2i32) as Box<dyn Any>);
     assert!(map_b.remove(key_a).is_none());
     assert_eq!(map_b.len(), 1);
@@ -116,7 +117,7 @@ fn key_from_different_map_cannot_remove() {
 fn cross_map_get_mut_returns_none() {
     let map_a: CastMap = CastMap::new();
     let mut map_b: CastMap = CastMap::new();
-    let (key_a, _) = map_a.insert(Box::new(1i32) as Box<dyn Any>);
+    let key_a = map_a.insert(Box::new(1i32) as Box<dyn Any>);
     let _ = map_b.insert(Box::new(2i32) as Box<dyn Any>);
     assert!(map_b.get_mut(key_a).is_none());
 }
@@ -126,7 +127,7 @@ fn cross_map_get_mut_returns_none() {
 #[test]
 fn get_mut_modifies_value() {
     let mut map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
+    let key = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
     let val = map.get_mut(key).unwrap();
     val.downcast_mut::<Dog>().unwrap().name = "New".into();
     let check = map.get(key).unwrap();
@@ -136,7 +137,7 @@ fn get_mut_modifies_value() {
 #[test]
 fn get_mut_with_concrete_key() {
     let mut map: CastMap = CastMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
+    let dyn_key = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
     let dog_key: StableCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
     let dog: &mut Dog = map.get_mut(dog_key).unwrap();
     dog.name = "New".into();
@@ -150,8 +151,8 @@ fn get_mut_with_concrete_key() {
 fn len_tracks_inserts_and_removes() {
     let mut map: CastMap = CastMap::new();
     assert_eq!(map.len(), 0);
-    let (k1, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
-    let (k2, _) = map.insert(Box::new(2i32) as Box<dyn Any>);
+    let k1 = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let k2 = map.insert(Box::new(2i32) as Box<dyn Any>);
     assert_eq!(map.len(), 2);
     map.remove(k1);
     assert_eq!(map.len(), 1);
@@ -162,8 +163,8 @@ fn len_tracks_inserts_and_removes() {
 #[test]
 fn clear_removes_all() {
     let mut map: CastMap = CastMap::new();
-    let (k1, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
-    let (k2, _) = map.insert(Box::new(2i32) as Box<dyn Any>);
+    let k1 = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let k2 = map.insert(Box::new(2i32) as Box<dyn Any>);
     map.clear();
     assert_eq!(map.len(), 0);
     assert!(map.get(k1).is_none());
@@ -175,21 +176,21 @@ fn clear_removes_all() {
 #[test]
 fn downcast_key_correct_type() {
     let map: CastMap = CastMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let dyn_key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     assert!(map.downcast_key::<Dog>(dyn_key).is_some());
 }
 
 #[test]
 fn downcast_key_wrong_type_returns_none() {
     let map: CastMap = CastMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let dyn_key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     assert!(map.downcast_key::<Cat>(dyn_key).is_none());
 }
 
 #[test]
 fn downcast_key_stale_returns_none() {
     let mut map: CastMap = CastMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let dyn_key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     map.remove(dyn_key);
     assert!(map.downcast_key::<Dog>(dyn_key).is_none());
 }
@@ -198,7 +199,7 @@ fn downcast_key_stale_returns_none() {
 fn downcast_key_cross_map_returns_none() {
     let map_a: CastMap = CastMap::new();
     let map_b: CastMap = CastMap::new();
-    let (key_a, _) = map_a.insert(Box::new(42i32) as Box<dyn Any>);
+    let key_a = map_a.insert(Box::new(42i32) as Box<dyn Any>);
     let _ = map_b.insert(Box::new(42i32) as Box<dyn Any>);
     assert!(map_b.downcast_key::<i32>(key_a).is_none());
 }
@@ -210,7 +211,7 @@ fn insert_with_key_closure_receives_correct_inner_key() {
     use std::cell::Cell;
     let map: CastMap = CastMap::new();
     let captured = Cell::new(None);
-    let (cast_key, _) = map.insert_with_key(|inner_key| {
+    let cast_key = map.insert_with_key(|inner_key| {
         captured.set(Some(inner_key));
         Box::new(42i32) as Box<dyn Any>
     });
@@ -222,7 +223,8 @@ fn insert_with_key_closure_receives_correct_inner_key() {
 #[test]
 fn insert_with_key_reference_is_stable() {
     let map: CastMap = CastMap::new();
-    let (_, ref1) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let _ = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let ref1 = map.get(_).unwrap();
     let ref1_ptr = ref1 as *const dyn Any;
     for i in 0..100 {
         map.insert(Box::new(i) as Box<dyn Any>);
@@ -253,7 +255,8 @@ fn try_insert_with_key_err_does_not_insert() {
 fn try_insert_with_key_err_slot_is_reusable() {
     let map: CastMap = CastMap::new();
     let _ = map.try_insert_with_key::<&str>(|_| Err("fail"));
-    let (_, val) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let _ = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let val = map.get(_).unwrap();
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
     assert_eq!(map.len(), 1);
 }
@@ -263,7 +266,8 @@ fn try_insert_with_key_err_slot_is_reusable() {
 #[test]
 fn insert_sized_returns_concrete_key_and_ref() {
     let map: CastMap = CastMap::new();
-    let (dog_key, dog_ref) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let dog_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let dog_ref = map.get(dog_key).unwrap();
     assert_eq!(dog_ref.name, "Rex");
     let dog: &Dog = map.get(dog_key).unwrap();
     assert_eq!(dog.name, "Rex");
@@ -272,7 +276,7 @@ fn insert_sized_returns_concrete_key_and_ref() {
 #[test]
 fn insert_sized_key_can_upcast_to_dyn_any() {
     let map: CastMap = CastMap::new();
-    let (dog_key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let dog_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
     let dyn_key = dog_key.upcast::<dyn Any>();
     let val = map.get(dyn_key).unwrap();
     assert_eq!(
@@ -284,10 +288,11 @@ fn insert_sized_key_can_upcast_to_dyn_any() {
 #[test]
 fn insert_sized_with_key_receives_typed_key() {
     let map: CastMap = CastMap::new();
-    let (dog_key, dog_ref) = map.insert_sized_with_key(|key: StableCastKey<Dog>| {
+    let dog_key = map.insert_sized_with_key(|key: StableCastKey<Dog>| {
         let _ = key;
         Box::new(Dog { name: "Rex".into() })
     });
+    let dog_ref = map.get(dog_key).unwrap();
     assert_eq!(dog_ref.name, "Rex");
     assert_eq!(map.get(dog_key).unwrap().name, "Rex");
 }
@@ -306,7 +311,7 @@ fn try_insert_sized_with_key_err_does_not_insert() {
 #[test]
 fn get_by_inner_key() {
     let map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let inner = key.inner_key();
     let val = map.get_by_inner_key(inner).unwrap();
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
@@ -315,7 +320,7 @@ fn get_by_inner_key() {
 #[test]
 fn get_by_inner_key_mut() {
     let mut map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
+    let key = map.insert(Box::new(Dog { name: "Old".into() }) as Box<dyn Any>);
     let inner = key.inner_key();
     let val = map.get_by_inner_key_mut(inner).unwrap();
     val.downcast_mut::<Dog>().unwrap().name = "New".into();
@@ -332,7 +337,7 @@ fn get_by_inner_key_mut() {
 #[test]
 fn remove_by_inner_key() {
     let mut map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(77i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(77i32) as Box<dyn Any>);
     let inner = key.inner_key();
     let removed = map.remove_by_inner_key(inner).unwrap();
     assert_eq!(*removed.downcast_ref::<i32>().unwrap(), 77);
@@ -344,7 +349,7 @@ fn remove_by_inner_key() {
 #[test]
 fn cast_key_of_returns_same_as_insert() {
     let map: CastMap = CastMap::new();
-    let (cast_key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let cast_key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let inner = cast_key.inner_key();
     let recovered = map.cast_key_of(inner).unwrap();
     assert_eq!(recovered, cast_key);
@@ -353,7 +358,7 @@ fn cast_key_of_returns_same_as_insert() {
 #[test]
 fn cast_key_of_stale_returns_none() {
     let mut map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let inner = key.inner_key();
     map.remove(key);
     assert!(map.cast_key_of(inner).is_none());
@@ -364,7 +369,7 @@ fn cast_key_of_stale_returns_none() {
 #[test]
 fn index_operator_works() {
     let map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let val = &map[key];
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
 }
@@ -374,7 +379,7 @@ fn index_operator_works() {
 fn index_panics_on_invalid_key() {
     let map: CastMap = CastMap::new();
     let other: CastMap = CastMap::new();
-    let (key, _) = other.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = other.insert(Box::new(42i32) as Box<dyn Any>);
     let _ = &map[key];
 }
 
@@ -383,9 +388,9 @@ fn index_panics_on_invalid_key() {
 #[test]
 fn retain_keeps_matching_removes_rest() {
     let mut map: CastMap = CastMap::new();
-    let (k1, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
-    let (k2, _) = map.insert(Box::new(2i32) as Box<dyn Any>);
-    let (k3, _) = map.insert(Box::new(3i32) as Box<dyn Any>);
+    let k1 = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let k2 = map.insert(Box::new(2i32) as Box<dyn Any>);
+    let k3 = map.insert(Box::new(3i32) as Box<dyn Any>);
     map.retain(|_, val| {
         let v = *val.downcast_ref::<i32>().unwrap();
         v % 2 != 0
@@ -473,7 +478,7 @@ fn drain_yields_all_and_empties_map() {
 #[test]
 fn drain_keys_have_correct_map_id() {
     let mut map: CastMap = CastMap::new();
-    let (existing, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let existing = map.insert(Box::new(1i32) as Box<dyn Any>);
     let expected_map_id = existing.map_id();
     let drained: Vec<_> = map.drain().collect();
     for (key, _) in &drained {
@@ -499,7 +504,7 @@ type RcMap = StableCastMap<DerefSlot<DefaultKey, std::rc::Rc<dyn Any>>>;
 #[test]
 fn clone_produces_independent_map() {
     let map: RcMap = RcMap::new();
-    let (key, _) = map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
+    let key = map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
     let cloned = map.clone();
     // old key does NOT work on clone (fresh map id)
     assert!(cloned.get(key).is_none());
@@ -524,7 +529,7 @@ fn clone_new_keys_work_on_clone_only() {
     let map: RcMap = RcMap::new();
     map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
     let cloned = map.clone();
-    let (new_key, _) = cloned.insert(std::rc::Rc::new(99i32) as std::rc::Rc<dyn Any>);
+    let new_key = cloned.insert(std::rc::Rc::new(99i32) as std::rc::Rc<dyn Any>);
     assert!(cloned.get(new_key).is_some());
     assert!(map.get(new_key).is_none());
 }
@@ -532,7 +537,7 @@ fn clone_new_keys_work_on_clone_only() {
 #[test]
 fn clone_original_keys_do_not_work_on_clone() {
     let map: RcMap = RcMap::new();
-    let (key, _) = map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
+    let key = map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
     let cloned = map.clone();
     assert!(cloned.get(key).is_none());
 }
@@ -555,7 +560,8 @@ fn clone_remove_on_clone_does_not_affect_original() {
 #[test]
 fn references_stable_across_inserts() {
     let map: CastMap = CastMap::new();
-    let (_, r1) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let _ = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let r1 = map.get(_).unwrap();
     let r1_ptr = r1 as *const dyn Any;
     for i in 0..50 {
         map.insert(Box::new(i) as Box<dyn Any>);
@@ -587,7 +593,8 @@ fn insert_as_returns_typed_key_and_ref() {
     type AnimalMap = StableBoxCastMap<DefaultKey, dyn Any>;
     let map: AnimalMap = AnimalMap::new();
     let dog: Box<dyn Animal> = Box::new(Dog { name: "Rex".into() });
-    let (animal_key, animal_ref) = map.insert_as(dog);
+    let animal_key = map.insert_as(dog);
+    let animal_ref = map.get(animal_key).unwrap();
     assert_eq!(animal_ref.speak(), "woof");
     let fetched: &dyn Animal = map.get(animal_key).unwrap();
     assert_eq!(fetched.speak(), "woof");
@@ -598,7 +605,7 @@ fn insert_as_returns_typed_key_and_ref() {
 #[test]
 fn get_by_index_only_returns_occupied() {
     let map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
     let (found_key, val) = map.get_by_index_only(idx).unwrap();
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
@@ -608,7 +615,7 @@ fn get_by_index_only_returns_occupied() {
 #[test]
 fn get_by_index_only_returns_none_for_vacant() {
     let mut map: CastMap = CastMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     map.remove(key);
     assert!(map.get_by_index_only(key.key_data().idx).is_none());
 }
@@ -635,7 +642,7 @@ fn reserve_increases_capacity() {
 fn get_on_empty_map_returns_none() {
     let map_a: CastMap = CastMap::new();
     let map_b: CastMap = CastMap::new();
-    let (key, _) = map_b.insert(Box::new(1i32) as Box<dyn Any>);
+    let key = map_b.insert(Box::new(1i32) as Box<dyn Any>);
     assert!(map_a.get(key).is_none());
 }
 
@@ -666,10 +673,10 @@ fn snapshot_empty_map() {
 #[test]
 fn insert_after_remove_reuses_slot() {
     let mut map: CastMap = CastMap::new();
-    let (k1, _) = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let k1 = map.insert(Box::new(1i32) as Box<dyn Any>);
     let idx1 = k1.key_data().idx;
     map.remove(k1);
-    let (k2, _) = map.insert(Box::new(2i32) as Box<dyn Any>);
+    let k2 = map.insert(Box::new(2i32) as Box<dyn Any>);
     let idx2 = k2.key_data().idx;
     assert_eq!(idx1, idx2);
     assert_ne!(k1, k2);
@@ -705,7 +712,7 @@ fn clone_gets_fresh_map_id() {
 #[test]
 fn upcast_key_works_for_get() {
     let map: CastMap = CastMap::new();
-    let (sized_key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let sized_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
     let dyn_key = sized_key.upcast::<dyn Any>();
     let val = map.get(dyn_key).unwrap();
     assert_eq!(val.downcast_ref::<Dog>().unwrap().name, "Rex");
@@ -714,7 +721,7 @@ fn upcast_key_works_for_get() {
 #[test]
 fn upcast_key_works_for_remove() {
     let mut map: CastMap = CastMap::new();
-    let (sized_key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let sized_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
     let dyn_key = sized_key.upcast::<dyn Any>();
     let removed = map.remove(dyn_key).unwrap();
     assert_eq!(removed.downcast_ref::<Dog>().unwrap().name, "Rex");
@@ -723,7 +730,7 @@ fn upcast_key_works_for_remove() {
 #[test]
 fn upcast_key_works_for_get_mut() {
     let mut map: CastMap = CastMap::new();
-    let (sized_key, _) = map.insert_sized(Box::new(Dog { name: "Old".into() }));
+    let sized_key = map.insert_sized(Box::new(Dog { name: "Old".into() }));
     let dyn_key = sized_key.upcast::<dyn Any>();
     map.get_mut(dyn_key)
         .unwrap()
@@ -739,7 +746,7 @@ fn upcast_key_works_for_get_mut() {
 fn upcast_key_from_different_map_returns_none() {
     let map_a: CastMap = CastMap::new();
     let map_b: CastMap = CastMap::new();
-    let (sized_key, _) = map_a.insert_sized(Box::new(42i32));
+    let sized_key = map_a.insert_sized(Box::new(42i32));
     let dyn_key = sized_key.upcast::<dyn Any>();
     let _ = map_b.insert(Box::new(99i32) as Box<dyn Any>);
     assert!(map_b.get(dyn_key).is_none());

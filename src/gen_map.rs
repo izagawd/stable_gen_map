@@ -392,9 +392,9 @@ impl<C: SlotStorage> GenMap<C> {
 
     // ── insert ──────────────────────────────────────────────────────────
 
-    /// Simple insert. Returns the key and a reference to the stored output.
+    /// Simple insert. Returns the key for the stored output.
     #[inline]
-    pub fn insert(&self, value: C::Stored) -> (KeyOfStorage<C>, &C::Output) {
+    pub fn insert(&self, value: C::Stored) -> KeyOfStorage<C> {
         self.insert_with_key(|_| value)
     }
 
@@ -404,7 +404,7 @@ impl<C: SlotStorage> GenMap<C> {
     pub fn insert_with_key(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> C::Stored,
-    ) -> (KeyOfStorage<C>, &C::Output) {
+    ) -> KeyOfStorage<C> {
         self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
     }
 
@@ -414,7 +414,7 @@ impl<C: SlotStorage> GenMap<C> {
     pub fn try_insert_with_key<E>(
         &self,
         func: impl FnOnce(KeyOfStorage<C>) -> Result<C::Stored, E>,
-    ) -> Result<(KeyOfStorage<C>, &C::Output), E> {
+    ) -> Result<KeyOfStorage<C>, E> {
         unsafe {
             let slots = &mut *self.slots.get();
 
@@ -464,8 +464,7 @@ impl<C: SlotStorage> GenMap<C> {
             slot.generation += GenOfStorage::<C>::one();
             self.num_elements.set(self.num_elements.get() + 1);
 
-            let value_ref: &C::Output = slot.storage.ref_output();
-            Ok((key, value_ref))
+            Ok(key)
         }
     }
 

@@ -22,7 +22,7 @@ struct Cat {
 #[test]
 fn unsafe_cast_map_get_unchecked_dyn_any() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
 
     unsafe {
         let val = map.get_unchecked(key);
@@ -33,7 +33,7 @@ fn unsafe_cast_map_get_unchecked_dyn_any() {
 #[test]
 fn unsafe_cast_map_get_unchecked_with_concrete_key() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (dog_key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let dog_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
 
     unsafe {
         let dog: &Dog = map.get_unchecked(dog_key);
@@ -44,11 +44,11 @@ fn unsafe_cast_map_get_unchecked_with_concrete_key() {
 #[test]
 fn unsafe_cast_map_get_unchecked_multiple_types() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (k1, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
-    let (k2, _) = map.insert_sized(Box::new(Cat {
+    let k1 = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let k2 = map.insert_sized(Box::new(Cat {
         name: "Whiskers".into(),
     }));
-    let (k3, _) = map.insert_sized(Box::new(100u64));
+    let k3 = map.insert_sized(Box::new(100u64));
 
     unsafe {
         assert_eq!(map.get_unchecked(k1).name, "Rex");
@@ -60,7 +60,7 @@ fn unsafe_cast_map_get_unchecked_multiple_types() {
 #[test]
 fn unsafe_cast_map_get_unchecked_agrees_with_get() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert_sized(Box::new(Dog {
+    let key = map.insert_sized(Box::new(Dog {
         name: "Buddy".into(),
     }));
 
@@ -76,7 +76,7 @@ fn unsafe_cast_map_get_unchecked_agrees_with_get() {
 #[test]
 fn unsafe_cast_map_get_unchecked_mut_modifies_value() {
     let mut map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
 
     unsafe {
         let dog: &mut Dog = map.get_unchecked_mut(key);
@@ -92,7 +92,7 @@ fn unsafe_cast_map_get_unchecked_mut_modifies_value() {
 #[test]
 fn unsafe_cast_map_get_unchecked_mut_dyn_any() {
     let mut map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert(Box::new(10i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(10i32) as Box<dyn Any>);
 
     unsafe {
         let val = map.get_unchecked_mut(key);
@@ -110,7 +110,7 @@ fn unsafe_cast_map_get_unchecked_mut_dyn_any() {
 #[test]
 fn unsafe_cast_map_get_slot_returns_occupied() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
     let idx = key.key_data().idx;
 
     unsafe {
@@ -134,7 +134,7 @@ fn unsafe_cast_map_get_slot_none_for_out_of_bounds() {
 #[test]
 fn unsafe_cast_map_get_slot_vacant_after_remove() {
     let mut map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
     map.remove(key);
 
@@ -147,7 +147,7 @@ fn unsafe_cast_map_get_slot_vacant_after_remove() {
 #[test]
 fn unsafe_cast_map_get_slot_unchecked_matches_get_slot() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert_sized(Box::new(Cat {
+    let key = map.insert_sized(Box::new(Cat {
         name: "Whiskers".into(),
     }));
     let idx = key.key_data().idx;
@@ -164,7 +164,7 @@ fn unsafe_cast_map_get_slot_unchecked_matches_get_slot() {
 #[test]
 fn unsafe_cast_map_get_slot_as_cell() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -177,7 +177,7 @@ fn unsafe_cast_map_get_slot_as_cell() {
 #[test]
 fn unsafe_cast_map_get_slot_as_cell_unchecked() {
     let map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -192,7 +192,7 @@ fn unsafe_cast_map_get_slot_as_cell_unchecked() {
 #[test]
 fn unsafe_cast_map_get_slot_mut_can_modify() {
     let mut map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -212,7 +212,7 @@ fn unsafe_cast_map_get_slot_mut_can_modify() {
 #[test]
 fn unsafe_cast_map_get_slot_unchecked_mut_can_modify() {
     let mut map: UnsafeMap = UnsafeMap::new();
-    let (key, _) = map.insert(Box::new(100i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(100i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -231,7 +231,7 @@ fn unsafe_cast_map_get_slot_unchecked_mut_can_modify() {
 #[test]
 fn stable_cast_map_get_unchecked_dyn_any() {
     let map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
 
     unsafe {
         let val = map.get_unchecked(key);
@@ -242,7 +242,7 @@ fn stable_cast_map_get_unchecked_dyn_any() {
 #[test]
 fn stable_cast_map_get_unchecked_with_concrete_key() {
     let map: SafeMap = SafeMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let dyn_key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let dog_key: StableCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
     unsafe {
@@ -257,7 +257,7 @@ fn stable_cast_map_get_unchecked_agrees_with_get() {
 
     let mut keys = Vec::new();
     for i in 0..50 {
-        let (k, _) = map.insert(Box::new(i as i32) as Box<dyn Any>);
+        let k = map.insert(Box::new(i as i32) as Box<dyn Any>);
         keys.push(k);
     }
 
@@ -277,7 +277,7 @@ fn stable_cast_map_get_unchecked_agrees_with_get() {
 #[test]
 fn stable_cast_map_get_unchecked_mut_modifies_value() {
     let mut map: SafeMap = SafeMap::new();
-    let (dyn_key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let dyn_key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let dog_key: StableCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
 
     unsafe {
@@ -292,7 +292,7 @@ fn stable_cast_map_get_unchecked_mut_modifies_value() {
 #[test]
 fn stable_cast_map_get_unchecked_mut_dyn_any() {
     let mut map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(String::from("hello")) as Box<dyn Any>);
+    let key = map.insert(Box::new(String::from("hello")) as Box<dyn Any>);
 
     unsafe {
         let val = map.get_unchecked_mut(key);
@@ -308,7 +308,7 @@ fn stable_cast_map_get_unchecked_mut_dyn_any() {
 #[test]
 fn stable_cast_map_get_slot_returns_occupied() {
     let map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -332,7 +332,7 @@ fn stable_cast_map_get_slot_none_for_out_of_bounds() {
 #[test]
 fn stable_cast_map_get_slot_unchecked_matches_get_slot() {
     let map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(100u64) as Box<dyn Any>);
+    let key = map.insert(Box::new(100u64) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -345,7 +345,7 @@ fn stable_cast_map_get_slot_unchecked_matches_get_slot() {
 #[test]
 fn stable_cast_map_get_slot_vacant_after_remove() {
     let mut map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
     map.remove(key);
 
@@ -360,7 +360,7 @@ fn stable_cast_map_get_slot_vacant_after_remove() {
 #[test]
 fn stable_cast_map_get_slot_as_cell() {
     let map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -373,7 +373,7 @@ fn stable_cast_map_get_slot_as_cell() {
 #[test]
 fn stable_cast_map_get_slot_as_cell_unchecked() {
     let map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -388,7 +388,7 @@ fn stable_cast_map_get_slot_as_cell_unchecked() {
 #[test]
 fn stable_cast_map_get_slot_mut_can_modify() {
     let mut map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
+    let key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -404,7 +404,7 @@ fn stable_cast_map_get_slot_mut_can_modify() {
 #[test]
 fn stable_cast_map_get_slot_unchecked_mut_can_modify() {
     let mut map: SafeMap = SafeMap::new();
-    let (key, _) = map.insert(Box::new(100i32) as Box<dyn Any>);
+    let key = map.insert(Box::new(100i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
 
     unsafe {
@@ -421,10 +421,10 @@ fn stable_cast_map_get_slot_unchecked_mut_can_modify() {
 #[test]
 fn stable_cast_map_get_unchecked_after_remove_reinsert() {
     let mut map: SafeMap = SafeMap::new();
-    let (k1, _) = map.insert(Box::new(100i32) as Box<dyn Any>);
-    let (k2, _) = map.insert(Box::new(200i32) as Box<dyn Any>);
+    let k1 = map.insert(Box::new(100i32) as Box<dyn Any>);
+    let k2 = map.insert(Box::new(200i32) as Box<dyn Any>);
     map.remove(k1);
-    let (k3, _) = map.insert(Box::new(300i32) as Box<dyn Any>);
+    let k3 = map.insert(Box::new(300i32) as Box<dyn Any>);
 
     unsafe {
         assert_eq!(*map.get_unchecked(k2).downcast_ref::<i32>().unwrap(), 200);
