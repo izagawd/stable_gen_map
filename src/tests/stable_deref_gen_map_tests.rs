@@ -33,7 +33,7 @@ fn stable_len_tracks_insert_remove_and_clear() {
         .key_data
         .generation()
         .wrapping_add(1)
-        .as_non_zero()
+        .try_into()
         .unwrap();
     assert!(map.remove(bogus).is_none());
     assert_eq!(
@@ -545,7 +545,7 @@ fn remove_nonexistent_returns_none() {
         .key_data
         .generation()
         .wrapping_add(1)
-        .as_non_zero()
+        .try_into()
         .unwrap();
     assert!(
         map.remove(bad).is_none(),

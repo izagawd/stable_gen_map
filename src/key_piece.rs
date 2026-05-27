@@ -24,11 +24,11 @@ pub unsafe trait KeyPiece:
     + WrappingAdd
     + Rem<Output = Self>
     + CheckedAdd
+    + TryInto<Self::AsNonZero>
 where
     Self::AsNonZero: Into<Self>,
 {
     type AsNonZero: 'static + Copy;
-    fn as_non_zero(self) -> Option<Self::AsNonZero>;
     fn into_usize(self) -> usize;
 
     fn from_usize(v: usize) -> Self;
@@ -40,9 +40,7 @@ macro_rules! impl_key_piece {
             unsafe impl KeyPiece for $t {
 
                 type AsNonZero = NonZero<$t> where Self::AsNonZero: Into<Self>;
-                    fn as_non_zero(self) -> Option<Self::AsNonZero>{
-                    NonZero::new(self)
-                }
+
 
                 fn into_usize(self) -> usize {
                     self as usize // converting to usize is ok, since it is impossible for self to be higher than usize when used within this crate,

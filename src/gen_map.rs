@@ -266,7 +266,7 @@ impl<C: SlotStorage> GenMap<C> {
                 Some((
                     KeyOfStorage::<C>::from(KeyData {
                         idx,
-                        generation: slot.generation.as_non_zero().unwrap_unchecked(),
+                        generation: slot.generation.try_into().unwrap_unchecked(),
                     }),
                     slot.storage.ref_output(),
                 ))
@@ -446,7 +446,7 @@ impl<C: SlotStorage> GenMap<C> {
                 generation: generation_zeroable
                     .checked_add(&GenOfStorage::<C>::one())
                     .unwrap()
-                    .as_non_zero()
+                    .try_into()
                     .unwrap_unchecked(),
             });
 
@@ -538,7 +538,7 @@ impl<C: SlotStorage> GenMap<C> {
 
             let key = KeyOfStorage::<C>::from(KeyData {
                 idx: IdxOfStorage::<C>::from_usize(idx),
-                generation: unsafe { generation.as_non_zero().unwrap_unchecked() },
+                generation: unsafe { generation.try_into().unwrap_unchecked() },
             });
             let _ = self.remove(key);
         }
@@ -560,7 +560,7 @@ impl<C: SlotStorage> GenMap<C> {
                     let value = slot.storage.stored_mut();
                     let key_data = KeyData {
                         idx: IdxOfStorage::<C>::from_usize(idx),
-                        generation: slot.generation.as_non_zero().unwrap_unchecked(),
+                        generation: slot.generation.try_into().unwrap_unchecked(),
                     };
                     let key = KeyOfStorage::<C>::from(key_data);
 
@@ -623,7 +623,7 @@ impl<C: SlotStorage> GenMap<C> {
                     Some((
                         KeyOfStorage::<C>::from(KeyData {
                             idx: IdxOfStorage::<C>::from_usize(idx),
-                            generation: unsafe { slot.generation.as_non_zero().unwrap_unchecked() },
+                            generation: unsafe { slot.generation.try_into().unwrap_unchecked() },
                         }),
                         slot.storage.ref_output(),
                     ))
@@ -720,7 +720,7 @@ impl<C: SlotStorageMutOutput> GenMap<C> {
             Some((
                 KeyOfStorage::<C>::from(KeyData {
                     idx,
-                    generation: unsafe { slot.generation.as_non_zero().unwrap_unchecked() },
+                    generation: unsafe { slot.generation.try_into().unwrap_unchecked() },
                 }),
                 unsafe { slot.storage.mut_output() },
             ))
@@ -767,7 +767,7 @@ impl<'a, C: SlotStorage> Iterator for IterMut<'a, C> {
             let value: &mut C::Stored = unsafe { slot.storage.stored_mut() };
             let key = KeyOfStorage::<C>::from(KeyData {
                 idx: IdxOfStorage::<C>::from_usize(idx),
-                generation: unsafe { slot.generation.as_non_zero().unwrap_unchecked() },
+                generation: unsafe { slot.generation.try_into().unwrap_unchecked() },
             });
             return Some((key, value));
         }
@@ -835,7 +835,7 @@ impl<'a, C: SlotStorage> Iterator for Drain<'a, C> {
 
             let key = KeyOfStorage::<C>::from(KeyData {
                 idx: IdxOfStorage::<C>::from_usize(idx),
-                generation: unsafe { generation.as_non_zero().unwrap_unchecked() },
+                generation: unsafe { generation.try_into().unwrap_unchecked() },
             });
             let value = unsafe { self.map.remove(key).unwrap_unchecked() };
             return Some((key, value));
@@ -888,7 +888,7 @@ impl<C: SlotStorage> Iterator for IntoIter<C> {
             let value = unsafe { slot.storage.take_occupied() };
 
             let key_data = KeyData {
-                generation: unsafe { slot.generation.as_non_zero().unwrap_unchecked() },
+                generation: unsafe { slot.generation.try_into().unwrap_unchecked() },
                 idx: IdxOfStorage::<C>::from_usize(idx),
             };
 
