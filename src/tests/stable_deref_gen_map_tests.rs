@@ -73,8 +73,7 @@ fn stable_len_unchanged_on_try_insert_new_slot_err_and_panic() {
     );
 
     // After those failures, a normal insert must still give len = 1.
-    let _k_ok = map.insert(Box::new(123));
-    let _v_ok = map.get(_k_ok).unwrap();
+    map.insert(Box::new(123));
     assert_eq!(
         map.len(),
         1,
@@ -201,9 +200,10 @@ fn stable_try_insert_with_key_ok_path_new_slot() {
     let map: StableMap<i32> = BoxStableDerefMap::new();
 
     // OK path on a fresh map (no free slots; uses "new slot" branch).
-    let (k, v) = map
+    let k = map
         .try_insert_with_key(|_k| -> Result<Box<i32>, &'static str> { Ok(Box::new(10)) })
         .unwrap();
+    let v = map.get(k).unwrap();
 
     assert_eq!(*v, 10);
     assert_eq!(*map.get(k).unwrap(), 10);
@@ -234,9 +234,10 @@ fn stable_try_insert_with_key_error_reuses_free_slot() {
     // Slot should have been put back onto the free list.
     // Next successful insert should reuse the same idx, with the
     // incremented generation from the earlier remove.
-    let (k2, v2) = (&map as &StableMap<i32>)
+    let k2 = (&map as &StableMap<i32>)
         .try_insert_with_key::<()>(|_k| Ok(Box::new(99)))
         .unwrap();
+    let v2 = map.get(k2).unwrap();
 
     let new_data = k2.data();
 
@@ -312,7 +313,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
 fn get_returns_none_during_insert_even_while_resizing() {
     let map = BoxStableDerefMap::<DefaultKey, String>::new();
 
-    let _k = map.insert_with_key(|k_self| {
+    let k = map.insert_with_key(|k_self| {
         // During the window where is_inserting=true, get() must return None.
         assert!(map.get(k_self).is_none());
 
@@ -324,7 +325,7 @@ fn get_returns_none_during_insert_even_while_resizing() {
         Box::new("done".to_string())
     });
 
-    assert_eq!(map.get(_k).unwrap().as_str(), "done");
+    assert_eq!(map.get(k).unwrap().as_str(), "done");
 }
 
 #[test]
@@ -430,9 +431,9 @@ fn get_during_insert_returns_none_and_reentrancy_is_ok() {
         assert!(map.get(k).is_none());
 
         // Re-entrant insert while the first slot is "inserting".
-        let _k2 = map.insert(Box::new("inner".to_string()));
-        let r2 = map.get(_k2).unwrap();
-        inner = Some(_k2);
+        let k2 = map.insert(Box::new("inner".to_string()));
+        let r2 = map.get(k2).unwrap();
+        inner = Some(k2);
         inner_ref = Some(r2);
         assert_eq!(r2.as_str(), "inner");
         Box::new("outer".to_string())
@@ -586,9 +587,10 @@ fn stable_try_insert_with_key_panic_reuses_free_slot() {
     assert!(res.is_err());
 
     // Now insert again; it should reuse the same index that was freed earlier.
-    let (k2, v2) = (&map as &StableMap<i32>)
+    let k2 = (&map as &StableMap<i32>)
         .try_insert_with_key::<()>(|_k| Ok(Box::new(99)))
         .unwrap();
+    let v2 = map.get(k2).unwrap();
 
     let new = k2.data();
     assert_eq!(

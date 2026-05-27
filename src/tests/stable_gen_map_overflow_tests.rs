@@ -31,8 +31,8 @@ fn stale_key_after_generation_overflow_is_not_accepted_stable_gen_map() {
     assert!(map.get_mut(overflow_key).is_none());
 
     // Extra sanity: inserting again should not revive the stale key
-    let _new_key = map.insert(999);
-    let value_ref = map.get(_new_key).unwrap();
+    let new_key = map.insert(999);
+    let value_ref = map.get(new_key).unwrap();
     assert_eq!(*value_ref, 999);
 
     assert!(map.get(overflow_key).is_none());

@@ -91,8 +91,8 @@ fn stale_key_after_generation_overflow_is_not_accepted_stable_deref_gen_map() {
     assert!(map.get_mut(overflow_key).is_none());
 
     // Ensure reinsertion doesn't revive it
-    let _new_key = map.insert(Box::new(999));
-    let value_ref = map.get(_new_key).unwrap();
+    let new_key = map.insert(Box::new(999));
+    let value_ref = map.get(new_key).unwrap();
     assert_eq!(*value_ref, 999);
 
     assert!(map.get(overflow_key).is_none());

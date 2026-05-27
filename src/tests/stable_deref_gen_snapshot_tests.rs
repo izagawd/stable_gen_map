@@ -32,12 +32,12 @@ mod snapshot_stablegen_tests {
     fn snapshot_contains_all_items_and_matches_get() {
         let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-        let _k1 = map.insert(Box::new(10));
-        let r1 = map.get(_k1).unwrap();
-        let _k2 = map.insert(Box::new(20));
-        let r2 = map.get(_k2).unwrap();
-        let _k3 = map.insert(Box::new(30));
-        let r3 = map.get(_k3).unwrap();
+        let k1 = map.insert(Box::new(10));
+        let r1 = map.get(k1).unwrap();
+        let k2 = map.insert(Box::new(20));
+        let r2 = map.get(k2).unwrap();
+        let k3 = map.insert(Box::new(30));
+        let r3 = map.get(k3).unwrap();
 
         assert_eq!(*r1, 10);
         assert_eq!(*r2, 20);
@@ -93,12 +93,12 @@ mod snapshot_stablegen_tests {
 fn snapshot_contains_all_items_and_matches_get() {
     let map = BoxStableDerefMap::<DefaultKey, i32>::new();
 
-    let _k1 = map.insert(Box::new(10));
-    let r1 = map.get(_k1).unwrap();
-    let _k2 = map.insert(Box::new(20));
-    let r2 = map.get(_k2).unwrap();
-    let _k3 = map.insert(Box::new(30));
-    let r3 = map.get(_k3).unwrap();
+    let k1 = map.insert(Box::new(10));
+    let r1 = map.get(k1).unwrap();
+    let k2 = map.insert(Box::new(20));
+    let r2 = map.get(k2).unwrap();
+    let k3 = map.insert(Box::new(30));
+    let r3 = map.get(k3).unwrap();
 
     assert_eq!(*r1, 10);
     assert_eq!(*r2, 20);

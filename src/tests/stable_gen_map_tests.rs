@@ -384,10 +384,10 @@ fn try_insert_with_key_ok_path_new_slot() {
     let normal_map: Map<i32> = StableGenMap::new();
 
     // OK path with a brand new map (no free slots, allocate in first slot.
-    let (k, v) = normal_map
+    let k = normal_map
         .try_insert_with_key(|_k| -> Result<i32, &'static str> { Ok(10) })
         .unwrap();
-
+    let v = normal_map.get(k).unwrap();
     assert_eq!(*v, 10);
     assert_eq!(*normal_map.get(k).unwrap(), 10);
 }
@@ -470,8 +470,7 @@ fn len_unchanged_on_try_insert_new_slot_err_and_panic() {
     );
 
     // After those failures, a normal insert must bump len to 1.
-    let _k_ok = normal_map.insert(123);
-    let _v_ok = normal_map.get(_k_ok).unwrap();
+    normal_map.insert(123);
     assert_eq!(
         normal_map.len(),
         1,
@@ -502,9 +501,10 @@ fn try_insert_with_key_error_reuses_free_slot() {
 
     // Next successful try_insert_with_key should reuse the same idx,
     // with the bumped generation from remove.
-    let (k2, v2) = (&normal_map as &Map<i32>)
+    let k2 = (&normal_map as &Map<i32>)
         .try_insert_with_key::<()>(|_k| Ok(99))
         .unwrap();
+    let v2 = normal_map.get(k2).unwrap();
 
     let new_data = k2.data();
 
@@ -629,7 +629,7 @@ fn reentrant_insert_with_reuses_freed_slot_even_if_vec_resizes() {
 fn get_returns_none_during_insert_even_while_resizing() {
     let map = StableGenMap::<DefaultKey, String>::new();
 
-    let _k = map.insert_with_key(|k_self| {
+    let k = map.insert_with_key(|k_self| {
         // During the window where the slot is logically "inserting",
         // get() must not expose a partially-constructed value.
         assert!(map.get(k_self).is_none());
@@ -641,7 +641,7 @@ fn get_returns_none_during_insert_even_while_resizing() {
         "done".to_string()
     });
 
-    assert_eq!(map.get(_k).unwrap().as_str(), "done");
+    assert_eq!(map.get(k).unwrap().as_str(), "done");
 }
 
 // 4. Removing a key invalidates it forever, even after lots of inserts
@@ -683,9 +683,9 @@ fn get_during_insert_returns_none_and_reentrancy_is_ok() {
         assert!(map.get(k).is_none());
 
         // Re-entrant insert while the first slot is "inserting".
-        let _k2 = map.insert("inner".to_string());
-        let r2 = map.get(_k2).unwrap();
-        inner = Some(_k2);
+        let k2 = map.insert("inner".to_string());
+        let r2 = map.get(k2).unwrap();
+        inner = Some(k2);
         inner_ref = Some(r2);
         assert_eq!(r2.as_str(), "inner");
 

@@ -223,8 +223,8 @@ fn insert_with_key_closure_receives_correct_inner_key() {
 #[test]
 fn insert_with_key_reference_is_stable() {
     let map: CastMap = CastMap::new();
-    let _ = map.insert(Box::new(1i32) as Box<dyn Any>);
-    let ref1 = map.get(_).unwrap();
+    let key = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let ref1 = map.get(key).unwrap();
     let ref1_ptr = ref1 as *const dyn Any;
     for i in 0..100 {
         map.insert(Box::new(i) as Box<dyn Any>);
@@ -255,8 +255,8 @@ fn try_insert_with_key_err_does_not_insert() {
 fn try_insert_with_key_err_slot_is_reusable() {
     let map: CastMap = CastMap::new();
     let _ = map.try_insert_with_key::<&str>(|_| Err("fail"));
-    let _ = map.insert(Box::new(42i32) as Box<dyn Any>);
-    let val = map.get(_).unwrap();
+    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
+    let val = map.get(key).unwrap();
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 42);
     assert_eq!(map.len(), 1);
 }
@@ -560,8 +560,8 @@ fn clone_remove_on_clone_does_not_affect_original() {
 #[test]
 fn references_stable_across_inserts() {
     let map: CastMap = CastMap::new();
-    let _ = map.insert(Box::new(1i32) as Box<dyn Any>);
-    let r1 = map.get(_).unwrap();
+    let key = map.insert(Box::new(1i32) as Box<dyn Any>);
+    let r1 = map.get(key).unwrap();
     let r1_ptr = r1 as *const dyn Any;
     for i in 0..50 {
         map.insert(Box::new(i) as Box<dyn Any>);

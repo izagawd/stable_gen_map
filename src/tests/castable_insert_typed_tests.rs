@@ -107,8 +107,8 @@ fn insert_sized_inner_key_matches() {
 #[test]
 fn insert_sized_pointer_stability() {
     let map: CastMap = CastMap::new();
-    let _tmp_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
-    let dog_ref = map.get(_tmp_key).unwrap();
+    let tmp_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
+    let dog_ref = map.get(tmp_key).unwrap();
     let ptr = dog_ref as *const Dog;
     for i in 0..50 {
         map.insert(Box::new(i) as Box<dyn Any>);
@@ -181,8 +181,8 @@ fn try_insert_sized_with_key_err_slot_reusable() {
     let map: CastMap = CastMap::new();
     let _: Result<_, &str> =
         map.try_insert_sized_with_key(|_: StableCastKey<i32>| Err::<Box<_>, &str>("fail"));
-    let _ = map.insert(Box::new(99i32) as Box<dyn Any>);
-    let val = map.get(_).unwrap();
+    let key = map.insert(Box::new(99i32) as Box<dyn Any>);
+    let val = map.get(key).unwrap();
     assert_eq!(*val.downcast_ref::<i32>().unwrap(), 99);
 }
 
@@ -269,8 +269,8 @@ fn insert_as_inner_key_matches() {
 fn insert_as_pointer_stability() {
     let map: AnimalMap = AnimalMap::new();
     let child: Box<dyn Animal> = Box::new(Dog { name: "Rex".into() });
-    let _ = map.insert_as(child);
-    let animal_ref = map.get(_).unwrap();
+    let key = map.insert_as(child);
+    let animal_ref = map.get(key).unwrap();
     let ptr = animal_ref as *const dyn Animal;
     for i in 0..50 {
         map.insert(Box::new(i) as Box<dyn Any>);
