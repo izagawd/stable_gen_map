@@ -25,10 +25,8 @@ pub unsafe trait KeyPiece:
     + Rem<Output = Self>
     + CheckedAdd
     + TryInto<Self::AsNonZero>
-where
-    Self::AsNonZero: Into<Self>,
 {
-    type AsNonZero: 'static + Copy;
+    type AsNonZero: 'static + Copy + Into<Self>;
     fn into_usize(self) -> usize;
 
     fn from_usize(v: usize) -> Self;

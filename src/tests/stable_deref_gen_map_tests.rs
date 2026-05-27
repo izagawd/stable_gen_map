@@ -406,7 +406,6 @@ fn stable_try_insert_with_key_panic_reuses_reserved_new_slot() {
 }
 
 use crate::key::DefaultKey;
-use crate::key_piece::KeyPiece;
 use crate::stable_deref_map::{BoxStableDerefMap, StableDerefMap};
 use std::fmt::Display;
 use std::num::NonZero;
