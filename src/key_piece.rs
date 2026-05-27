@@ -5,6 +5,9 @@ use std::ops::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
 /// This trait is used to allow conversion between usize and most unsigned number types
 /// This enables a key's Idx and Generation to have a variety of possible types, which enables a lot
 /// of flexibility
+/// # Safety
+/// Types implementing this trait must not have any form of interior mutability.
+/// As of the time this comment is written, that is impossible due to this trait requiring `Copy`, but you never know what could change in the future
 pub unsafe trait KeyPiece:
     Copy
     + Num
