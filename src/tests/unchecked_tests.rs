@@ -249,10 +249,10 @@ fn get_slot_unchecked_mut_can_modify_value() {
     assert_eq!(*map.get(k).unwrap(), 123);
 }
 
-// ─── Slot::item / Slot::item_mut ────────────────────────────────────────────
+// ─── Slot::storage / Slot::storage_mut ────────────────────────────────────────────
 
 #[test]
-fn slot_item_returns_slot_item_ref() {
+fn slot_storage_returns_slot_item_ref() {
     let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
     let (k, _) = map.insert(55);
     let idx = k.data().idx;
@@ -260,7 +260,7 @@ fn slot_item_returns_slot_item_ref() {
     unsafe {
         let slot = map.get_slot(idx).unwrap();
         // item() returns &BoxedSlot, ref_output() on item gives us the value
-        let _item = slot.item();
+        let _item = slot.storage();
     }
 }
 

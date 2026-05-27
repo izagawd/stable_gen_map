@@ -18,7 +18,7 @@ Great for patterns that rely on shared mutability on a single thread, and remove
 - `StableGenMap<K, T>`  
   A stable generational map storing a sized `T` in a `Box`. Reusing slots does not need any new allocation. This is generally what you would want.
 
-- `StableDerefMap<K, Derefable>`  
+- `StableDerefMap<K, Ptr>`  
   A stable generational map where each element is a **smart pointer** that
   implements 
   `DerefGenMapPromise`. You get stable references to `Deref::Target`,
@@ -32,11 +32,11 @@ Great for patterns that rely on shared mutability on a single thread, and remove
   `Box<T>`, you still insert with `&self`, and you get stable `&T`/`&mut T`
   references. Preferred over `StableGenMap` if your element needs to be boxed anyways.
 
-- **`StableCastMap<D>`** *(requires the `castable` feature, nightly only)*  
-  A safe wrapper around `UnsafeCastMap` that supports **type-erased heterogeneous storage** (e.g. `Box<dyn Any>`) with castable keys. Each map has a unique `MapId` assigned on creation, and every `StableCastKey` carries the map's id so that cross-map misuse returns `None` instead of causing UB. See the [Castable maps](#the-castable-feature-nightly-only) section below.
+- **`StableCastMap<C>`** *(requires the `castable` feature, nightly only)*  
+  A safe wrapper around `UnsafeCastMap` that supports **type-erased heterogeneous storage** (e.g. `Box<dyn Any>`) with castable keys. Each map has a unique `MapId` assigned on creation, and every `StableCastKey` carries the map's id so that cross-map misuse returns `None` instead of causing UB. The type parameter `C` is the per-slot storage strategy (a `SlotStorage` implementor such as `DerefSlot<K, Box<dyn Any>>`). Use the convenience alias `StableBoxCastMap<K, T>` for the common `Box`-based case. See the [Castable maps](#the-castable-feature-nightly-only) section below.
 
-- **`UnsafeCastMap<D>`** *(requires the `castable` feature, nightly only)*  
-  The low-level building block for `StableCastMap`. Provides the same typed lookups via `CastKey`, but `get`, `get_mut`, and `downcast_key` are `unsafe` because no map-id check is performed. Useful when you are building your own safe abstraction on top (e.g. a GC).
+- **`UnsafeCastMap<C>`** *(requires the `castable` feature, nightly only)*  
+  The low-level building block for `StableCastMap`. Provides the same typed lookups via `CastKey`, but `get`, `get_mut`, and `downcast_key` are `unsafe` because no map-id check is performed. Useful when you are building your own safe abstraction on top (e.g. a GC). Use `UnsafeBoxCastMap<K, T>` for the common case.
 
 Keys implement the `Key` trait; you can use the provided `DefaultKey` or define your own (e.g. with smaller index / generation types).
 
@@ -83,20 +83,21 @@ stable_gen_map = { version = "0.17", features = ["castable"] }
 
 There are two layers:
 
-1. **`StableCastMap<D>`** — the safe, recommended API. Each map gets a unique `MapId` on creation. Keys are `StableCastKey<T>`, which carry the map id alongside generational index and pointer metadata. Every keyed lookup checks the map id first, so a key from map A used on map B simply returns `None`.
+1. **`StableCastMap<C>`** — the safe, recommended API. Each map gets a unique `MapId` on creation. Keys are `StableCastKey<T, K>`, which carry the map id alongside generational index and pointer metadata. Every keyed lookup checks the map id first, so a key from map A used on map B simply returns `None`.
 
-2. **`UnsafeCastMap<D>`** — the low-level layer. Keys are `CastKey<T>` (no map id). The `get`, `get_mut`, and `downcast_key` methods are `unsafe` because the caller must guarantee the key's metadata is valid. Use this when you're building your own safe wrapper.
+2. **`UnsafeCastMap<C>`** — the low-level layer. Keys are `CastKey<T, K>` (no map id). The `get`, `get_mut`, and `downcast_key` methods are `unsafe` because the caller must guarantee the key's metadata is valid. Use this when you're building your own safe wrapper.
 
-Both maps are parameterized over the smart pointer type `D` (e.g. `Box<dyn Any>`) and optional `Idx`/`Gen` types (defaulting to `u32`).
+Both maps are parameterized over a single `SlotStorage` implementor `C` that determines the backing key type, the stored smart pointer, and the output type. For the common case of `Box<dyn Any>` with `DefaultKey`, use the convenience aliases `StableBoxCastMap<DefaultKey, dyn Any>` and `UnsafeBoxCastMap<DefaultKey, dyn Any>`.
 
 ### Quick example
 
 ```rust
 use stable_gen_map::cast_key::StableCastKey;
-use stable_gen_map::stable_cast_map::StableCastMap;
+use stable_gen_map::key::DefaultKey;
+use stable_gen_map::stable_cast_map::StableBoxCastMap;
 use std::any::Any;
 
-type CastMap = StableCastMap<Box<dyn Any>>;
+type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;
 
 fn main() {
     let map: CastMap = CastMap::new();
@@ -121,22 +122,21 @@ struct Dog { name: String }
 
 | Type | Map id? | `unsafe` access? | Use case |
 |---|---|---|---|
-| `StableCastKey<T, Idx, Gen>` | Yes | No — lookups are safe | General use with `StableCastMap` |
-| `CastKey<T, Idx, Gen>` | No | Yes — caller must ensure metadata validity | Low-level use with `UnsafeCastMap` |
-| `InnerCastMapKey<Idx, Gen>` | No | N/A — no metadata | Inner key used by the backing `GenMap` |
+| `StableCastKey<T, K>` | Yes | No — lookups are safe | General use with `StableCastMap` |
+| `CastKey<T, K>` | No | Yes — caller must ensure metadata validity | Low-level use with `UnsafeCastMap` |
 
-`Idx` and `Gen` default to `u32`. Use custom types (e.g. `u16`) for smaller keys.
+`K` defaults to `DefaultKey` (which uses `u32` for both index and generation). Use custom key types for smaller keys.
 
 ### Available insert methods
 
 | Method | Key given to closure | Returned key type |
 |---|---|---|
-| `insert(value)` | — | `StableCastKey<D::Target>` (erased) |
-| `insert_with_key(\|inner_key\| ...)` | `InnerCastMapKey` | `StableCastKey<D::Target>` (erased) |
+| `insert(value)` | — | `StableCastKey<C::Output>` (erased) |
+| `insert_with_key(\|inner_key\| ...)` | `C::Key` (e.g. `DefaultKey`) | `StableCastKey<C::Output>` (erased) |
 | `insert_sized(value)` | — | `StableCastKey<Concrete>` |
 | `insert_sized_with_key(\|typed_key\| ...)` | `StableCastKey<Concrete>` | `StableCastKey<Concrete>` |
 | `insert_as(value)` | — | `StableCastKey<Source::Target>` |
-| `insert_as_with_key(\|inner_key\| ...)` | `InnerCastMapKey` | `StableCastKey<Source::Target>` |
+| `insert_as_with_key(\|inner_key\| ...)` | `C::Key` (e.g. `DefaultKey`) | `StableCastKey<Source::Target>` |
 
 ### Key upcasting
 

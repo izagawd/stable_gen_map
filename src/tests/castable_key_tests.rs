@@ -1,10 +1,12 @@
-use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
+use crate::cast_key::{CastKey, StableCastKey};
+use crate::key::DefaultKey;
+use crate::stable_cast_map::StableBoxCastMap;
 use crate::key::Key;
-use crate::stable_cast_map::StableCastMap;
+
 use std::any::Any;
 use std::collections::HashSet;
 
-type CastMap = StableCastMap<Box<dyn Any>>;
+type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;
 
 // ─── StableCastKey trait impls ──────────────────────────────────────────────
 
@@ -60,7 +62,7 @@ fn inner_key_strips_metadata() {
     let map: CastMap = CastMap::new();
     let (cast_key, _) = map.insert(Box::new(42i32) as Box<dyn Any>);
 
-    let inner: InnerCastMapKey<u32, u32> = cast_key.inner_key();
+    let inner: DefaultKey = cast_key.inner_key();
     assert_eq!(inner.data().idx, cast_key.key_data().idx);
     assert_eq!(inner.data().generation, cast_key.key_data().generation);
 }
@@ -114,7 +116,7 @@ fn map_id_survives_upcast() {
 
 #[test]
 fn upcast_sized_to_dyn_trait() {
-    type TraitMap = StableCastMap<Box<dyn Animal>>;
+    type TraitMap = StableBoxCastMap<DefaultKey, dyn Animal>;
     let map: TraitMap = TraitMap::new();
     let (key, _) = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Animal>);
 

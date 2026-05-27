@@ -1,18 +1,18 @@
 use crate::gen_map::{GenMap, Slot};
 use crate::key::{is_occupied_by_generation, Key, KeyData};
-use crate::slot_item::{SlotData, SlotItem, SlotItemClone, SlotItemMutOutput};
+use crate::slot_item::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
-use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 
 // ─── BoxedSlot ───────────────────────────────────────────────────────────────
 
 /// Per-slot storage that wraps the payload in a `Box` for pointer stability.
 /// The `Box` allocation is **reused** across remove / re-insert cycles.
-pub struct BoxedSlot<T, K: Key>(pub(crate) Box<SlotData<T, K>>);
+pub struct BoxedSlot<K: Key, T>(pub(crate) Box<SlotData<T, K>>);
 
-unsafe impl<T, K: Key> SlotItem<K> for BoxedSlot<T, K> {
+unsafe impl<K: Key, T> SlotStorage for BoxedSlot<K, T> {
+    type Key = K;
     type Stored = T;
     type Output = T;
 
@@ -58,16 +58,16 @@ unsafe impl<T, K: Key> SlotItem<K> for BoxedSlot<T, K> {
     }
 }
 
-unsafe impl<T, K: Key> SlotItemMutOutput<K> for BoxedSlot<T, K> {
+unsafe impl<K: Key, T> SlotStorageMutOutput for BoxedSlot<K, T> {
     #[inline]
     unsafe fn mut_output(&mut self) -> &mut T {
         &mut *self.0.occupied
     }
 }
 
-unsafe impl<T: Clone, K: Key> SlotItemClone<K> for BoxedSlot<T, K> {
+unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
     #[inline]
-    unsafe fn clone_item(&self, is_occupied: bool) -> Self {
+    unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
             BoxedSlot(Box::new(SlotData {
                 occupied: ManuallyDrop::new((*self.0.occupied).clone()),
@@ -86,7 +86,7 @@ unsafe impl<T: Clone, K: Key> SlotItemClone<K> for BoxedSlot<T, K> {
 /// stability.  The `Box` allocation is **reused** across remove / re-insert
 /// cycles, so a `remove` followed by an `insert` into the same slot incurs
 /// no heap traffic.
-pub type StableGenMap<K, T> = GenMap<K, BoxedSlot<T, K>>;
+pub type StableGenMap<K, T> = GenMap<BoxedSlot<K, T>>;
 
 // ─── Clone (two-phase snapshot) ──────────────────────────────────────────────
 //
@@ -95,6 +95,7 @@ pub type StableGenMap<K, T> = GenMap<K, BoxedSlot<T, K>>;
 //          which is safe because we no longer touch self.slots.
 
 impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
+    #[inline]
     fn clone(&self) -> Self {
         unsafe {
             enum Snap<'a, K: Key, T> {
@@ -104,25 +105,25 @@ impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
 
             let num_elements = self.len();
             let next_free = self.next_free.get();
-            let slots_ref: &Vec<UnsafeCell<Slot<BoxedSlot<T, K>, K>>> = &*self.slots.get();
+            let slots_ref: &Vec<UnsafeCell<Slot<BoxedSlot<K, T>>>> = &*self.slots.get();
 
             // ── phase 1: snapshot ────────────────────────────────────────
             let mut snapshot: Vec<(K::Gen, Snap<'_, K, T>)> = Vec::with_capacity(slots_ref.len());
 
             for cell in slots_ref.iter() {
-                let slot: &Slot<BoxedSlot<T, K>, K> = &*cell.get();
+                let slot: &Slot<BoxedSlot<K, T>> = &*cell.get();
                 let gen = slot.generation;
 
                 let snap = if is_occupied_by_generation(gen) {
-                    Snap::Occupied(slot.item.ref_output())
+                    Snap::Occupied(slot.storage.ref_output())
                 } else {
-                    Snap::Vacant(slot.item.get_vacant())
+                    Snap::Vacant(slot.storage.get_vacant())
                 };
                 snapshot.push((gen, snap));
             }
 
             // ── phase 2: rebuild ─────────────────────────────────────────
-            let mut new_slots: Vec<UnsafeCell<Slot<BoxedSlot<T, K>, K>>> =
+            let mut new_slots: Vec<UnsafeCell<Slot<BoxedSlot<K, T>>>> =
                 Vec::with_capacity(snapshot.len());
 
             for (generation, snap) in snapshot {
@@ -135,7 +136,7 @@ impl<K: Key, T: Clone> Clone for StableGenMap<K, T> {
 
                 new_slots.push(UnsafeCell::new(Slot {
                     generation,
-                    item: BoxedSlot(Box::new(data)),
+                    storage: BoxedSlot(Box::new(data)),
                 }));
             }
 

@@ -1,26 +1,33 @@
 use crate::key::{is_occupied_by_generation, Key, KeyData};
-use crate::key_piece::KeyPiece;
-use crate::slot_item::{SlotItem, SlotItemClone, SlotItemMutOutput};
+use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::collections::TryReserveError;
-use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
+use crate::key_piece::KeyPiece;
+// ─── Private type-level shortcuts ────────────────────────────────────────────
+// These reduce the verbosity of double-associated-type projections.
+
+pub(crate) type KeyOfStorage<C> = <C as SlotStorage>::Key;
+pub(crate) type IdxOfStorage<C> = <<C as SlotStorage>::Key as Key>::Idx;
+pub(crate) type GenOfStorage<C> = <<C as SlotStorage>::Key as Key>::Gen;
 
 // ─── Slot ────────────────────────────────────────────────────────────────────
 
-pub struct Slot<C: SlotItem<K>, K: Key> {
-    pub(crate) item: C,
-    pub(crate) generation: K::Gen,
+pub struct Slot<C: SlotStorage> {
+    pub(crate) storage: C,
+    pub(crate) generation: GenOfStorage<C>,
 }
 
-impl<C: SlotItem<K>, K: Key> Slot<C, K> {
+impl<C: SlotStorage> Slot<C> {
+    /// Returns `true` if this slot currently holds a value.
+    #[inline]
     pub fn is_occupied(&self) -> bool {
         is_occupied_by_generation(self.generation)
     }
     /// Returns a shared reference to the generation stored in this slot.
     #[inline]
-    pub fn generation(&self) -> &K::Gen {
+    pub fn generation(&self) -> &GenOfStorage<C> {
         &self.generation
     }
 
@@ -29,26 +36,26 @@ impl<C: SlotItem<K>, K: Key> Slot<C, K> {
     /// # Safety
     /// The caller must not violate map invariants
     #[inline]
-    pub unsafe fn generation_mut(&mut self) -> &mut K::Gen {
+    pub unsafe fn generation_mut(&mut self) -> &mut GenOfStorage<C> {
         &mut self.generation
     }
 
-    /// Returns a shared reference to the slot's [`SlotItem`].
+    /// Returns a shared reference to the slot's [`SlotStorage`].
     ///
     /// # Safety
     /// The caller must not violate map invariants.
     #[inline]
-    pub unsafe fn item(&self) -> &C {
-        &self.item
+    pub unsafe fn storage(&self) -> &C {
+        &self.storage
     }
 
-    /// Returns a mutable reference to the slot's [`SlotItem`].
+    /// Returns a mutable reference to the slot's [`SlotStorage`].
     ///
     /// # Safety
     /// The caller must not violate map invariants.
     #[inline]
-    pub unsafe fn item_mut(&mut self) -> &mut C {
-        &mut self.item
+    pub unsafe fn storage_mut(&mut self) -> &mut C {
+        &mut self.storage
     }
 
     /// Returns a shared reference to the slot's output.
@@ -57,35 +64,36 @@ impl<C: SlotItem<K>, K: Key> Slot<C, K> {
     /// The slot must be occupied.
     #[inline]
     pub unsafe fn ref_output(&self) -> &C::Output {
-        self.item.ref_output()
+        self.storage.ref_output()
     }
 }
 
-impl<C: SlotItemMutOutput<K>, K: Key> Slot<C, K> {
+impl<C: SlotStorageMutOutput> Slot<C> {
     /// Returns a mutable reference to the slot's output.
     ///
     /// # Safety
     /// The slot must be occupied.
     #[inline]
     pub unsafe fn mut_output(&mut self) -> &mut C::Output {
-        self.item.mut_output()
+        self.storage.mut_output()
     }
 }
 
-impl<C: SlotItem<K>, K: Key> Drop for Slot<C, K> {
+impl<C: SlotStorage> Drop for Slot<C> {
+    #[inline]
     fn drop(&mut self) {
         if is_occupied_by_generation(self.generation) {
-            unsafe { self.item.drop_occupied() }
+            unsafe { self.storage.drop_occupied() }
         }
     }
 }
 
-impl<C: SlotItem<K>, K: Key> Slot<C, K> {
+impl<C: SlotStorage> Slot<C> {
     /// Take the occupied value if the slot is actually occupied, else `None`.
     #[inline]
     fn take_occupied(&mut self) -> Option<C::Stored> {
         if is_occupied_by_generation(self.generation) {
-            Some(unsafe { self.item.take_occupied() })
+            Some(unsafe { self.storage.take_occupied() })
         } else {
             None
         }
@@ -98,60 +106,63 @@ impl<C: SlotItem<K>, K: Key> Slot<C, K> {
 /// references.
 ///
 /// The storage strategy is determined by `C`:
-/// - [`BoxedSlot`](crate::slot_item::BoxedSlot) – wraps each value in a `Box`;
+/// - [`BoxedSlot`](crate::stable_gen_map::BoxedSlot) – wraps each value in a `Box`;
 ///   the allocation is reused across remove/insert cycles.
-/// - [`DerefSlot`](crate::slot_item::DerefSlot) – stores a user-supplied smart
+/// - [`DerefSlot`](crate::stable_deref_map::DerefSlot) – stores a user-supplied smart
 ///   pointer directly.
 ///
 /// You will normally use the type aliases
 /// [`StableGenMap`](crate::stable_gen_map::StableGenMap) and
 /// [`StableDerefMap`](crate::stable_deref_map::StableDerefMap).
-pub struct GenMap<K: Key, C: SlotItem<K>> {
-    pub(crate) slots: UnsafeCell<Vec<UnsafeCell<Slot<C, K>>>>,
-    pub(crate) next_free: Cell<Option<K::Idx>>,
-    pub(crate) phantom: PhantomData<fn(K)>,
+pub struct GenMap<C: SlotStorage> {
+    pub(crate) slots: UnsafeCell<Vec<UnsafeCell<Slot<C>>>>,
+    pub(crate) next_free: Cell<Option<IdxOfStorage<C>>>,
     pub(crate) num_elements: Cell<usize>,
 }
 
 // ─── Index / IndexMut ────────────────────────────────────────────────────────
 
-impl<K: Key, C: SlotItem<K>> Index<K> for GenMap<K, C> {
+impl<C: SlotStorage> Index<KeyOfStorage<C>> for GenMap<C> {
     type Output = C::Output;
 
-    fn index(&self, key: K) -> &Self::Output {
+    #[inline]
+    fn index(&self, key: KeyOfStorage<C>) -> &Self::Output {
         self.get(key).unwrap()
     }
 }
 
-impl<K: Key, C: SlotItemMutOutput<K>> IndexMut<K> for GenMap<K, C> {
-    fn index_mut(&mut self, key: K) -> &mut Self::Output {
+impl<C: SlotStorageMutOutput> IndexMut<KeyOfStorage<C>> for GenMap<C> {
+    #[inline]
+    fn index_mut(&mut self, key: KeyOfStorage<C>) -> &mut Self::Output {
         self.get_mut(key).unwrap()
     }
 }
 
 // ─── RemoveArguments (borrow-checker helper) ─────────────────────────────────
 
-struct RemoveArguments<'a, K: Key, C: SlotItem<K>> {
-    slot: &'a mut Slot<C, K>,
-    key: K,
+struct RemoveArguments<'a, C: SlotStorage> {
+    slot: &'a mut Slot<C>,
+    key: KeyOfStorage<C>,
     num_elements: &'a Cell<usize>,
-    next_free: &'a Cell<Option<K::Idx>>,
+    next_free: &'a Cell<Option<IdxOfStorage<C>>>,
 }
 
 // ─── FreeGuard (RAII reservation for a single index) ─────────────────────────
 
-struct FreeGuard<'a, K: Key, C: SlotItem<K>> {
-    map: &'a GenMap<K, C>,
-    idx: K::Idx,
+struct FreeGuard<'a, C: SlotStorage> {
+    map: &'a GenMap<C>,
+    idx: IdxOfStorage<C>,
 }
 
-impl<'a, K: Key, C: SlotItem<K>> FreeGuard<'a, K, C> {
+impl<'a, C: SlotStorage> FreeGuard<'a, C> {
+    #[inline]
     fn commit(self) {
         std::mem::forget(self);
     }
 }
 
-impl<'a, K: Key, C: SlotItem<K>> Drop for FreeGuard<'a, K, C> {
+impl<'a, C: SlotStorage> Drop for FreeGuard<'a, C> {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
             let slots = &mut *self.map.slots.get();
@@ -160,11 +171,11 @@ impl<'a, K: Key, C: SlotItem<K>> Drop for FreeGuard<'a, K, C> {
             // add by two to maintain evenness (even == vacant)
             if let Some(checked_add) = slot
                 .generation
-                .checked_add(&(K::Gen::one() + K::Gen::one()))
+                .checked_add(&(GenOfStorage::<C>::one() + GenOfStorage::<C>::one()))
             {
                 slot.generation = checked_add;
                 let old_head = self.map.next_free.get();
-                unsafe { slot.item.set_vacant(old_head) };
+                unsafe { slot.storage.set_vacant(old_head) };
                 self.map.next_free.set(Some(self.idx));
             }
         }
@@ -173,7 +184,7 @@ impl<'a, K: Key, C: SlotItem<K>> Drop for FreeGuard<'a, K, C> {
 
 // ─── shared methods ──────────────────────────────────────────────────────────
 
-impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
+impl<C: SlotStorage> GenMap<C> {
     // ── construction ────────────────────────────────────────────────────
 
     /// Creates a new, empty map.
@@ -182,7 +193,6 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
         Self {
             slots: UnsafeCell::new(Vec::new()),
             next_free: Cell::new(None),
-            phantom: PhantomData,
             num_elements: Cell::new(0),
         }
     }
@@ -193,7 +203,6 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
         Self {
             slots: UnsafeCell::new(Vec::with_capacity(capacity)),
             next_free: Cell::new(None),
-            phantom: PhantomData,
             num_elements: Cell::new(0),
         }
     }
@@ -228,7 +237,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
     /// Shared-reference lookup by key.
     #[inline]
-    pub fn get(&self, k: K) -> Option<&C::Output> {
+    pub fn get(&self, k: KeyOfStorage<C>) -> Option<&C::Output> {
         unsafe {
             let key_data = k.data();
             let slots = &*self.slots.get();
@@ -236,24 +245,24 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             if slot.generation != key_data.generation {
                 return None;
             }
-            Some(slot.item.ref_output())
+            Some(slot.storage.ref_output())
         }
     }
 
     /// Shared-reference lookup by index only (ignores generation).
     /// Returns `None` if the slot is unoccupied
     #[inline]
-    pub fn get_by_index_only(&self, idx: K::Idx) -> Option<(K, &C::Output)> {
+    pub fn get_by_index_only(&self, idx: IdxOfStorage<C>) -> Option<(KeyOfStorage<C>, &C::Output)> {
         unsafe {
             let slots = &*self.slots.get();
             let slot = &*slots.get(idx.into_usize())?.get();
             if is_occupied_by_generation(slot.generation) {
                 Some((
-                    K::from(KeyData {
+                    KeyOfStorage::<C>::from(KeyData {
                         idx,
                         generation: slot.generation,
                     }),
-                    slot.item.ref_output(),
+                    slot.storage.ref_output(),
                 ))
             } else {
                 None
@@ -275,7 +284,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// requires `&self` and may reallocate the backing storage, which
     /// invalidates all previously obtained slot references.
     #[inline]
-    pub unsafe fn get_slot(&self, idx: K::Idx) -> Option<&Slot<C, K>> {
+    pub unsafe fn get_slot(&self, idx: IdxOfStorage<C>) -> Option<&Slot<C>> {
         let slots = &*self.slots.get();
         let slot = &*slots.get(idx.into_usize())?.get();
         Some(slot)
@@ -292,7 +301,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// requires `&self` and may reallocate the backing storage, which
     /// invalidates all previously obtained slot references.
     #[inline]
-    pub unsafe fn get_slot_unchecked(&self, idx: K::Idx) -> &Slot<C, K> {
+    pub unsafe fn get_slot_unchecked(&self, idx: IdxOfStorage<C>) -> &Slot<C> {
         let slots = &*self.slots.get();
         &*slots.get_unchecked(idx.into_usize()).get()
     }
@@ -311,7 +320,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// requires `&self` and may reallocate the backing storage, which
     /// invalidates all previously obtained references.
     #[inline]
-    pub unsafe fn get_slot_as_cell(&self, idx: K::Idx) -> Option<&UnsafeCell<Slot<C, K>>> {
+    pub unsafe fn get_slot_as_cell(&self, idx: IdxOfStorage<C>) -> Option<&UnsafeCell<Slot<C>>> {
         let slots = &*self.slots.get();
         slots.get(idx.into_usize())
     }
@@ -328,7 +337,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// requires `&self` and may reallocate the backing storage, which
     /// invalidates all previously obtained references.
     #[inline]
-    pub unsafe fn get_slot_as_cell_unchecked(&self, idx: K::Idx) -> &UnsafeCell<Slot<C, K>> {
+    pub unsafe fn get_slot_as_cell_unchecked(&self, idx: IdxOfStorage<C>) -> &UnsafeCell<Slot<C>> {
         let slots = &*self.slots.get();
         slots.get_unchecked(idx.into_usize())
     }
@@ -342,7 +351,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// must not use this to violate map invariants, and must check
     /// occupancy before accessing the slot's value.
     #[inline]
-    pub unsafe fn get_slot_mut(&mut self, idx: K::Idx) -> Option<&mut Slot<C, K>> {
+    pub unsafe fn get_slot_mut(&mut self, idx: IdxOfStorage<C>) -> Option<&mut Slot<C>> {
         let slots = self.slots.get_mut();
         Some(slots.get_mut(idx.into_usize())?.get_mut())
     }
@@ -354,7 +363,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// - The caller must not use this to violate map invariants, and must
     ///   check occupancy before accessing the slot's value.
     #[inline]
-    pub unsafe fn get_slot_unchecked_mut(&mut self, idx: K::Idx) -> &mut Slot<C, K> {
+    pub unsafe fn get_slot_unchecked_mut(&mut self, idx: IdxOfStorage<C>) -> &mut Slot<C> {
         let slots = self.slots.get_mut();
         slots.get_unchecked_mut(idx.into_usize()).get_mut()
     }
@@ -365,28 +374,28 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// - The key's index must be in bounds.
     /// - The slot at that index must be occupied with the matching generation.
     #[inline]
-    pub unsafe fn get_unchecked(&self, k: K) -> &C::Output {
+    pub unsafe fn get_unchecked(&self, k: KeyOfStorage<C>) -> &C::Output {
         let key_data = k.data();
         let slots = &*self.slots.get();
         let slot = &*slots.get_unchecked(key_data.idx.into_usize()).get();
-        slot.item.ref_output()
+        slot.storage.ref_output()
     }
 
-    // ── get_mut (requires SlotItemMutOutput) ────────────────────────────
+    // ── get_mut (requires SlotStorageMutOutput) ────────────────────────
     // (placed inside a separate impl block below)
 
     // ── insert ──────────────────────────────────────────────────────────
 
     /// Simple insert. Returns the key and a reference to the stored output.
     #[inline]
-    pub fn insert(&self, value: C::Stored) -> (K, &C::Output) {
+    pub fn insert(&self, value: C::Stored) -> (KeyOfStorage<C>, &C::Output) {
         self.insert_with_key(|_| value)
     }
 
     /// Inserts a value produced by `func`, which receives the key that will
     /// identify the inserted element.
     #[inline]
-    pub fn insert_with_key(&self, func: impl FnOnce(K) -> C::Stored) -> (K, &C::Output) {
+    pub fn insert_with_key(&self, func: impl FnOnce(KeyOfStorage<C>) -> C::Stored) -> (KeyOfStorage<C>, &C::Output) {
         self.try_insert_with_key::<()>(|key| Ok(func(key))).unwrap()
     }
 
@@ -395,8 +404,8 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     #[inline]
     pub fn try_insert_with_key<E>(
         &self,
-        func: impl FnOnce(K) -> Result<C::Stored, E>,
-    ) -> Result<(K, &C::Output), E> {
+        func: impl FnOnce(KeyOfStorage<C>) -> Result<C::Stored, E>,
+    ) -> Result<(KeyOfStorage<C>, &C::Output), E> {
         unsafe {
             let slots = &mut *self.slots.get();
 
@@ -404,27 +413,27 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                 // reuse a free slot
                 let slot = slots.get_unchecked_mut(idx.into_usize()).get_mut();
 
-                let next = slot.item.get_vacant();
+                let next = slot.storage.get_vacant();
                 self.next_free.set(next);
-                slot.item.set_vacant(None); // mark reserved
+                slot.storage.set_vacant(None); // mark reserved
 
                 let generation = slot.generation;
                 (idx, generation)
             } else {
                 // append a new slot
-                let generation = K::Gen::zero();
-                let idx = K::Idx::from_usize(slots.len());
+                let generation = GenOfStorage::<C>::zero();
+                let idx = IdxOfStorage::<C>::from_usize(slots.len());
                 slots.push(UnsafeCell::new(Slot {
                     generation,
-                    item: C::new_vacant(None),
+                    storage: C::new_vacant(None),
                 }));
                 (idx, generation)
             };
 
             // key gen is one ahead; only valid after we commit
-            let key = K::from(KeyData {
+            let key = KeyOfStorage::<C>::from(KeyData {
                 idx,
-                generation: generation.checked_add(&K::Gen::one()).unwrap(),
+                generation: generation.checked_add(&GenOfStorage::<C>::one()).unwrap(),
             });
 
             let guard = FreeGuard { map: self, idx };
@@ -437,11 +446,11 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             let slots = &*self.slots.get();
             let slot = &mut *slots.get_unchecked(idx.into_usize()).get();
 
-            slot.item.write_occupied(value);
-            slot.generation += K::Gen::one();
+            slot.storage.write_occupied(value);
+            slot.generation += GenOfStorage::<C>::one();
             self.num_elements.set(self.num_elements.get() + 1);
 
-            let value_ref: &C::Output = slot.item.ref_output();
+            let value_ref: &C::Output = slot.storage.ref_output();
             Ok((key, value_ref))
         }
     }
@@ -451,7 +460,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// Shared removal helper (avoids borrow-checker issues).
     #[inline]
     unsafe fn remove_split_data<const DO_GENERATION_CHECK: bool>(
-        args: RemoveArguments<K, C>,
+        args: RemoveArguments<C>,
     ) -> Option<C::Stored> {
         let slot = args.slot;
         let num_elements = args.num_elements;
@@ -471,15 +480,15 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
         num_elements.set(num_elements.get() - 1);
 
-        match slot.generation.checked_add(&K::Gen::one()) {
+        match slot.generation.checked_add(&GenOfStorage::<C>::one()) {
             Some(new_gen) => {
                 slot.generation = new_gen;
                 let old_head = next_free.get();
-                slot.item.set_vacant(old_head);
+                slot.storage.set_vacant(old_head);
                 next_free.set(Some(key_data.idx));
             }
             None => {
-                slot.generation = K::Gen::zero();
+                slot.generation = GenOfStorage::<C>::zero();
             }
         }
 
@@ -488,7 +497,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
     /// Removes an element by key, returning its owned value.
     #[inline]
-    pub fn remove(&mut self, k: K) -> Option<C::Stored> {
+    pub fn remove(&mut self, k: KeyOfStorage<C>) -> Option<C::Stored> {
         let key_data = k.data();
         let slots = self.slots.get_mut();
         let slot = slots.get_mut(key_data.idx.into_usize())?.get_mut();
@@ -516,8 +525,8 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                     .get_mut()
                     .generation
             };
-            let key = K::from(KeyData {
-                idx: K::Idx::from_usize(idx),
+            let key = KeyOfStorage::<C>::from(KeyData {
+                idx: IdxOfStorage::<C>::from_usize(idx),
                 generation,
             });
             let _ = self.remove(key);
@@ -526,9 +535,10 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     }
 
     /// Retains only elements for which `f(key, &mut stored)` returns `true`.
+    #[inline]
     pub fn retain<F>(&mut self, mut f: F)
     where
-        F: FnMut(K, &mut C::Stored) -> bool,
+        F: FnMut(KeyOfStorage<C>, &mut C::Stored) -> bool,
     {
         unsafe {
             let slots: &mut Vec<_> = self.slots.get_mut();
@@ -536,12 +546,12 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
             for (idx, slot_cell) in slots.iter_mut().enumerate() {
                 let slot = slot_cell.get_mut();
                 if is_occupied_by_generation(slot.generation) {
-                    let value = slot.item.stored_mut();
+                    let value = slot.storage.stored_mut();
                     let key_data = KeyData {
-                        idx: K::Idx::from_usize(idx),
+                        idx: IdxOfStorage::<C>::from_usize(idx),
                         generation: slot.generation,
                     };
-                    let key = K::from(key_data);
+                    let key = KeyOfStorage::<C>::from(key_data);
 
                     if !f(key, value) {
                         Self::remove_split_data::<false>(RemoveArguments {
@@ -561,7 +571,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// Returns a snapshot of all `(key, &output)` pairs at the current moment.
     /// Ignores future inserts. Heap-allocates one `Vec`.
     #[inline]
-    pub fn snapshot(&self) -> Vec<(K, &C::Output)> {
+    pub fn snapshot(&self) -> Vec<(KeyOfStorage<C>, &C::Output)> {
         unsafe {
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(self.iter_unsafe());
@@ -581,7 +591,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
 
     /// Returns a snapshot of keys only.
     #[inline]
-    pub fn snapshot_keys(&self) -> Vec<K> {
+    pub fn snapshot_keys(&self) -> Vec<KeyOfStorage<C>> {
         unsafe {
             let mut vec = Vec::with_capacity(self.len());
             vec.extend(self.iter_unsafe().map(|x| x.0));
@@ -592,7 +602,7 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// # Safety
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
-    pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (K, &C::Output)> {
+    pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (KeyOfStorage<C>, &C::Output)> {
         (&*self.slots.get())
             .iter()
             .enumerate()
@@ -600,11 +610,11 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                 let slot = &*slot_cell.get();
                 if is_occupied_by_generation(slot.generation) {
                     Some((
-                        K::from(KeyData {
-                            idx: K::Idx::from_usize(idx),
+                        KeyOfStorage::<C>::from(KeyData {
+                            idx: IdxOfStorage::<C>::from_usize(idx),
                             generation: slot.generation,
                         }),
-                        slot.item.ref_output(),
+                        slot.storage.ref_output(),
                     ))
                 } else {
                     None
@@ -619,11 +629,10 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     #[inline]
     pub unsafe fn clone_efficiently(&self) -> Self
     where
-        C: SlotItemClone<K>,
+        C: SlotStorageClone,
     {
         Self {
             num_elements: self.num_elements.clone(),
-            phantom: PhantomData,
             next_free: self.next_free.clone(),
             slots: UnsafeCell::new(
                 (&*self.slots.get())
@@ -632,9 +641,9 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
                         let slot = &*slot_cell.get();
                         UnsafeCell::new(Slot {
                             generation: slot.generation,
-                            item: slot
-                                .item
-                                .clone_item(is_occupied_by_generation(slot.generation)),
+                            storage: slot
+                                .storage
+                                .clone_storage(is_occupied_by_generation(slot.generation)),
                         })
                     })
                     .collect(),
@@ -648,12 +657,12 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     #[inline]
     pub fn clone_efficiently_mut(&mut self) -> Self
     where
-        C: SlotItemClone<K>,
+        C: SlotStorageClone,
     {
         unsafe { self.clone_efficiently() }
     }
 
-    // ── helpers used by Clone impls in stable_gen_map / stable_deref_gen_map
+    // ── helpers used by Clone impls in stable_gen_map / stable_deref_map
 
     /// Build a `GenMap` from pre-built parts. Used by custom `Clone` impls.
     ///
@@ -662,45 +671,44 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     /// generation parity, element count).
     #[inline]
     pub(crate) unsafe fn from_raw_parts(
-        slots: Vec<UnsafeCell<Slot<C, K>>>,
-        next_free: Option<K::Idx>,
+        slots: Vec<UnsafeCell<Slot<C>>>,
+        next_free: Option<IdxOfStorage<C>>,
         num_elements: usize,
     ) -> Self {
         Self {
             slots: UnsafeCell::new(slots),
             next_free: Cell::new(next_free),
-            phantom: PhantomData,
             num_elements: Cell::new(num_elements),
         }
     }
 }
 
-// ─── get_mut / get_by_index_only_mut (requires SlotItemMutOutput) ────────────
+// ─── get_mut / get_by_index_only_mut (requires SlotStorageMutOutput) ────────────
 
-impl<K: Key, C: SlotItemMutOutput<K>> GenMap<K, C> {
+impl<C: SlotStorageMutOutput> GenMap<C> {
     /// Unique-reference lookup by key.
     #[inline]
-    pub fn get_mut(&mut self, k: K) -> Option<&mut C::Output> {
+    pub fn get_mut(&mut self, k: KeyOfStorage<C>) -> Option<&mut C::Output> {
         let key_data = k.data();
         let slots = self.slots.get_mut();
         let slot = slots.get_mut(key_data.idx.into_usize())?.get_mut();
         if slot.generation != key_data.generation {
             return None;
         }
-        Some(unsafe { slot.item.mut_output() })
+        Some(unsafe { slot.storage.mut_output() })
     }
 
     /// Mutable lookup by index only (ignores generation).
     #[inline]
-    pub fn get_by_index_only_mut(&mut self, idx: K::Idx) -> Option<(K, &mut C::Output)> {
+    pub fn get_by_index_only_mut(&mut self, idx: IdxOfStorage<C>) -> Option<(KeyOfStorage<C>, &mut C::Output)> {
         let slot = self.slots.get_mut().get_mut(idx.into_usize())?.get_mut();
         if is_occupied_by_generation(slot.generation) {
             Some((
-                K::from(KeyData {
+                KeyOfStorage::<C>::from(KeyData {
                     idx,
                     generation: slot.generation,
                 }),
-                unsafe { slot.item.mut_output() },
+                unsafe { slot.storage.mut_output() },
             ))
         } else {
             None
@@ -713,24 +721,25 @@ impl<K: Key, C: SlotItemMutOutput<K>> GenMap<K, C> {
     /// - The key's index must be in bounds.
     /// - The slot at that index must be occupied with the matching generation.
     #[inline]
-    pub unsafe fn get_unchecked_mut(&mut self, k: K) -> &mut C::Output {
+    pub unsafe fn get_unchecked_mut(&mut self, k: KeyOfStorage<C>) -> &mut C::Output {
         let key_data = k.data();
         let slots = self.slots.get_mut();
         let slot = slots.get_unchecked_mut(key_data.idx.into_usize()).get_mut();
-        slot.item.mut_output()
+        slot.storage.mut_output()
     }
 }
 
 // ─── IterMut ─────────────────────────────────────────────────────────────────
 
-pub struct IterMut<'a, K: Key, C: SlotItem<K>> {
-    inner: std::slice::IterMut<'a, UnsafeCell<Slot<C, K>>>,
+pub struct IterMut<'a, C: SlotStorage> {
+    inner: std::slice::IterMut<'a, UnsafeCell<Slot<C>>>,
     idx: usize,
 }
 
-impl<'a, K: Key, C: SlotItem<K>> Iterator for IterMut<'a, K, C> {
-    type Item = (K, &'a mut C::Stored);
+impl<'a, C: SlotStorage> Iterator for IterMut<'a, C> {
+    type Item = (KeyOfStorage<C>, &'a mut C::Stored);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(slot_cell) = self.inner.next() {
             let idx = self.idx;
@@ -741,9 +750,9 @@ impl<'a, K: Key, C: SlotItem<K>> Iterator for IterMut<'a, K, C> {
                 continue;
             }
 
-            let value: &mut C::Stored = unsafe { slot.item.stored_mut() };
-            let key = K::from(KeyData {
-                idx: K::Idx::from_usize(idx),
+            let value: &mut C::Stored = unsafe { slot.storage.stored_mut() };
+            let key = KeyOfStorage::<C>::from(KeyData {
+                idx: IdxOfStorage::<C>::from_usize(idx),
                 generation: slot.generation,
             });
             return Some((key, value));
@@ -751,15 +760,16 @@ impl<'a, K: Key, C: SlotItem<K>> Iterator for IterMut<'a, K, C> {
         None
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, Some(self.inner.len()))
     }
 }
 
-impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
+impl<C: SlotStorage> GenMap<C> {
     /// Mutable iterator over all occupied elements.
     #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<'_, K, C> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, C> {
         IterMut {
             inner: self.slots.get_mut().iter_mut(),
             idx: 0,
@@ -767,9 +777,9 @@ impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
     }
 }
 
-impl<'a, K: Key, C: SlotItem<K>> IntoIterator for &'a mut GenMap<K, C> {
-    type Item = (K, &'a mut C::Stored);
-    type IntoIter = IterMut<'a, K, C>;
+impl<'a, C: SlotStorage> IntoIterator for &'a mut GenMap<C> {
+    type Item = (KeyOfStorage<C>, &'a mut C::Stored);
+    type IntoIter = IterMut<'a, C>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -783,14 +793,15 @@ impl<'a, K: Key, C: SlotItem<K>> IntoIterator for &'a mut GenMap<K, C> {
 ///
 /// Yields all occupied `(K, C::Stored)` pairs, removing them.
 /// Remaining elements are dropped if the iterator is dropped early.
-pub struct Drain<'a, K: Key, C: SlotItem<K>> {
-    map: &'a mut GenMap<K, C>,
+pub struct Drain<'a, C: SlotStorage> {
+    map: &'a mut GenMap<C>,
     idx: usize,
 }
 
-impl<'a, K: Key, C: SlotItem<K>> Iterator for Drain<'a, K, C> {
-    type Item = (K, C::Stored);
+impl<'a, C: SlotStorage> Iterator for Drain<'a, C> {
+    type Item = (KeyOfStorage<C>, C::Stored);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let idx = self.idx;
@@ -808,8 +819,8 @@ impl<'a, K: Key, C: SlotItem<K>> Iterator for Drain<'a, K, C> {
                 slot.generation
             };
 
-            let key = K::from(KeyData {
-                idx: K::Idx::from_usize(idx),
+            let key = KeyOfStorage::<C>::from(KeyData {
+                idx: IdxOfStorage::<C>::from_usize(idx),
                 generation,
             });
             let value = unsafe { self.map.remove(key).unwrap_unchecked() };
@@ -817,37 +828,39 @@ impl<'a, K: Key, C: SlotItem<K>> Iterator for Drain<'a, K, C> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, Some(self.map.len()))
     }
 }
 
-impl<'a, K: Key, C: SlotItem<K>> Drop for Drain<'a, K, C> {
+impl<'a, C: SlotStorage> Drop for Drain<'a, C> {
+    #[inline]
     fn drop(&mut self) {
         while self.next().is_some() {}
     }
 }
 
-impl<K: Key, C: SlotItem<K>> GenMap<K, C> {
+impl<C: SlotStorage> GenMap<C> {
     /// Removes all elements and returns them as an iterator.
     /// The map is left empty but retains its allocated capacity.
     #[inline]
-    pub fn drain(&mut self) -> Drain<'_, K, C> {
+    pub fn drain(&mut self) -> Drain<'_, C> {
         Drain { map: self, idx: 0 }
     }
 }
 
 // ─── IntoIter (owning) ──────────────────────────────────────────────────────
 
-pub struct IntoIter<K: Key, C: SlotItem<K>> {
-    inner: std::vec::IntoIter<UnsafeCell<Slot<C, K>>>,
+pub struct IntoIter<C: SlotStorage> {
+    inner: std::vec::IntoIter<UnsafeCell<Slot<C>>>,
     idx: usize,
-    _marker: PhantomData<K>,
 }
 
-impl<K: Key, C: SlotItem<K>> Iterator for IntoIter<K, C> {
-    type Item = (K, C::Stored);
+impl<C: SlotStorage> Iterator for IntoIter<C> {
+    type Item = (KeyOfStorage<C>, C::Stored);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(mut slot_cell) = self.inner.next() {
             let idx = self.idx;
@@ -858,37 +871,38 @@ impl<K: Key, C: SlotItem<K>> Iterator for IntoIter<K, C> {
                 continue;
             }
 
-            let value = unsafe { slot.item.take_occupied() };
+            let value = unsafe { slot.storage.take_occupied() };
 
             let key_data = KeyData {
                 generation: slot.generation,
-                idx: K::Idx::from_usize(idx),
+                idx: IdxOfStorage::<C>::from_usize(idx),
             };
 
             // prevent Slot::drop from double-dropping
-            slot.generation = K::Gen::zero();
+            slot.generation = GenOfStorage::<C>::zero();
 
-            let key = K::from(key_data);
+            let key = KeyOfStorage::<C>::from(key_data);
             return Some((key, value));
         }
         None
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, Some(self.inner.len()))
     }
 }
 
-impl<K: Key, C: SlotItem<K>> IntoIterator for GenMap<K, C> {
-    type Item = (K, C::Stored);
-    type IntoIter = IntoIter<K, C>;
+impl<C: SlotStorage> IntoIterator for GenMap<C> {
+    type Item = (KeyOfStorage<C>, C::Stored);
+    type IntoIter = IntoIter<C>;
 
     /// Consumes the map into an owning iterator.
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
             inner: self.slots.into_inner().into_iter(),
             idx: 0,
-            _marker: PhantomData,
         }
     }
 }

@@ -1,8 +1,10 @@
-use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
-use crate::stable_cast_map::StableCastMap;
+use crate::cast_key::{CastKey, StableCastKey};
+use crate::key::DefaultKey;
+use crate::stable_cast_map::StableBoxCastMap;
+
 use std::any::Any;
 
-type CastMap = StableCastMap<Box<dyn Any>>;
+type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;
 
 #[derive(Debug, PartialEq)]
 struct Dog {
@@ -198,7 +200,7 @@ impl Animal for Cat {
     }
 }
 
-type AnimalMap = StableCastMap<Box<dyn Any>>;
+type AnimalMap = StableBoxCastMap<DefaultKey, dyn Any>;
 
 #[test]
 fn insert_as_child_into_parent_map() {
@@ -277,8 +279,8 @@ fn insert_as_pointer_stability() {
 fn insert_as_with_key_closure_receives_inner_key() {
     use std::cell::Cell;
     let map: AnimalMap = AnimalMap::new();
-    let captured = Cell::new(None::<InnerCastMapKey<u32, u32>>);
-    let (_, _) = map.insert_as_with_key(|inner_key: InnerCastMapKey<u32, u32>| {
+    let captured = Cell::new(None::<DefaultKey>);
+    let (_, _) = map.insert_as_with_key(|inner_key: DefaultKey| {
         captured.set(Some(inner_key));
         Box::new(Dog { name: "Rex".into() }) as Box<dyn Animal>
     });

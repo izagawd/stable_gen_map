@@ -1,9 +1,11 @@
-use crate::cast_key::{CastKey, InnerCastMapKey, StableCastKey};
+use crate::cast_key::{CastKey, StableCastKey};
 use crate::key::Key;
-use crate::stable_cast_map::StableCastMap;
+use crate::stable_cast_map::{StableCastMap, StableBoxCastMap};
+use crate::stable_deref_map::DerefSlot;
+use crate::key::DefaultKey;
 use std::any::Any;
 
-type CastMap = StableCastMap<Box<dyn Any>>;
+type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;
 
 #[derive(Debug, PartialEq)]
 struct Dog {
@@ -492,7 +494,7 @@ fn into_iter_consumes_map() {
 
 // ─── Clone ─────────────────────────────────────────────────────────────────
 
-type RcMap = StableCastMap<std::rc::Rc<dyn Any>>;
+type RcMap = StableCastMap<DerefSlot<DefaultKey, std::rc::Rc<dyn Any>>>;
 
 #[test]
 fn clone_produces_independent_map() {
@@ -582,7 +584,7 @@ impl Animal for Cat {
 
 #[test]
 fn insert_as_returns_typed_key_and_ref() {
-    type AnimalMap = StableCastMap<Box<dyn Any>>;
+    type AnimalMap = StableBoxCastMap<DefaultKey, dyn Any>;
     let map: AnimalMap = AnimalMap::new();
     let dog: Box<dyn Animal> = Box::new(Dog { name: "Rex".into() });
     let (animal_key, animal_ref) = map.insert_as(dog);
