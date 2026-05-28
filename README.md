@@ -198,7 +198,7 @@ struct Dog { name: String }
 | `StableCastKey<T, K>` | Yes | No — lookups are safe | General use with `StableCastMap` |
 | `CastKey<T, K>` | No | Yes — caller must ensure metadata validity | Low-level use with `UnsafeCastMap` |
 
-`K` defaults to `DefaultKey` (which uses `u32` for both index and generation). Use custom key types for smaller keys.
+`K` defaults to `DefaultKey` (which uses `u32` for both index and generation)
 
 ### Available insert methods
 
