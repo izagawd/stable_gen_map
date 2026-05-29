@@ -1,4 +1,3 @@
-use crate::deref_slot::DerefGenMapPromise;
 use std::ptr::Pointee;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -10,7 +9,7 @@ use std::sync::Arc;
 /// # Safety
 /// `retype` must reconstruct the *same* allocation/ownership as `self`, only
 /// changing the static pointee type.
-pub unsafe trait RetypePtr<'a>: DerefGenMapPromise {
+pub unsafe trait RetypePtr<'a> {
     /// The same pointer kind re-pointed at `U` (`Box<O>` → `Box<U>`, …).
     type Retyped<U: ?Sized + 'a>;
 
@@ -54,5 +53,14 @@ unsafe impl<'a, O: ?Sized> RetypePtr<'a> for &'a O {
     unsafe fn retype<U: ?Sized>(self, meta: <U as Pointee>::Metadata) -> &'a U {
         let data: *const () = (self as *const O).cast();
         &*std::ptr::from_raw_parts(data, meta)
+    }
+}
+
+unsafe impl<'a, O: ?Sized> RetypePtr<'a> for &'a mut O {
+    type Retyped<U: ?Sized + 'a> = &'a mut U;
+    #[inline]
+    unsafe fn retype<U: ?Sized>(self, meta: <U as Pointee>::Metadata) -> &'a mut U {
+        let data: *mut () = (self as *mut O).cast();
+        &mut *std::ptr::from_raw_parts_mut(data, meta)
     }
 }
