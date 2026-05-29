@@ -3,6 +3,7 @@ use crate::key::DefaultKey;
 use crate::stable_cast_map::StableBoxCastMap;
 
 use std::any::Any;
+use std::ops::Deref;
 
 type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;
 
@@ -41,9 +42,9 @@ fn insert_sized_concrete_key_works_for_get_mut() {
 fn insert_sized_concrete_key_works_for_remove() {
     let mut map: CastMap = CastMap::new();
     let dog_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
-    let removed = map.remove(dog_key).unwrap();
+    let removed : Box<Dog> = map.remove(dog_key).unwrap();
     assert_eq!(
-        removed.downcast_ref::<Dog>().unwrap(),
+        removed.deref(),
         &Dog { name: "Rex".into() }
     );
     assert_eq!(map.len(), 0);

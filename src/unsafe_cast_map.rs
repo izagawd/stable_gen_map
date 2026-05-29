@@ -18,8 +18,8 @@ use crate::cast_key::CastKey;
 use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
-use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
-
+use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
+use crate::retype_ptr::RetypePtr;
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
 /// Build a cast key from an inner key and a reference (for pointer metadata).
@@ -70,6 +70,15 @@ where
 }
 
 // ─── Basic methods ──────────────────────────────────────────────────────────
+
+impl<C: SlotStorage> Default for UnsafeCastMap<C>
+where
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<C: SlotStorage> UnsafeCastMap<C>
 where
@@ -653,15 +662,20 @@ where
     }
 
     /// Removes an element by its [`CastKey`], returning the owned smart pointer.
+    /// # Safety
+    /// The key's pointer metadata must be valid for the data stored at that
+    /// slot. For example, when `T` is a trait object, the metadata must be
+    /// the correct vtable for the concrete type that was originally inserted.
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(
+    pub unsafe fn remove<'a, T: ?Sized + Pointee>(
         &mut self,
         key: CastKey<T, KeyOfStorage<C>>,
-    ) -> Option<C::Stored>
-    where
-        <T as Pointee>::Metadata: Copy,
+    ) -> Option<<C::Stored as RetypePtr<'a>>::Retyped<T>>
+    where <T as Pointee>::Metadata: Copy,
+          C::Stored: Deref<Target = C::Output> + DerefGenMapPromise + RetypePtr<'a>,
     {
-        self.inner.remove(key.inner_key())
+        let stored = self.inner.remove(key.inner_key())?;
+        Some(stored.retype::<T>(key.metadata()))
     }
 }
 

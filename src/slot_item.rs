@@ -71,7 +71,39 @@ pub unsafe trait SlotStorageMutOutput: SlotStorage {
 /// # Safety
 /// `clone_storage` must correctly reproduce the slot's payload.
 pub unsafe trait SlotStorageClone: SlotStorage {
+    /// Whether cloning an *occupied* slot runs user code that could re-enter
+    /// the owning map (e.g. an owning payload whose `Output::clone` gets
+    /// called).
+    ///
+    /// - `false` — cloning only duplicates the stored pointer / bumps a
+    ///   refcount and cannot touch the map, so [`GenMap`](crate::gen_map::GenMap)'s
+    ///   `Clone` uses a fast single pass (`clone_efficiently`).
+    /// - `true` — cloning runs `Output::clone`, which may re-enter the map via
+    ///   `&self` `insert`, so `GenMap`'s `Clone` uses a two-phase snapshot and
+    ///   reconstructs each occupied slot through `clone_occupied_from_output`.
+    const CLONE_MAY_REENTER: bool;
+
     /// Clone the slot storage.
     /// # Safety: `is_occupied` must truthfully reflect the slot state.
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self;
+
+    /// Reconstruct an *occupied* slot's storage from its pointer-stable
+    /// [`Output`](SlotStorage::Output) reference rather than from the live slot.
+    ///
+    /// Only invoked by `GenMap`'s `Clone` when `CLONE_MAY_REENTER` is `true`:
+    /// phase one captures the stable `&Output` (guaranteed stable by the
+    /// [`SlotStorage`] safety contract), and phase two calls this to clone it,
+    /// so any re-entrant `insert` triggered by `Output::clone` only mutates the
+    /// *new* map. Storages with `CLONE_MAY_REENTER == false` never reach this
+    /// and may leave the default.
+    ///
+    /// # Safety
+    /// `output` must be the [`Output`](SlotStorage::Output) of an occupied slot
+    /// of this storage type.
+    unsafe fn clone_occupied_from_output(_output: &Self::Output) -> Self {
+        unreachable!(
+            "clone_occupied_from_output was called on a SlotStorage whose \
+             CLONE_MAY_REENTER is false; this is a bug in the SlotStorage impl"
+        )
+    }
 }

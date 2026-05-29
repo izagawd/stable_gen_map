@@ -1,5 +1,5 @@
 use crate::key::{DefaultKey, Key};
-use crate::stable_gen_map::StableGenMap;
+use crate::boxed_slot::StableGenMap;
 use std::collections::{HashMap, HashSet};
 
 type Map = StableGenMap<DefaultKey, i32>;
@@ -48,7 +48,7 @@ mod clone_efficiently_tests {
 
     use crate::key::{DefaultKey, Key};
 
-    use crate::stable_gen_map::StableGenMap;
+    use crate::boxed_slot::StableGenMap;
 
     type Map<T> = StableGenMap<DefaultKey, T>;
 

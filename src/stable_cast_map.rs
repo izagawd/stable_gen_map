@@ -17,7 +17,8 @@ use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::map_id::MapId;
 use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
-use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
+use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
+use crate::retype_ptr::RetypePtr;
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 
@@ -67,6 +68,15 @@ where
 }
 
 // ─── Basic methods ──────────────────────────────────────────────────────────
+
+impl<C: SlotStorage> Default for StableCastMap<C>
+where
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<C: SlotStorage> StableCastMap<C>
 where
@@ -636,17 +646,14 @@ where
     /// Removes an element by its [`StableCastKey`]. Returns `None` if the key
     /// belongs to a different map.
     #[inline]
-    pub fn remove<T: ?Sized + Pointee>(
+    pub fn remove<'a, T: ?Sized + Pointee>(
         &mut self,
         key: StableCastKey<T, KeyOfStorage<C>>,
-    ) -> Option<C::Stored>
-    where
-        <T as Pointee>::Metadata: Copy,
+    ) -> Option<<C::Stored as RetypePtr<'a>>::Retyped<T>>
+    where <T as Pointee>::Metadata: Copy,C::Stored: Deref<Target = C::Output> + DerefGenMapPromise + RetypePtr<'a>,
     {
-        if key.map_id != self.map_id {
-            return None;
-        }
-        self.inner.remove(key.inner)
+        if key.map_id != self.map_id { return None; }
+        unsafe { self.inner.remove(key.inner) }
     }
 }
 

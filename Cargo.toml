@@ -3,7 +3,7 @@ all-features = true
 
 [package]
 name = "stable_gen_map"
-version = "0.23.1"
+version = "0.24.0"
 edition = "2021"
 rust-version = "1.79.0"
 authors = ["Izagawd <theizaboss@gmail.com>"]

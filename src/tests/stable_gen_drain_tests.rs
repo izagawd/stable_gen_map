@@ -1,6 +1,6 @@
 use crate::key::{DefaultKey, Key};
 use crate::key_piece::KeyPiece;
-use crate::stable_gen_map::StableGenMap;
+use crate::boxed_slot::StableGenMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
