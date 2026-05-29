@@ -184,6 +184,11 @@ impl<'a, C: SlotStorage> Drop for FreeGuard<'a, C> {
 
 // ─── shared methods ──────────────────────────────────────────────────────────
 
+impl<C: SlotStorage> Default for GenMap<C> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<C: SlotStorage> GenMap<C> {
     // ── construction ────────────────────────────────────────────────────
