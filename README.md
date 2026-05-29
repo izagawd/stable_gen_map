@@ -96,12 +96,6 @@ The safety model follows from those signatures:
   insert with `&self`, and you get stable `&T` / `&mut T`. Prefer it over
   `StableGenMap` when your element needs to be boxed anyway.
 
-Reach for `stable_gen_map` when you need `&self` inserts, want to hold `&T` while
-inserting, like generational keys, are single-threaded (or scoped-thread), and
-remove elements at specific points (end of frame/tick, periodic cleanup). If you
-don't need those properties, `slotmap`, `slab`, `sharded-slab`, or
-`generational-arena` may fit better.
-
 ### Type-erased maps *(requires the `castable` feature, nightly only)*
 
 - `StableCastMap<C>` — the safe, recommended API for **type-erased heterogeneous
@@ -124,7 +118,7 @@ Keys implement the `Key` trait; use the provided `DefaultKey` or define your own
 
 ## The `castable` feature (nightly only)
 
-Enables `StableCastMap`, and `UnsafeCastMap`, which use keys that can be casted.
+Enables `StableCastMap` and `UnsafeCastMap`, which use keys that can be cast.
 These rely on the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize`.
 
 ```toml
@@ -133,8 +127,14 @@ stable_gen_map = { version = "0.24", features = ["castable"] }
 ```
 
 The two layers — the safe `StableCastMap` and the low-level `unsafe`
-For the common case of `Box<dyn Any>` with `DefaultKey`, use the aliases
-`StableBoxCastMap<DefaultKey, dyn Any>` and `UnsafeBoxCastMap<DefaultKey, dyn Any>`.
+`UnsafeCastMap` — are described above. For the common case of `Box<dyn Any>`
+with `DefaultKey`, use the aliases `StableBoxCastMap<DefaultKey, dyn Any>` and
+`UnsafeBoxCastMap<DefaultKey, dyn Any>`.
+
+A **cast key** is a typed handle into the erased map: it carries the value's
+type both as a type parameter and as stored pointer metadata, so `map.get(key)`
+returns a correctly typed `&T` (e.g. `&Dog`) with no `downcast_ref` at the call
+site.
 
 ### Quick example
 
@@ -150,8 +150,7 @@ fn main() {
     let map: CastMap = CastMap::new();
 
     // Insert a concrete type into a dyn Any map.
-    let dog_key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
-    // dog_key: StableCastKey<Dog>
+    let dog_key: StableCastKey<Dog> = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
 
     // Upcast the key when you need the erased form.
     let dyn_key: StableCastKey<dyn Any> = dog_key.upcast::<dyn Any>();
@@ -164,15 +163,8 @@ fn main() {
 struct Dog { name: String }
 ```
 
-### Key upcasting
-
-Since `StableCastKey` stores pointer metadata directly (not inside a `NonNull`),
-implicit `CoerceUnsized` is not available. Use `.upcast()` instead:
-
-```rust
-let concrete_key: StableCastKey<Dog> = map.insert_sized(Box::new(dog));
-let erased_key: StableCastKey<dyn Any> = concrete_key.upcast::<dyn Any>();
-```
+Since the keys of the cast maps store pointer metadata directly (not inside a `NonNull`),
+implicit `CoerceUnsized` is not available, hence the `.upcast()` method.
 
 ### Clone semantics
 
