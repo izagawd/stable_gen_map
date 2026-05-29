@@ -13,12 +13,12 @@ use std::ops::{Deref, DerefMut};
 use std::ptr::Pointee;
 
 use crate::cast_key::{CastKey, StableCastKey};
+use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::map_id::MapId;
-use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
-use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::retype_ptr::RetypePtr;
+use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 
@@ -72,7 +72,7 @@ where
 impl<C: SlotStorage> Default for StableCastMap<C>
 where
     C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
- {
+{
     fn default() -> Self {
         Self::new()
     }
@@ -168,10 +168,7 @@ where
 
     /// Inserts a value and returns its [`StableCastKey`].
     #[inline]
-    pub fn insert(
-        &self,
-        value: C::Stored,
-    ) -> StableCastKey<C::Output, KeyOfStorage<C>> {
+    pub fn insert(&self, value: C::Stored) -> StableCastKey<C::Output, KeyOfStorage<C>> {
         let key = self.inner.insert(value);
         stabilize(key, self.map_id)
     }
@@ -650,9 +647,13 @@ where
         &mut self,
         key: StableCastKey<T, KeyOfStorage<C>>,
     ) -> Option<<C::Stored as RetypePtr<'a>>::Retyped<T>>
-    where <T as Pointee>::Metadata: Copy,C::Stored: Deref<Target = C::Output> + DerefGenMapPromise + RetypePtr<'a>,
+    where
+        <T as Pointee>::Metadata: Copy,
+        C::Stored: Deref<Target = C::Output> + DerefGenMapPromise + RetypePtr<'a>,
     {
-        if key.map_id != self.map_id { return None; }
+        if key.map_id != self.map_id {
+            return None;
+        }
         unsafe { self.inner.remove(key.inner) }
     }
 }

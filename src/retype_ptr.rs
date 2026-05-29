@@ -16,10 +16,7 @@ pub unsafe trait RetypePtr<'a> {
     /// # Safety
     /// The value behind `self` must actually be a `U`, and `metadata` must be
     /// its correct pointer metadata — same contract as `get`.
-    unsafe fn retype<U: ?Sized>(
-        self,
-        metadata: <U as Pointee>::Metadata,
-    ) -> Self::Retyped<U>;
+    unsafe fn retype<U: ?Sized>(self, metadata: <U as Pointee>::Metadata) -> Self::Retyped<U>;
 }
 
 unsafe impl<'a, O: ?Sized> RetypePtr<'a> for Box<O> {
@@ -30,7 +27,7 @@ unsafe impl<'a, O: ?Sized> RetypePtr<'a> for Box<O> {
         Box::from_raw(std::ptr::from_raw_parts_mut(data, meta))
     }
 }
-unsafe impl<'a,O: ?Sized> RetypePtr<'a> for Rc<O> {
+unsafe impl<'a, O: ?Sized> RetypePtr<'a> for Rc<O> {
     type Retyped<U: ?Sized + 'a> = Rc<U>;
     #[inline]
     unsafe fn retype<U: ?Sized>(self, meta: <U as Pointee>::Metadata) -> Rc<U> {

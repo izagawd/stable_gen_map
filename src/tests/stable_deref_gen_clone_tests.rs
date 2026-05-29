@@ -1,5 +1,5 @@
-use crate::key::DefaultKey;
 use crate::deref_slot::BoxStableDerefMap;
+use crate::key::DefaultKey;
 use std::cell::Cell;
 use std::collections::HashSet;
 

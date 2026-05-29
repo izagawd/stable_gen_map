@@ -46,7 +46,7 @@ macro_rules! impl_key_piece {
                     //  It is up to the dev making the key size to consider if their choice of Gen/Idx type might go above usize. it won't cause UB if they don't.
                     // Just bugs, and it will only happen if someone decides to create a key outside insert
                 }
-                
+
                 #[inline]
                 fn from_usize(v: usize) -> Self {
                     Self::try_from(v).unwrap_or_else(
