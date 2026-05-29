@@ -136,7 +136,7 @@ fn unsafe_cast_map_get_slot_vacant_after_remove() {
     let mut map: UnsafeMap = UnsafeMap::new();
     let key = map.insert(Box::new(42i32) as Box<dyn Any>);
     let idx = key.key_data().idx;
-    unsafe{ map.remove(key) };
+    unsafe { map.remove(key) };
 
     unsafe {
         let slot = map.get_slot(idx).unwrap();

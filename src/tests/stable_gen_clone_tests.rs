@@ -1,5 +1,5 @@
-use crate::key::{DefaultKey, Key};
 use crate::boxed_slot::StableGenMap;
+use crate::key::{DefaultKey, Key};
 use std::collections::{HashMap, HashSet};
 
 type Map = StableGenMap<DefaultKey, i32>;

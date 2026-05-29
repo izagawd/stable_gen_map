@@ -15,11 +15,11 @@ use std::ops::{Deref, DerefMut};
 use std::ptr::Pointee;
 
 use crate::cast_key::CastKey;
+use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
-use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
-use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::retype_ptr::RetypePtr;
+use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
 /// Build a cast key from an inner key and a reference (for pointer metadata).
@@ -74,7 +74,7 @@ where
 impl<C: SlotStorage> Default for UnsafeCastMap<C>
 where
     C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
- {
+{
     fn default() -> Self {
         Self::new()
     }
@@ -291,14 +291,13 @@ where
     {
         let mut saved_metadata: Option<<SourcePtr::Target as Pointee>::Metadata> = None;
 
-        let inner_key =
-            self.inner
-                .try_insert_with_key(|inner_key| -> Result<C::Stored, E> {
-                    let concrete: SourcePtr = func(inner_key)?;
-                    saved_metadata =
-                        Some(std::ptr::metadata(&*concrete as *const SourcePtr::Target));
-                    Ok(concrete)
-                })?;
+        let inner_key = self
+            .inner
+            .try_insert_with_key(|inner_key| -> Result<C::Stored, E> {
+                let concrete: SourcePtr = func(inner_key)?;
+                saved_metadata = Some(std::ptr::metadata(&*concrete as *const SourcePtr::Target));
+                Ok(concrete)
+            })?;
 
         let metadata = saved_metadata.unwrap();
         let key = CastKey {
@@ -671,8 +670,9 @@ where
         &mut self,
         key: CastKey<T, KeyOfStorage<C>>,
     ) -> Option<<C::Stored as RetypePtr<'a>>::Retyped<T>>
-    where <T as Pointee>::Metadata: Copy,
-          C::Stored: Deref<Target = C::Output> + DerefGenMapPromise + RetypePtr<'a>,
+    where
+        <T as Pointee>::Metadata: Copy,
+        C::Stored: Deref<Target = C::Output> + DerefGenMapPromise + RetypePtr<'a>,
     {
         let stored = self.inner.remove(key.inner_key())?;
         Some(stored.retype::<T>(key.metadata()))

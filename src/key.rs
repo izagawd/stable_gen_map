@@ -15,7 +15,7 @@ impl<Idx: KeyPiece, Generation: KeyPiece> KeyData<Idx, Generation> {
     pub fn generation_non_zero(&self) -> Generation::AsNonZero {
         self.generation
     }
-    
+
     #[inline]
     pub fn index(&self) -> Idx {
         self.idx

@@ -2,8 +2,10 @@
 #![cfg_attr(feature = "castable", feature(coerce_unsized))]
 #![cfg_attr(feature = "castable", feature(unsize))]
 
+pub mod boxed_slot;
 #[cfg(feature = "castable")]
 pub mod cast_key;
+pub mod deref_slot;
 pub mod gen_map;
 pub mod key;
 pub mod key_piece;
@@ -12,8 +14,6 @@ pub mod map_id;
 pub mod slot_item;
 #[cfg(feature = "castable")]
 pub mod stable_cast_map;
-pub mod deref_slot;
-pub mod boxed_slot;
 #[cfg(feature = "castable")]
 pub mod unsafe_cast_map;
 

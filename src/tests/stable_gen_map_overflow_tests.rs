@@ -1,5 +1,5 @@
-use crate::key::Key;
 use crate::boxed_slot::StableGenMap;
+use crate::key::Key;
 
 crate::new_key_type! {
     struct TinyGenKey(u8, u8);

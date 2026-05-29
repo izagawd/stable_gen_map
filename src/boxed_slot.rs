@@ -99,4 +99,3 @@ unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
 /// cycles, so a `remove` followed by an `insert` into the same slot incurs
 /// no heap traffic.
 pub type StableGenMap<K, T> = GenMap<BoxedSlot<K, T>>;
-
