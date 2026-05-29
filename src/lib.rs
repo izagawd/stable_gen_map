@@ -16,6 +16,7 @@ pub mod deref_slot;
 pub mod boxed_slot;
 #[cfg(feature = "castable")]
 pub mod unsafe_cast_map;
+pub mod retype_ptr;
 
 #[cfg(test)]
 mod tests {

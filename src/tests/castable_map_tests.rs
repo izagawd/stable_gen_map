@@ -4,6 +4,7 @@ use crate::key::Key;
 use crate::stable_cast_map::{StableBoxCastMap, StableCastMap};
 use crate::deref_slot::DerefSlot;
 use std::any::Any;
+use std::ops::Deref;
 
 type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;
 
@@ -74,9 +75,9 @@ fn remove_with_concrete_key() {
     let mut map: CastMap = CastMap::new();
     let dyn_key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
     let dog_key: StableCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
-    let removed = map.remove(dog_key).unwrap();
+    let removed : Box<Dog>= map.remove(dog_key).unwrap();
     assert_eq!(
-        removed.downcast_ref::<Dog>().unwrap(),
+        removed.deref(),
         &Dog { name: "Rex".into() }
     );
 }
