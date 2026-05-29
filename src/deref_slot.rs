@@ -20,6 +20,7 @@ unsafe impl<T: ?Sized> DerefGenMapPromise for Box<T> {}
 unsafe impl<T: ?Sized> DerefGenMapPromise for Rc<T> {}
 unsafe impl<T: ?Sized> DerefGenMapPromise for Arc<T> {}
 unsafe impl<T: ?Sized> DerefGenMapPromise for &T {}
+unsafe impl<T: ?Sized> DerefGenMapPromise for &mut T {}
 
 // ─── DerefSlot ───────────────────────────────────────────────────────────────
 
