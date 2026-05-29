@@ -629,7 +629,9 @@ impl<C: SlotStorage> GenMap<C> {
 
     // ── clone helpers ───────────────────────────────────────────────────
 
-    /// A more efficient clone than `Clone::clone`, but **UB** if the `Clone`
+    /// A more efficient clone than `Clone::clone`
+    /// # Safety
+    /// **UB** if the `Clone`
     /// implementation of the stored type mutates the map.
     #[inline]
     pub unsafe fn clone_efficiently(&self) -> Self
