@@ -156,8 +156,8 @@ pub struct StableCastKey<T: ?Sized + Pointee, K: Key = DefaultKey>
 where
     <T as Pointee>::Metadata: Copy,
 {
-    pub(crate) inner: CastKey<T, K>,
     pub(crate) map_id: crate::map_id::MapId,
+    pub(crate) inner: CastKey<T, K>,
 }
 
 // ── Manual trait impls ──────────────────────────────────────────────────
