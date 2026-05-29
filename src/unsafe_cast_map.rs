@@ -18,7 +18,7 @@ use crate::cast_key::CastKey;
 use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
-use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
+use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 
 // ─── Conversion helper ─────────────────────────────────────────────────────
 

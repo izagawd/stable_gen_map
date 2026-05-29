@@ -12,8 +12,8 @@ pub mod map_id;
 pub mod slot_item;
 #[cfg(feature = "castable")]
 pub mod stable_cast_map;
-pub mod stable_deref_map;
-pub mod stable_gen_map;
+pub mod deref_slot;
+pub mod boxed_slot;
 #[cfg(feature = "castable")]
 pub mod unsafe_cast_map;
 

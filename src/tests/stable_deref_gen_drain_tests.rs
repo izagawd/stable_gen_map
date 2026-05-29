@@ -1,6 +1,6 @@
 use crate::key::{DefaultKey, Key};
 use crate::key_piece::KeyPiece;
-use crate::stable_deref_map::{BoxStableDerefMap, StableDerefMap};
+use crate::deref_slot::{BoxStableDerefMap, StableDerefMap};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

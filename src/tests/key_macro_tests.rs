@@ -1,5 +1,5 @@
 use crate::key::Key;
-use crate::stable_gen_map::StableGenMap;
+use crate::boxed_slot::StableGenMap;
 use std::any::TypeId;
 use std::collections::HashSet;
 

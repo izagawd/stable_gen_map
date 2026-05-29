@@ -17,7 +17,7 @@ use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::map_id::MapId;
 use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
-use crate::stable_deref_map::{DerefGenMapPromise, DerefSlot};
+use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 
