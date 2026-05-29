@@ -184,6 +184,7 @@ impl<'a, C: SlotStorage> Drop for FreeGuard<'a, C> {
 
 // ─── shared methods ──────────────────────────────────────────────────────────
 
+
 impl<C: SlotStorage> GenMap<C> {
     // ── construction ────────────────────────────────────────────────────
 

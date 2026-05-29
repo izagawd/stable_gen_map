@@ -69,6 +69,15 @@ where
 
 // ─── Basic methods ──────────────────────────────────────────────────────────
 
+impl<C: SlotStorage> Default for StableCastMap<C>
+where
+    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<C: SlotStorage> StableCastMap<C>
 where
     C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
