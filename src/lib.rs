@@ -16,6 +16,8 @@ pub mod deref_slot;
 pub mod boxed_slot;
 #[cfg(feature = "castable")]
 pub mod unsafe_cast_map;
+
+#[cfg(feature = "castable")]
 pub mod retype_ptr;
 
 #[cfg(test)]
@@ -75,4 +77,10 @@ mod tests {
 
     #[cfg(all(test, feature = "castable"))]
     mod castable_unchecked_tests;
+
+    #[cfg(test)]
+    mod pointer_stability_tests;
+
+    #[cfg(all(test, feature = "castable"))]
+    mod castable_pointer_stability_tests;
 }
