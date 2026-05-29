@@ -159,8 +159,8 @@ There are two layers:
 
 1. **`StableCastMap<C>`** — the safe, recommended API. Each map gets a unique `MapId` on creation. Keys are `StableCastKey<T, K>`, which carry the map id alongside generational index and pointer metadata. Every keyed lookup checks the map id first, so a key from map A used on map B simply returns `None`.
 
-2. **`UnsafeCastMap<C>`** — the low-level layer. Keys are `CastKey<T, K>` (no map id). The `get`, `get_mut`, and `downcast_key` methods are `unsafe` because the caller must guarantee the key's metadata is valid. Use this when you're building your own safe wrapper.
-
+2. **`UnsafeCastMap<C>`** — the low-level layer. Keys are `CastKey<T, K>` (no map id). The `get`, `get_mut`, and `downcast_key` methods are `unsafe` because the caller must guarantee the key's ptr metadata matches the concrete type of the value stored at the slot it resolves to. Use this when you're building your own safe wrapper.
+a
 Both maps are parameterized over a single `SlotStorage` implementor `C` that determines the backing key type, the stored smart pointer, and the output type. For the common case of `Box<dyn Any>` with `DefaultKey`, use the convenience aliases `StableBoxCastMap<DefaultKey, dyn Any>` and `UnsafeBoxCastMap<DefaultKey, dyn Any>`.
 
 ### Quick example
