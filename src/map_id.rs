@@ -20,11 +20,13 @@ impl MapId {
     ///
     /// # Safety
     /// The caller must ensure the value is a valid, previously issued map id.
+    #[inline]
     pub unsafe fn from_non_zero_usize(number: NonZeroUsize) -> MapId {
         MapId(number)
     }
 
     /// Returns the underlying `NonZeroUsize` value.
+    #[inline]
     pub fn get_underlying_non_zero_usize(&self) -> NonZeroUsize {
         self.0
     }
@@ -32,6 +34,7 @@ impl MapId {
     /// Requests a fresh, globally unique map id.
     ///
     /// Ids start at 1; 0 is reserved as the invalid/vacant sentinel.
+    #[inline]
     pub fn next() -> Self {
         let raw = NEXT_MAP_ID
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |raw| {

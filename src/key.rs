@@ -7,20 +7,23 @@ pub struct KeyData<Idx: KeyPiece, Generation: KeyPiece> {
 }
 
 impl<Idx: KeyPiece, Generation: KeyPiece> KeyData<Idx, Generation> {
+    #[inline]
     pub fn generation(&self) -> Generation {
         self.generation.into()
     }
-
+    #[inline]
     pub fn generation_non_zero(&self) -> Generation::AsNonZero {
         self.generation
     }
-
+    
+    #[inline]
     pub fn index(&self) -> Idx {
         self.idx
     }
 }
 
 /// Odd means occupied, even means not occupied. this function does the check based on that
+#[inline]
 pub(crate) fn is_occupied_by_generation<Num: KeyPiece>(generation: Num) -> bool {
     generation % (Num::one() + Num::one()) != Num::zero()
 }
@@ -41,6 +44,7 @@ pub struct DefaultKey {
 }
 
 impl From<KeyData<u32, u32>> for DefaultKey {
+    #[inline]
     fn from(key_data: KeyData<u32, u32>) -> Self {
         DefaultKey { key_data }
     }
@@ -50,6 +54,7 @@ unsafe impl Key for DefaultKey {
     type Idx = u32;
     type Gen = u32;
 
+    #[inline]
     fn data(&self) -> KeyData<u32, u32> {
         self.key_data
     }
@@ -80,6 +85,7 @@ macro_rules! new_key_type {
         }
 
         impl From<$crate::key::KeyData<u32, u32>> for $name {
+            #[inline]
             fn from(key_data: $crate::key::KeyData<u32, u32>) -> Self {
                 Self { key_data }
             }
@@ -88,7 +94,7 @@ macro_rules! new_key_type {
         unsafe impl $crate::key::Key for $name {
             type Idx = u32;
             type Gen = u32;
-
+            #[inline]
             fn data(&self) -> $crate::key::KeyData<u32, u32> {
                 self.key_data
             }

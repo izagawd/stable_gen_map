@@ -39,14 +39,15 @@ macro_rules! impl_key_piece {
 
                 type AsNonZero = NonZero<$t> where Self::AsNonZero: Into<Self>;
 
-
+                #[inline]
                 fn into_usize(self) -> usize {
                     self as usize // converting to usize is ok, since it is impossible for self to be higher than usize when used within this crate,
                     // unless a dev uses unsafe magic
                     //  It is up to the dev making the key size to consider if their choice of Gen/Idx type might go above usize. it won't cause UB if they don't.
                     // Just bugs, and it will only happen if someone decides to create a key outside insert
                 }
-
+                
+                #[inline]
                 fn from_usize(v: usize) -> Self {
                     Self::try_from(v).unwrap_or_else(
                         |_|
