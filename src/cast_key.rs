@@ -20,7 +20,7 @@ use crate::key::{DefaultKey, Key, KeyData};
 
 // ─── CastKey<T, K> ──────────────────────────────────────────────────────
 
-/// A key parameterised over `T: ?Sized` that stores `T`'s pointer
+/// A key parameterized over `T: ?Sized` that stores `T`'s pointer
 /// metadata alongside a generational index.
 ///
 /// The index and generation types default to `u32`.
