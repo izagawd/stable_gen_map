@@ -605,6 +605,22 @@ where
         unsafe { self.inner.get_mut(key.inner) }
     }
 
+    /// Empties the map, resets all slot generations to zero, and assigns a fresh
+    /// [`MapId`](crate::map_id::MapId). Capacity is retained.
+    ///
+    /// The new `MapId` is what keeps this safe: lookups are sound because a key
+    /// passing the `MapId` and generation checks provably refers to the value that
+    /// minted it. Resetting generations alone would let a stale key match a
+    /// recycled slot of a different type and be reinterpreted by a safe `get`
+    /// (type-confusion UB); the fresh `MapId` makes every pre-`reset` key fail the
+    /// id check, so safe lookups return `None` instead. Treats the emptied map as a
+    /// new map for key validation — in contrast to [`clear`](Self::clear), which
+    /// keeps the same `MapId`.
+    pub fn reset(&mut self){
+        self.map_id = MapId::next();
+        self.inner.reset();
+    }
+
     /// Shared-reference lookup without bounds, generation, or map-id checks.
     ///
     /// # Safety

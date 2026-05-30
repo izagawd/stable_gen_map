@@ -536,6 +536,18 @@ where
         }
     }
 
+    /// Empties the map and resets all slot generations to zero. Capacity is
+    /// retained. Unlike [`clear`](Self::clear), does **not** invalidate
+    /// outstanding keys — a pre-`reset` [`CastKey`] may match a live slot again.
+    ///
+    /// Safe to call: the `get` methods are already `unsafe` and
+    /// require valid metadata for the slot the key refers to, so `reset` adds no new unsafe surface.
+    /// It just makes UB mistakes more likely, since a stale key can match a reused slot
+    /// again, so passing one to those lookups may read the wrong slot.
+    pub fn reset(&mut self){
+        self.inner.reset()
+    }
+
     // ── iter_unsafe ─────────────────────────────────────────────────────
 
     /// Shared iterator over all occupied elements.
