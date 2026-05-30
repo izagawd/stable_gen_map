@@ -474,7 +474,7 @@ where
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
                 self.inner
-                    .iter_unsafe()
+                    .unsafe_iter()
                     .map(|(ck, r)| (stabilize(ck, map_id), r)),
             );
             vec
@@ -495,26 +495,26 @@ where
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
                 self.inner
-                    .iter_unsafe()
+                    .unsafe_iter()
                     .map(|(ck, _)| stabilize(ck, map_id)),
             );
             vec
         }
     }
 
-    // ── iter_unsafe ─────────────────────────────────────────────────────
+    // ── unsafe_iter ─────────────────────────────────────────────────────
 
     /// Shared iterator over all occupied elements.
     ///
     /// # Safety
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
-    pub unsafe fn iter_unsafe(
+    pub unsafe fn unsafe_iter(
         &self,
     ) -> impl Iterator<Item = (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         let map_id = self.map_id;
         self.inner
-            .iter_unsafe()
+            .unsafe_iter()
             .map(move |(ck, r)| (stabilize(ck, map_id), r))
     }
 

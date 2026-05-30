@@ -591,7 +591,7 @@ impl<C: SlotStorage> GenMap<C> {
         }
     }
 
-    // ── snapshot / iter_unsafe ───────────────────────────────────────────
+    // ── snapshot / unsafe_iter ───────────────────────────────────────────
 
     /// Returns a snapshot of all `(key, &output)` pairs at the current moment.
     /// Ignores future inserts. Heap-allocates one `Vec`.

@@ -522,14 +522,14 @@ where
         self.inner.reset()
     }
 
-    // ── iter_unsafe ─────────────────────────────────────────────────────
+    // ── unsafe_iter ─────────────────────────────────────────────────────
 
     /// Shared iterator over all occupied elements.
     ///
     /// # Safety
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
-    pub unsafe fn iter_unsafe(
+    pub unsafe fn unsafe_iter(
         &self,
     ) -> impl Iterator<Item = (CastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         self.inner
