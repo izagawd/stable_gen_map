@@ -287,3 +287,83 @@ fn clone_into_iter_matches_snapshot() {
     assert_eq!(snap_map.len(), coll_map.len());
     assert_eq!(snap_map, coll_map);
 }
+
+// ── clone gate: positive direction ───────────────────────────────────────────
+// A payload that implements `CloneGenMapPromise` makes the map `Clone`. The
+// negative direction (a `Clone`-but-not-promised payload yields a non-`Clone`
+// map) is a `compile_fail` doctest on `CloneGenMapPromise`.
+const _: fn() = || {
+    fn assert_clone<T: Clone>() {}
+    assert_clone::<StableGenMap<DefaultKey, i32>>();
+    assert_clone::<StableGenMap<DefaultKey, String>>();
+};
+
+// ── clone is drop-balanced, including across holes ───────────────────────────
+// A drop-counting payload. Its `Clone` only clones an `Rc<Cell>` and copies an
+// `i32`, so it cannot touch a map — hence the (sound) hand-written promise.
+// This also exercises the user opt-in path for a custom payload.
+struct DropTracked {
+    drops: std::rc::Rc<std::cell::Cell<usize>>,
+    val: i32,
+}
+impl Clone for DropTracked {
+    fn clone(&self) -> Self {
+        DropTracked {
+            drops: self.drops.clone(),
+            val: self.val,
+        }
+    }
+}
+impl Drop for DropTracked {
+    fn drop(&mut self) {
+        self.drops.set(self.drops.get() + 1);
+    }
+}
+unsafe impl crate::clone_gen_map_promise::CloneGenMapPromise for DropTracked {}
+
+#[test]
+fn clone_then_drop_both_is_balanced_with_holes() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let drops = Rc::new(Cell::new(0usize));
+    let mk = |v: i32| DropTracked {
+        drops: drops.clone(),
+        val: v,
+    };
+
+    let mut map: StableGenMap<DefaultKey, DropTracked> = StableGenMap::new();
+    let k1 = map.insert(mk(1));
+    let k2 = map.insert(mk(2));
+    let k3 = map.insert(mk(3));
+    let k4 = map.insert(mk(4));
+    let k5 = map.insert(mk(5));
+
+    // Remove two: leaves initialized-then-vacant slots, so clone and drop must
+    // distinguish the occupied and vacant union arms per slot.
+    map.remove(k2);
+    map.remove(k4);
+    assert_eq!(drops.get(), 2, "each removed value dropped exactly once");
+    assert_eq!(map.len(), 3);
+
+    // Clone duplicates only the 3 live slots (running Clone, never Drop) and
+    // must not read the 2 vacant slots as occupied.
+    let cloned = map.clone();
+    assert_eq!(drops.get(), 2, "cloning runs Clone, not Drop");
+    assert_eq!(cloned.len(), 3);
+
+    // Clone is correct across the holes: live values present, removed absent.
+    assert_eq!(cloned.get(k1).map(|t| t.val), Some(1));
+    assert_eq!(cloned.get(k3).map(|t| t.val), Some(3));
+    assert_eq!(cloned.get(k5).map(|t| t.val), Some(5));
+    assert!(cloned.get(k2).is_none());
+    assert!(cloned.get(k4).is_none());
+
+    // Drop the original: exactly its 3 live values drop (vacant slots drop none).
+    drop(map);
+    assert_eq!(drops.get(), 5, "dropping the original drops its 3 live values");
+
+    // Drop the clone: its own 3 live values drop. No double-free, no leak.
+    drop(cloned);
+    assert_eq!(drops.get(), 8, "dropping the clone drops its own 3 live values");
+}

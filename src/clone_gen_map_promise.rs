@@ -26,6 +26,23 @@ use std::sync::Arc;
 /// exactly when the contents do. Scalars and `String` qualify because their
 /// `Clone` only copies bytes or a heap buffer.
 ///
+/// # Examples
+/// A type that is `Clone` but **not** `CloneGenMapPromise` produces a `GenMap`
+/// that is itself not `Clone` — this is the gate that keeps a possibly
+/// re-entrant clone out of [`GenMap::clone`](crate::gen_map::GenMap):
+///
+/// ```compile_fail
+/// use stable_gen_map::boxed_slot::StableGenMap;
+/// use stable_gen_map::key::DefaultKey;
+///
+/// #[derive(Clone)]
+/// struct NotPromised(i32);
+///
+/// let m: StableGenMap<DefaultKey, NotPromised> = StableGenMap::new();
+/// // error: `NotPromised: !CloneGenMapPromise`, so the map is not `Clone`.
+/// let _ = m.clone();
+/// ```
+///
 /// # Safety
 /// Implementing this for a type whose `Clone` *can* mutate a `GenMap` allows
 /// [`GenMap::clone`](crate::gen_map::GenMap) to trigger undefined behaviour.
