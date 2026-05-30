@@ -599,7 +599,7 @@ impl<C: SlotStorage> GenMap<C> {
     pub fn snapshot(&self) -> Vec<(KeyOfStorage<C>, &C::Output)> {
         unsafe {
             let mut vec = Vec::with_capacity(self.len());
-            vec.extend(self.iter_unsafe());
+            vec.extend(self.unsafe_iter());
             vec
         }
     }
@@ -609,7 +609,7 @@ impl<C: SlotStorage> GenMap<C> {
     pub fn snapshot_refs(&self) -> Vec<&C::Output> {
         unsafe {
             let mut vec = Vec::with_capacity(self.len());
-            vec.extend(self.iter_unsafe().map(|x| x.1));
+            vec.extend(self.unsafe_iter().map(|x| x.1));
             vec
         }
     }
@@ -619,7 +619,7 @@ impl<C: SlotStorage> GenMap<C> {
     pub fn snapshot_keys(&self) -> Vec<KeyOfStorage<C>> {
         unsafe {
             let mut vec = Vec::with_capacity(self.len());
-            vec.extend(self.iter_unsafe().map(|x| x.0));
+            vec.extend(self.unsafe_iter().map(|x| x.0));
             vec
         }
     }
@@ -627,7 +627,7 @@ impl<C: SlotStorage> GenMap<C> {
     /// # Safety
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
-    pub unsafe fn iter_unsafe(&self) -> impl Iterator<Item = (KeyOfStorage<C>, &C::Output)> {
+    pub unsafe fn unsafe_iter(&self) -> impl Iterator<Item = (KeyOfStorage<C>, &C::Output)> {
         (&*self.slots.get())
             .iter()
             .enumerate()

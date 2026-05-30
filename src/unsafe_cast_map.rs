@@ -478,7 +478,7 @@ where
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
-                self.inner.iter_unsafe().map(|(inner_key, reference)| {
+                self.inner.unsafe_iter().map(|(inner_key, reference)| {
                     (to_castable::<C>(inner_key, reference), reference)
                 }),
             );
@@ -491,7 +491,7 @@ where
     pub fn snapshot_refs(&self) -> Vec<&C::Output> {
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
-            vec.extend(self.inner.iter_unsafe().map(|(_, reference)| reference));
+            vec.extend(self.inner.unsafe_iter().map(|(_, reference)| reference));
             vec
         }
     }
@@ -503,7 +503,7 @@ where
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
                 self.inner
-                    .iter_unsafe()
+                    .unsafe_iter()
                     .map(|(inner_key, reference)| to_castable::<C>(inner_key, reference)),
             );
             vec
@@ -533,7 +533,7 @@ where
         &self,
     ) -> impl Iterator<Item = (CastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         self.inner
-            .iter_unsafe()
+            .unsafe_iter()
             .map(move |(inner_key, reference)| (to_castable::<C>(inner_key, reference), reference))
     }
 
