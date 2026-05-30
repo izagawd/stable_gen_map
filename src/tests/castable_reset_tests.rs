@@ -37,7 +37,11 @@ fn stable_cast_map_reset_empties_and_retains_capacity() {
     map.reset();
 
     assert_eq!(map.len(), 0);
-    assert_eq!(map.capacity(), cap_before, "reset must not release capacity");
+    assert_eq!(
+        map.capacity(),
+        cap_before,
+        "reset must not release capacity"
+    );
 }
 
 /// `reset` mints a fresh `MapId`.
@@ -108,7 +112,11 @@ fn unsafe_cast_map_reset_empties_and_retains_capacity() {
     map.reset();
 
     assert_eq!(map.len(), 0);
-    assert_eq!(map.capacity(), cap_before, "reset must not release capacity");
+    assert_eq!(
+        map.capacity(),
+        cap_before,
+        "reset must not release capacity"
+    );
 }
 
 /// The documented hazard: `UnsafeCastMap` has no `MapId`, so after `reset` a
@@ -128,7 +136,9 @@ fn unsafe_cast_map_reset_reuses_keys_same_type_is_sound() {
 
     // Recycle the slot with the SAME concrete type so the stale key's metadata
     // stays valid — only then is using the stale key sound.
-    let key2 = map.insert_sized(Box::new(Dog { name: "Fido".into() }));
+    let key2 = map.insert_sized(Box::new(Dog {
+        name: "Fido".into(),
+    }));
     assert_eq!(key, key2, "reset winds generations back, so keys collide");
 
     unsafe {

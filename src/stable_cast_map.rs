@@ -616,7 +616,7 @@ where
     /// id check, so safe lookups return `None` instead. Treats the emptied map as a
     /// new map for key validation — in contrast to [`clear`](Self::clear), which
     /// keeps the same `MapId`.
-    pub fn reset(&mut self){
+    pub fn reset(&mut self) {
         self.map_id = MapId::next();
         self.inner.reset();
     }

@@ -74,7 +74,7 @@ mod tests {
 
     #[cfg(test)]
     mod gen_map_reset_tests;
-    
+
     #[cfg(all(test, feature = "castable"))]
     mod castable_insert_typed_tests;
 

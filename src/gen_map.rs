@@ -82,10 +82,7 @@ impl<C: SlotStorageMutOutput> Slot<C> {
 impl<C: SlotStorage> Drop for Slot<C> {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            self.storage
-                .drop_contents(self.is_occupied())
-        }
+        unsafe { self.storage.drop_contents(self.is_occupied()) }
     }
 }
 
@@ -536,7 +533,7 @@ impl<C: SlotStorage> GenMap<C> {
     /// value. Memory-safe, but a silent logic hazard
     /// use [`clear`](Self::clear) if you need old keys to be invalid.
     #[inline]
-    pub fn reset(&mut self){
+    pub fn reset(&mut self) {
         self.slots.get_mut().clear();
         *self.next_free.get_mut() = None;
         *self.num_elements.get_mut() = 0;
@@ -671,9 +668,7 @@ impl<C: SlotStorage> GenMap<C> {
                         let slot = &*slot_cell.get();
                         UnsafeCell::new(Slot {
                             generation: slot.generation,
-                            storage: slot
-                                .storage
-                                .clone_storage(slot.is_occupied()),
+                            storage: slot.storage.clone_storage(slot.is_occupied()),
                         })
                     })
                     .collect(),

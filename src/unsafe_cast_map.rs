@@ -544,7 +544,7 @@ where
     /// require valid metadata for the slot the key refers to, so `reset` adds no new unsafe surface.
     /// It just makes UB mistakes more likely, since a stale key can match a reused slot
     /// again, so passing one to those lookups may read the wrong slot.
-    pub fn reset(&mut self){
+    pub fn reset(&mut self) {
         self.inner.reset()
     }
 
