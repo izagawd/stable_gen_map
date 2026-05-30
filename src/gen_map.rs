@@ -182,6 +182,16 @@ impl<'a, C: SlotStorage> Drop for FreeGuard<'a, C> {
     }
 }
 
+// ─── PanicOnDrop (aborts via double-panic if dropped while unwinding) ─────────
+
+struct PanicOnDrop(&'static str);
+
+impl Drop for PanicOnDrop {
+    fn drop(&mut self) {
+        panic!("{}", self.0);
+    }
+}
+
 // ─── shared methods ──────────────────────────────────────────────────────────
 
 impl<C: SlotStorage> Default for GenMap<C> {
@@ -703,36 +713,33 @@ impl<C: SlotStorageClone> GenMap<C> {
     ///
     /// # Safety
     /// Similar to [`unsafe_clone`](Self::unsafe_clone), the caller must guarantee that the source's
-    /// clone does not mutate
-    /// If a stored `Clone` panics, the unwind leaves `self` a
-    /// valid, usable map holding an unspecified partial copy (never a corrupt
-    /// one).
+    /// clone does not mutate this map
+    ///
+    /// If a stored `Clone` panics, the half-rebuilt map cannot be restored, so the
+    /// process **aborts** rather than expose a broken map
     #[inline]
     pub unsafe fn unsafe_clone_from(&mut self, source: &Self) {
+        // A panic mid-clone leaves the slots half-rebuilt with no consistent
+        // state to recover, so abort by double-panicking. `forget` disarms the
+        // guard on success.
+        let guard = PanicOnDrop("aborting: a panic during GenMap::clone_from is unrecoverable");
+
         let src_slots = &*source.slots.get();
-        // Panic-safety: start from an empty free list and grow the live count as
-        // we push, so a panicking `clone_storage` leaves a valid map (no stale
-        // `next_free`, accurate `len`) rather than a corrupt one. The authoritative
-        // `next_free` is restored only once every slot is in place.
-        self.next_free.set(None);
-        self.num_elements.set(0);
         let dst_slots = self.slots.get_mut();
         dst_slots.clear(); // drop old slots, keep the buffer
         dst_slots.reserve(src_slots.len());
         for src_cell in src_slots.iter() {
             let src = &*src_cell.get();
-            let occupied = src.is_occupied();
-            let storage = src.storage.clone_storage(occupied);
+            let storage = src.storage.clone_storage(src.is_occupied());
             dst_slots.push(UnsafeCell::new(Slot {
                 generation: src.generation,
                 storage,
             }));
-            if occupied {
-                self.num_elements.set(self.num_elements.get() + 1);
-            }
         }
         self.next_free.set(source.next_free.get());
         self.num_elements.set(source.len());
+
+        std::mem::forget(guard);
     }
 }
 
