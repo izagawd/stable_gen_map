@@ -525,6 +525,22 @@ impl<C: SlotStorage> GenMap<C> {
         }
     }
 
+    /// Empties the map and resets every slot's generation to zero, reclaiming
+    /// generation headroom. Capacity is retained.
+    ///
+    /// Unlike [`clear`](Self::clear), this does **not** invalidate already existing
+    /// keys: `clear` bumps generations of the slots so old keys can never match again, whereas
+    /// `reset` winds them back to zero, so later inserts reproduce key values
+    /// already handed out. A pre-`reset` key may then resolve to a *different*
+    /// value. Memory-safe, but a silent logic hazard
+    /// use [`clear`](Self::clear) if you need old keys to be invalid.
+    #[inline]
+    pub fn reset(&mut self){
+        self.slots.get_mut().clear();
+        *self.next_free.get_mut() = None;
+        *self.num_elements.get_mut() = 0;
+    }
+
     // ── clear / retain ──────────────────────────────────────────────────
 
     /// Empties the map, removing all elements.

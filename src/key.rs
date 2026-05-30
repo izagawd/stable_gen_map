@@ -28,6 +28,13 @@ pub(crate) fn is_occupied_by_generation<Num: KeyPiece>(generation: Num) -> bool 
     generation % (Num::one() + Num::one()) != Num::zero()
 }
 /// This trait should be implemented for any custom key that is desired
+/// # Safety
+/// `data` must return the same [`KeyData`] on every call for a given key, and
+/// that value must come directly from the key's stored fields. It must not be
+/// computed conditionally, recomputed, or derived from indirection such as
+/// `Option<KeyData>` or a stored closure. Callers rely on `data` being a pure,
+/// stable accessor of the key's identity; violating this breaks the
+/// generational invariants that keep lookups sound.
 pub unsafe trait Key: Copy + From<KeyData<Self::Idx, Self::Gen>> {
     /// This type will be used as the Idx type for the key
     type Idx: KeyPiece;
