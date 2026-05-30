@@ -704,20 +704,32 @@ impl<C: SlotStorageClone> GenMap<C> {
     /// # Safety
     /// Similar to [`unsafe_clone`](Self::unsafe_clone), the caller must guarantee that the source's
     /// clone does not mutate
+    /// If a stored `Clone` panics, the unwind leaves `self` a
+    /// valid, usable map holding an unspecified partial copy (never a corrupt
+    /// one).
     #[inline]
     pub unsafe fn unsafe_clone_from(&mut self, source: &Self) {
         let src_slots = &*source.slots.get();
-        // Reuse the buffer: drop old slots, grow only if `source` is larger.
+        // Panic-safety: start from an empty free list and grow the live count as
+        // we push, so a panicking `clone_storage` leaves a valid map (no stale
+        // `next_free`, accurate `len`) rather than a corrupt one. The authoritative
+        // `next_free` is restored only once every slot is in place.
+        self.next_free.set(None);
+        self.num_elements.set(0);
         let dst_slots = self.slots.get_mut();
-        dst_slots.clear();
+        dst_slots.clear(); // drop old slots, keep the buffer
         dst_slots.reserve(src_slots.len());
         for src_cell in src_slots.iter() {
             let src = &*src_cell.get();
-            let storage = src.storage.clone_storage(src.is_occupied());
+            let occupied = src.is_occupied();
+            let storage = src.storage.clone_storage(occupied);
             dst_slots.push(UnsafeCell::new(Slot {
                 generation: src.generation,
                 storage,
             }));
+            if occupied {
+                self.num_elements.set(self.num_elements.get() + 1);
+            }
         }
         self.next_free.set(source.next_free.get());
         self.num_elements.set(source.len());
@@ -749,6 +761,7 @@ impl<C: NonMutatingSlotStorageClone> Clone for GenMap<C> {
 
     /// Clones `source` into `self`, reusing `self`'s existing slot-vector
     /// allocation (see [`unsafe_clone_from`](Self::unsafe_clone_from)).
+    #[inline]
     fn clone_from(&mut self, source: &Self) {
         // SAFETY: the `NonMutatingSlotStorageClone` bound guarantees
         // `clone_storage` cannot mutate either map mid-pass.
