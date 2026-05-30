@@ -69,6 +69,13 @@ where
             inner: self.inner.clone(),
         }
     }
+
+    /// Reuses `self`'s inner allocation; see
+    /// [`GenMap::clone_from`](crate::gen_map::GenMap::clone_from).
+    #[inline]
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
+    }
 }
 
 // ─── Basic methods ──────────────────────────────────────────────────────────
@@ -130,6 +137,12 @@ where
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.len()
+    }
+
+    /// Total number of slots, occupied and vacant.
+    #[inline]
+    pub fn slots_len(&self) -> usize {
+        self.inner.slots_len()
     }
 
     /// Removes all elements from the map.

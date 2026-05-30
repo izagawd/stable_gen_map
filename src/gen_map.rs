@@ -245,6 +245,13 @@ impl<C: SlotStorage> GenMap<C> {
         self.num_elements.get()
     }
 
+    /// Total number of slots, occupied and vacant.
+    #[inline]
+    pub fn slots_len(&self) -> usize {
+        // SAFETY: shared read of the slot vector's length.
+        unsafe { (*self.slots.get()).len() }
+    }
+
     // ── get (shared) ────────────────────────────────────────────────────
 
     /// Shared-reference lookup by key.
@@ -714,6 +721,34 @@ impl<C: NonReentrantSlotStorageClone> Clone for GenMap<C> {
         // not mutate this map, so the single in-place pass cannot invalidate the
         // `&self` borrow it holds into the slot buffer.
         unsafe { self.unsafe_clone() }
+    }
+
+    /// Clones `source` into `self`, **reusing `self`'s existing slot-vector
+    /// allocation** instead of allocating a fresh one
+    fn clone_from(&mut self, source: &Self) {
+        // SAFETY: gated on `NonReentrantSlotStorageClone`, so `clone_storage`
+        // cannot mutate either map mid-pass; and `&mut self` / `&Self` cannot
+        // alias, so `source.slots` is not the buffer being rewritten. The shared
+        // reads of `source`'s slots therefore stay valid for the whole loop.
+        unsafe {
+            let src_slots = &*source.slots.get();
+            // `get_mut` is the safe accessor: `&mut self` proves exclusivity.
+            let dst_slots = self.slots.get_mut();
+            // Drop the old slots but keep the buffer; grow only if `source` is
+            // larger. This is the allocation that gets recycled.
+            dst_slots.clear();
+            dst_slots.reserve(src_slots.len());
+            for src_cell in src_slots.iter() {
+                let src = &*src_cell.get();
+                let storage = src.storage.clone_storage(src.is_occupied());
+                dst_slots.push(UnsafeCell::new(Slot {
+                    generation: src.generation,
+                    storage,
+                }));
+            }
+        }
+        self.next_free.set(source.next_free.get());
+        self.num_elements.set(source.len());
     }
 }
 
