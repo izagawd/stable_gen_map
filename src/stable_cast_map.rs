@@ -68,8 +68,7 @@ where
 
     /// Reuses `self`'s inner allocation (see
     /// [`GenMap::clone_from`](crate::gen_map::GenMap::clone_from)) and, like
-    /// [`clone`](Self::clone), gives the result a fresh map identity
-    ///  keys from
+    /// [`clone`](Self::clone), gives the result a fresh map identity — keys from
     /// `source` are **not** valid on `self` afterwards.
     #[inline]
     fn clone_from(&mut self, source: &Self) {
@@ -463,6 +462,21 @@ where
             inner: self.inner.clone_mut(),
             map_id: MapId::next(),
         }
+    }
+
+    /// `unsafe` counterpart of [`clone_from`](Self::clone_from)
+    /// reuses `self`'s inner allocation and uses a fresh map identity. 
+    /// 
+    /// # Safety 
+    /// See [`GenMap::unsafe_clone_from`](crate::gen_map::GenMap::unsafe_clone_from)
+    /// for the safety contract.
+    #[inline]
+    pub unsafe fn unsafe_clone_from(&mut self, source: &Self)
+    where
+        C: SlotStorageClone,
+    {
+        self.inner.unsafe_clone_from(&source.inner);
+        self.map_id = MapId::next();
     }
 
     // ── inner-key access ──────────────────────────────────────────────

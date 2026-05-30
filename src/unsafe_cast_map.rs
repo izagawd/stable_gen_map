@@ -464,6 +464,19 @@ where
         }
     }
 
+    /// `unsafe` counterpart of [`clone_from`](Self::clone_from): reuses `self`'s
+    /// inner allocation. 
+    /// 
+    /// # Safety
+    /// See [`GenMap::unsafe_clone_from`](crate::gen_map::GenMap::unsafe_clone_from).
+    #[inline]
+    pub unsafe fn unsafe_clone_from(&mut self, source: &Self)
+    where
+        C: SlotStorageClone,
+    {
+        self.inner.unsafe_clone_from(&source.inner);
+    }
+
     // ── inner-key access ──────────────────────────────────────────────
 
     /// Shared-reference lookup using the backing [`Key`] directly (no pointer metadata).

@@ -2,7 +2,7 @@ use crate::clone_gen_map_promise::CloneGenMapPromise;
 use crate::gen_map::GenMap;
 use crate::key::Key;
 use crate::slot_storage::{
-    NonReentrantSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
+    NonMutatingSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
 };
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
@@ -113,7 +113,7 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise + Clone> SlotStorageClone for DerefS
 // pointers (`Rc`/`Arc`/`&T`: a refcount bump / copy), and for an owned `Box<T>`
 // exactly when `T: CloneGenMapPromise`. This is what makes the corresponding
 // `StableDerefMap`/`BoxStableDerefMap` `Clone`.
-unsafe impl<K: Key, Ptr: DerefGenMapPromise + CloneGenMapPromise> NonReentrantSlotStorageClone
+unsafe impl<K: Key, Ptr: DerefGenMapPromise + CloneGenMapPromise> NonMutatingSlotStorageClone
     for DerefSlot<K, Ptr>
 {
 }

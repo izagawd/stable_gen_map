@@ -19,7 +19,7 @@ use std::sync::Arc;
 /// the borrow — undefined behaviour. Requiring stored values to implement this
 /// trait is how [`BoxedSlot`](crate::boxed_slot::BoxedSlot) and
 /// [`DerefSlot`](crate::deref_slot::DerefSlot) earn the
-/// [`NonReentrantSlotStorageClone`](crate::slot_storage::NonReentrantSlotStorageClone)
+/// [`NonMutatingSlotStorageClone`](crate::slot_storage::NonMutatingSlotStorageClone)
 /// marker, and is why a `GenMap` of an owned payload whose `Clone` *might*
 /// mutate the map is simply not `Clone` (though it is still `clone_mut`-able).
 ///

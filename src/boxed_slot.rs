@@ -2,7 +2,7 @@ use crate::clone_gen_map_promise::CloneGenMapPromise;
 use crate::gen_map::GenMap;
 use crate::key::Key;
 use crate::slot_storage::{
-    NonReentrantSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
+    NonMutatingSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
 };
 use std::mem::ManuallyDrop;
 
@@ -93,7 +93,7 @@ unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
 // `StableGenMap<K, T>: Clone`; for a `T` whose clone may mutate the map (e.g.
 // by `insert`ing into it), the map is not `Clone`, but it is still `clone_mut`
 // / `unsafe_clone`-able.
-unsafe impl<K: Key, T: CloneGenMapPromise> NonReentrantSlotStorageClone for BoxedSlot<K, T> {}
+unsafe impl<K: Key, T: CloneGenMapPromise> NonMutatingSlotStorageClone for BoxedSlot<K, T> {}
 
 // ─── StableGenMap (type alias) ───────────────────────────────────────────────
 

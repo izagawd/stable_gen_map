@@ -116,7 +116,7 @@ pub unsafe trait SlotStorageMutOutput: SlotStorage {
 /// mutation can happen depends on the caller's context, not on this trait:
 /// - [`GenMap`](crate::gen_map::GenMap)'s `Clone` clones every slot in one pass
 ///   while holding a shared borrow into the slot buffer, so it requires the
-///   extra [`NonReentrantSlotStorageClone`] promise (a re-entrant `insert` mid
+///   extra [`NonMutatingSlotStorageClone`] promise (a re-entrant `insert` mid
 ///   pass would reallocate that buffer and dangle the borrow).
 /// - [`GenMap::clone_mut`](crate::gen_map::GenMap::clone_mut) needs only this
 ///   trait: its `&mut self` borrow already rules out a concurrent `&self`
@@ -127,7 +127,7 @@ pub unsafe trait SlotStorageMutOutput: SlotStorage {
 /// # Safety
 /// [`clone_storage`](Self::clone_storage) must faithfully reproduce the slot for
 /// the stated occupancy. It carries no guarantee about mutating the map being
-/// cloned; that is the job of [`NonReentrantSlotStorageClone`].
+/// cloned; that is the job of [`NonMutatingSlotStorageClone`].
 pub unsafe trait SlotStorageClone: SlotStorage {
     /// Clone the storage for the given occupancy. The occupied payload is
     /// duplicated when `is_occupied`, otherwise the vacant free-list index is
@@ -161,4 +161,4 @@ pub unsafe trait SlotStorageClone: SlotStorage {
 /// Implementing this for a storage whose [`clone_storage`](SlotStorageClone::clone_storage) implementation *can* mutate the map being cloned
 /// (e.g. by `insert`ing into it) may allow
 /// [`GenMap::clone`](crate::gen_map::GenMap) to trigger undefined behaviour.
-pub unsafe trait NonReentrantSlotStorageClone: SlotStorageClone {}
+pub unsafe trait NonMutatingSlotStorageClone: SlotStorageClone {}
