@@ -1,7 +1,9 @@
 use crate::clone_gen_map_promise::CloneGenMapPromise;
 use crate::gen_map::GenMap;
 use crate::key::Key;
-use crate::slot_storage::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{
+    NonReentrantSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
+};
 use std::mem::ManuallyDrop;
 
 // ─── BoxedSlot ───────────────────────────────────────────────────────────────
@@ -68,12 +70,9 @@ unsafe impl<K: Key, T> SlotStorageMutOutput for BoxedSlot<K, T> {
     }
 }
 
-unsafe impl<K: Key, T: CloneGenMapPromise> SlotStorageClone for BoxedSlot<K, T> {
-    // SAFETY: cloning an occupied slot runs `T::clone`. The `CloneGenMapPromise`
-    // bound is exactly the guarantee that `T::clone` cannot mutate / re-enter a
-    // `GenMap`, so the `&self` borrow into the slot buffer stays valid for the
-    // call. (`BoxedSlot<K, T>` for a `T` whose clone may re-enter therefore has
-    // no `SlotStorageClone` impl, and such a `StableGenMap` is not `Clone`.)
+// The mechanical clone capability is available for any `T: Clone`.
+unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
+
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
@@ -88,6 +87,13 @@ unsafe impl<K: Key, T: CloneGenMapPromise> SlotStorageClone for BoxedSlot<K, T> 
         }
     }
 }
+
+// The `&self`-safe marker is granted only when `T::clone` is promised not to
+// mutate a `GenMap` (`T: CloneGenMapPromise`). This is what makes
+// `StableGenMap<K, T>: Clone`; for a `T` whose clone may mutate the map (e.g.
+// by `insert`ing into it), the map is not `Clone`, but it is still `clone_mut`
+// / `unsafe_clone`-able.
+unsafe impl<K: Key, T: CloneGenMapPromise> NonReentrantSlotStorageClone for BoxedSlot<K, T> {}
 
 // ─── StableGenMap (type alias) ───────────────────────────────────────────────
 

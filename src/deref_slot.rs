@@ -1,7 +1,9 @@
 use crate::clone_gen_map_promise::CloneGenMapPromise;
 use crate::gen_map::GenMap;
 use crate::key::Key;
-use crate::slot_storage::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{
+    NonReentrantSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
+};
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
@@ -87,15 +89,11 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise + DerefMut> SlotStorageMutOutput for
     }
 }
 
-unsafe impl<K: Key, Ptr: DerefGenMapPromise + CloneGenMapPromise> SlotStorageClone
-    for DerefSlot<K, Ptr>
-{
-    // # SAFETY: cloning an occupied slot clones the stored pointer. The
-    // `CloneGenMapPromise` bound guarantees that clone cannot mutate / re-enter
-    // a `GenMap` — unconditionally true for shared pointers (`Rc`/`Arc`/`&T`),
-    // a refcount bump / copy; and for an owned `Box<T>` it holds exactly when
-    // `T: CloneGenMapPromise`. So the `&self` borrow into the slot buffer stays
-    // valid for the call.
+// The mechanical clone capability is available for any cloneable pointer.
+unsafe impl<K: Key, Ptr: DerefGenMapPromise + Clone> SlotStorageClone for DerefSlot<K, Ptr> {
+    // Cloning an occupied slot clones the stored pointer. This trait makes no
+    // claim about whether that mutates the map; the `&self`-safe marker is
+    // granted separately, below.
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
@@ -108,6 +106,16 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise + CloneGenMapPromise> SlotStorageClo
             })
         }
     }
+}
+
+// The `&self`-safe marker is granted when the pointer's clone is promised not to
+// mutate a `GenMap` (`Ptr: CloneGenMapPromise`) — unconditional for shared
+// pointers (`Rc`/`Arc`/`&T`: a refcount bump / copy), and for an owned `Box<T>`
+// exactly when `T: CloneGenMapPromise`. This is what makes the corresponding
+// `StableDerefMap`/`BoxStableDerefMap` `Clone`.
+unsafe impl<K: Key, Ptr: DerefGenMapPromise + CloneGenMapPromise> NonReentrantSlotStorageClone
+    for DerefSlot<K, Ptr>
+{
 }
 
 // ─── Type aliases ────────────────────────────────────────────────────────────

@@ -3,22 +3,25 @@ use std::sync::Arc;
 
 // ─── CloneGenMapPromise ──────────────────────────────────────────────────────
 
-/// A promise that `Self`'s [`Clone`] implementation cannot mutate any
-/// [`GenMap`](crate::gen_map::GenMap): it must not, directly or transitively,
-/// call `insert` (or anything else that grows / reallocates a map) while it
-/// runs.
+/// A promise that `Self`'s [`Clone`] implementation cannot **mutate** a
+/// [`GenMap`](crate::gen_map::GenMap) — for example, by calling `insert` (or
+/// anything else that grows / reallocates one) — directly or transitively while
+/// it runs. Only mutation matters: a `Clone` that merely *reads* a map (`get`,
+/// `len`, iteration, …) is fine, because reads touch nothing about the buffer's
+/// allocation.
 ///
 /// This is the cloning counterpart of
 /// [`DerefGenMapPromise`](crate::deref_slot::DerefGenMapPromise). It exists
 /// because a `GenMap` clones its slots in a single pass while holding a shared
 /// borrow into the slot buffer (see
 /// [`SlotStorageClone`](crate::slot_storage::SlotStorageClone)); a stored value
-/// whose `Clone` re-entered and reallocated that buffer would invalidate the
-/// borrow mid-clone — undefined behaviour. Requiring stored values to implement
-/// this trait is how [`BoxedSlot`](crate::boxed_slot::BoxedSlot) and
-/// [`DerefSlot`](crate::deref_slot::DerefSlot) guarantee their `clone_storage`
-/// honours the `SlotStorageClone` contract, and is why a `GenMap` of an owned
-/// payload whose `Clone` *might* re-enter is simply not `Clone`.
+/// whose `Clone` mutated and reallocated that buffer mid-clone would invalidate
+/// the borrow — undefined behaviour. Requiring stored values to implement this
+/// trait is how [`BoxedSlot`](crate::boxed_slot::BoxedSlot) and
+/// [`DerefSlot`](crate::deref_slot::DerefSlot) earn the
+/// [`NonReentrantSlotStorageClone`](crate::slot_storage::NonReentrantSlotStorageClone)
+/// marker, and is why a `GenMap` of an owned payload whose `Clone` *might*
+/// mutate the map is simply not `Clone` (though it is still `clone_mut`-able).
 ///
 /// Shared handles (`Rc`/`Arc`/`&T`) qualify unconditionally — cloning them is a
 /// refcount bump or a pointer copy and runs no user code. Owned containers
@@ -28,8 +31,8 @@ use std::sync::Arc;
 ///
 /// # Examples
 /// A type that is `Clone` but **not** `CloneGenMapPromise` produces a `GenMap`
-/// that is itself not `Clone` — this is the gate that keeps a possibly
-/// re-entrant clone out of [`GenMap::clone`](crate::gen_map::GenMap):
+/// that is itself not `Clone` — this is the gate that keeps a clone that might
+/// mutate the map out of [`GenMap::clone`](crate::gen_map::GenMap):
 ///
 /// ```compile_fail
 /// use stable_gen_map::boxed_slot::StableGenMap;
@@ -44,11 +47,13 @@ use std::sync::Arc;
 /// ```
 ///
 /// # Safety
-/// Implementing this for a type whose `Clone` *can* mutate a `GenMap` allows
-/// [`GenMap::clone`](crate::gen_map::GenMap) to trigger undefined behaviour.
+/// Implementing this for a type whose `Clone` *can* mutate a `GenMap` (e.g. by
+/// `insert`ing into it) allows [`GenMap::clone`](crate::gen_map::GenMap) to
+/// trigger undefined behaviour.
 pub unsafe trait CloneGenMapPromise: Clone {}
 
-// Shared handles: clone is a refcount bump / copy, never re-entrant.
+// Shared handles: clone is a refcount bump / copy — runs no user code, so it
+// cannot mutate a map.
 unsafe impl<T: ?Sized> CloneGenMapPromise for Rc<T> {}
 unsafe impl<T: ?Sized> CloneGenMapPromise for Arc<T> {}
 unsafe impl<T: ?Sized> CloneGenMapPromise for &T {}

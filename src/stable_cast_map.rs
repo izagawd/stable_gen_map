@@ -18,7 +18,7 @@ use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::map_id::MapId;
 use crate::retype_ptr::RetypePtr;
-use crate::slot_storage::{SlotStorage, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 
@@ -57,7 +57,7 @@ where
     /// Clones the map.
     ///
     /// The clone receives a fresh map identity. Keys from the original are
-    /// **not** valid on the clone; use iteration to obtain new keys.
+    /// **not** valid on the clone
     #[inline]
     fn clone(&self) -> Self {
         Self {
@@ -415,6 +415,37 @@ where
     #[inline]
     pub unsafe fn get_slot_unchecked_mut(&mut self, idx: IdxOfStorage<C>) -> &mut Slot<C> {
         self.inner.get_slot_unchecked_mut(idx)
+    }
+
+    /// Clone the map in a single pass, with a fresh [`MapId`] for the clone.
+    /// keys valid on the original stay do **NOT** stay valid on the clone
+    /// # Safety
+    /// The caller must guarantee no stored value's `Clone` mutates this map (for
+    /// example, via `insert`) while the pass runs; read-only re-entry is fine
+    /// (see `GenMap::unsafe_clone`).
+    #[inline]
+    pub unsafe fn unsafe_clone(&self) -> Self
+    where
+        C: SlotStorageClone,
+    {
+        Self {
+            inner: self.inner.unsafe_clone(),
+            map_id: MapId::next(),
+        }
+    }
+
+    /// Clone the map through a unique borrow, with a fresh [`MapId`] for the
+    /// clone.
+    /// keys valid on the original stay do **NOT** stay valid on the clone
+    #[inline]
+    pub fn clone_mut(&mut self) -> Self
+    where
+        C: SlotStorageClone,
+    {
+        Self {
+            inner: self.inner.clone_mut(),
+            map_id: MapId::next(),
+        }
     }
 
     // ── inner-key access ──────────────────────────────────────────────

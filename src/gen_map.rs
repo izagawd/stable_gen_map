@@ -1,6 +1,8 @@
 use crate::key::{is_occupied_by_generation, Key, KeyData};
 use crate::key_piece::KeyPiece;
-use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{
+    NonReentrantSlotStorageClone, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
+};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::collections::TryReserveError;
@@ -648,44 +650,70 @@ impl<C: SlotStorage> GenMap<C> {
     }
 }
 
-// ─── Clone (generic over any cloneable slot storage) ─────────────────────────
+// ─── clone helpers ───────────────────────────────────────────────────────────
+
+impl<C: SlotStorageClone> GenMap<C> {
+    /// Clone the map in a single pass, duplicating each slot in place.
+    ///
+    /// # Safety
+    /// Cloning a slot may run user code, and
+    /// the pass holds `&self` into the slot buffer throughout. The caller must
+    /// guarantee none of that code **mutates this map** (for example, via
+    /// `insert`) before the pass finishes; a mutation that grows / reallocates
+    /// the slot buffer would free the memory this borrow points into, which is
+    /// undefined behaviour. Read-only re-entry (`get`, `len`, iteration, …) is
+    /// fine.
+    #[inline]
+    pub unsafe fn unsafe_clone(&self) -> Self {
+        Self {
+            num_elements: self.num_elements.clone(),
+            next_free: self.next_free.clone(),
+            slots: UnsafeCell::new(
+                (&*self.slots.get())
+                    .iter()
+                    .map(|slot_cell| {
+                        let slot = &*slot_cell.get();
+                        UnsafeCell::new(Slot {
+                            generation: slot.generation,
+                            storage: slot.storage.clone_storage(slot.is_occupied()),
+                        })
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    /// Clone the map through a unique borrow.
+    #[inline]
+    pub fn clone_mut(&mut self) -> Self {
+        // SAFETY: `&mut self` rules out a concurrent `&self` mutation (e.g.
+        // `insert`), so no `clone_storage` on this pass can grow / reallocate
+        // `self.slots`. Read-only re-entry would be harmless anyway.
+        unsafe { self.unsafe_clone() }
+    }
+}
+
+// ─── Clone (for storages whose clone cannot mutate the map) ──────────────────
 //
-// One blanket impl serves every `SlotStorage` that implements
-// `SlotStorageClone`, including custom user storages: the free-list /
-// generation bookkeeping is duplicated once here, and each slot's payload is
-// cloned in a single in-place pass via `clone_storage`.
+// One blanket impl serves every storage that implements
+// `NonReentrantSlotStorageClone`, including custom user storages: the free-list
+// / generation bookkeeping is duplicated once, and each slot's payload is cloned
+// in a single in-place pass (`unsafe_clone`).
 //
-// Soundness rests entirely on the `SlotStorageClone` safety contract:
-// `clone_storage` must not re-enter the map (its `&self` borrows into the slot
-// buffer for the whole pass, which a re-entrant `insert` could reallocate and
-// free). The crate's storages uphold that contract by requiring their stored
-// value to implement `CloneGenMapPromise`, so a `GenMap` of an owned payload
-// whose `Clone` might re-enter never reaches this impl in the first place — it
-// is simply not `Clone`.
-impl<C: SlotStorageClone> Clone for GenMap<C> {
+// The `&self` pass is sound only because the marker promises `clone_storage`
+// will not mutate `self` (its `&self` borrows into the slot buffer for the whole
+// pass, which a mutation such as `insert` could grow / reallocate and free;
+// read-only re-entry is harmless). The crate's storages obtain that promise by
+// requiring their stored value to be `CloneGenMapPromise`, so a `GenMap` of an
+// owned payload whose `Clone` might mutate the map is simply not `Clone` —
+// though it is still `clone_mut`-able.
+impl<C: NonReentrantSlotStorageClone> Clone for GenMap<C> {
     #[inline]
     fn clone(&self) -> Self {
-        // SAFETY: `SlotStorageClone` guarantees `clone_storage` does not
-        // re-enter this map, so cloning each slot in place cannot invalidate the
-        // `&self` borrow this pass holds into the slot buffer.
-        unsafe {
-            Self {
-                num_elements: self.num_elements.clone(),
-                next_free: self.next_free.clone(),
-                slots: UnsafeCell::new(
-                    (&*self.slots.get())
-                        .iter()
-                        .map(|slot_cell| {
-                            let slot = &*slot_cell.get();
-                            UnsafeCell::new(Slot {
-                                generation: slot.generation,
-                                storage: slot.storage.clone_storage(slot.is_occupied()),
-                            })
-                        })
-                        .collect(),
-                ),
-            }
-        }
+        // SAFETY: `NonReentrantSlotStorageClone` guarantees `clone_storage` does
+        // not mutate this map, so the single in-place pass cannot invalidate the
+        // `&self` borrow it holds into the slot buffer.
+        unsafe { self.unsafe_clone() }
     }
 }
 

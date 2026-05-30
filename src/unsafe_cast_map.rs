@@ -19,7 +19,7 @@ use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::retype_ptr::RetypePtr;
-use crate::slot_storage::{SlotStorage, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
 /// Build a cast key from an inner key and a reference (for pointer metadata).
@@ -61,6 +61,8 @@ where
     C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
     GenMap<C>: Clone,
 {
+    /// Cloning copies every slot's index and generation unchanged, so keys
+    /// valid on the original stay valid on the clone 
     #[inline]
     fn clone(&self) -> Self {
         Self {
@@ -417,6 +419,36 @@ where
     #[inline]
     pub unsafe fn get_slot_unchecked_mut(&mut self, idx: IdxOfStorage<C>) -> &mut Slot<C> {
         self.inner.get_slot_unchecked_mut(idx)
+    }
+
+    /// Cloning copies every slot's index and generation unchanged, so keys
+    /// valid on the original stay valid on the clone 
+    ///
+    /// # Safety
+    /// The caller must guarantee no stored value's `Clone` mutates this map (for
+    /// example, via `insert`) while the pass runs; read-only re-entry is fine
+    /// (see `GenMap::unsafe_clone`).
+    #[inline]
+    pub unsafe fn unsafe_clone(&self) -> Self
+    where
+        C: SlotStorageClone,
+    {
+        Self {
+            inner: self.inner.unsafe_clone(),
+        }
+    }
+
+    /// Clone the map through a unique borrow. 
+    /// Cloning copies every slot's index and generation unchanged, so keys
+    /// valid on the original stay valid on the clone 
+    #[inline]
+    pub fn clone_mut(&mut self) -> Self
+    where
+        C: SlotStorageClone,
+    {
+        Self {
+            inner: self.inner.clone_mut(),
+        }
     }
 
     // ── inner-key access ──────────────────────────────────────────────
