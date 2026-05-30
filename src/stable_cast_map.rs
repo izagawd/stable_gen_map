@@ -18,7 +18,7 @@ use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::map_id::MapId;
 use crate::retype_ptr::RetypePtr;
-use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 
@@ -57,13 +57,23 @@ where
     /// Clones the map.
     ///
     /// The clone receives a fresh map identity. Keys from the original are
-    /// **not** valid on the clone; use iteration to obtain new keys.
+    /// **not** valid on the clone
     #[inline]
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
             map_id: MapId::next(),
         }
+    }
+
+    /// Reuses `self`'s inner allocation (see
+    /// [`GenMap::clone_from`](crate::gen_map::GenMap::clone_from)) and, like
+    /// [`clone`](Self::clone), gives the result a fresh map identity — keys from
+    /// `source` are **not** valid on `self` afterwards.
+    #[inline]
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
+        self.map_id = MapId::next();
     }
 }
 
@@ -134,6 +144,12 @@ where
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.len()
+    }
+
+    /// Total number of slots, occupied and vacant.
+    #[inline]
+    pub fn slots_len(&self) -> usize {
+        self.inner.slots_len()
     }
 
     /// Removes all elements from the map.
@@ -416,33 +432,51 @@ where
     pub unsafe fn get_slot_unchecked_mut(&mut self, idx: IdxOfStorage<C>) -> &mut Slot<C> {
         self.inner.get_slot_unchecked_mut(idx)
     }
-    /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
-    /// the `&mut self` borrow prevents the stored type's `Clone` from
-    /// mutating the map.
+
+    /// Clone the map in a single pass, with a fresh [`MapId`] for the clone.
+    /// keys valid on the original stay do **NOT** stay valid on the clone
+    /// # Safety
+    /// The caller must guarantee no stored value's `Clone` mutates this map (for
+    /// example, via `insert`/`reserve`) while the pass runs; read-only re-entry is fine
+    /// (see `GenMap::unsafe_clone`).
     #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self
+    pub unsafe fn unsafe_clone(&self) -> Self
     where
         C: SlotStorageClone,
     {
         Self {
-            inner: self.inner.clone_efficiently_mut(),
+            inner: self.inner.unsafe_clone(),
             map_id: MapId::next(),
         }
     }
 
-    /// Efficient clone with a fresh [`MapId`]. **UB** if `Clone` mutates the map.
-    ///
-    /// # Safety
-    /// The stored type's `Clone` must not call any method on this map.
+    /// Clone the map through a unique borrow, with a fresh [`MapId`] for the
+    /// clone.
+    /// keys valid on the original stay do **NOT** stay valid on the clone
     #[inline]
-    pub unsafe fn clone_efficiently(&self) -> Self
+    pub fn clone_mut(&mut self) -> Self
     where
         C: SlotStorageClone,
     {
         Self {
-            inner: self.inner.clone_efficiently(),
+            inner: self.inner.clone_mut(),
             map_id: MapId::next(),
         }
+    }
+
+    /// `unsafe` counterpart of [`clone_from`](Self::clone_from)
+    /// reuses `self`'s inner allocation and uses a fresh map identity. 
+    /// 
+    /// # Safety 
+    /// See [`GenMap::unsafe_clone_from`](crate::gen_map::GenMap::unsafe_clone_from)
+    /// for the safety contract.
+    #[inline]
+    pub unsafe fn unsafe_clone_from(&mut self, source: &Self)
+    where
+        C: SlotStorageClone,
+    {
+        self.inner.unsafe_clone_from(&source.inner);
+        self.map_id = MapId::next();
     }
 
     // ── inner-key access ──────────────────────────────────────────────
@@ -502,7 +536,7 @@ where
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
                 self.inner
-                    .iter_unsafe()
+                    .unsafe_iter()
                     .map(|(ck, r)| (stabilize(ck, map_id), r)),
             );
             vec
@@ -523,26 +557,26 @@ where
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
                 self.inner
-                    .iter_unsafe()
+                    .unsafe_iter()
                     .map(|(ck, _)| stabilize(ck, map_id)),
             );
             vec
         }
     }
 
-    // ── iter_unsafe ─────────────────────────────────────────────────────
+    // ── unsafe_iter ─────────────────────────────────────────────────────
 
     /// Shared iterator over all occupied elements.
     ///
     /// # Safety
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
-    pub unsafe fn iter_unsafe(
+    pub unsafe fn unsafe_iter(
         &self,
     ) -> impl Iterator<Item = (StableCastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         let map_id = self.map_id;
         self.inner
-            .iter_unsafe()
+            .unsafe_iter()
             .map(move |(ck, r)| (stabilize(ck, map_id), r))
     }
 
@@ -616,7 +650,7 @@ where
     /// id check, so safe lookups return `None` instead. Treats the emptied map as a
     /// new map for key validation — in contrast to [`clear`](Self::clear), which
     /// keeps the same `MapId`.
-    pub fn reset(&mut self){
+    pub fn reset(&mut self) {
         self.map_id = MapId::next();
         self.inner.reset();
     }

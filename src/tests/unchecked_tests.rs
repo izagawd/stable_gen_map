@@ -252,7 +252,7 @@ fn get_slot_unchecked_mut_can_modify_value() {
 // ─── Slot::storage / Slot::storage_mut ────────────────────────────────────────────
 
 #[test]
-fn slot_storage_returns_slot_item_ref() {
+fn slot_storage_returns_slot_storage_ref() {
     let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
     let k = map.insert(55);
     let idx = k.data().idx;

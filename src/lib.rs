@@ -5,13 +5,14 @@
 pub mod boxed_slot;
 #[cfg(feature = "castable")]
 pub mod cast_key;
+pub mod clone_gen_map_promise;
 pub mod deref_slot;
 pub mod gen_map;
 pub mod key;
 pub mod key_piece;
 #[cfg(feature = "castable")]
 pub mod map_id;
-pub mod slot_item;
+pub mod slot_storage;
 #[cfg(feature = "castable")]
 pub mod stable_cast_map;
 #[cfg(feature = "castable")]
@@ -74,7 +75,7 @@ mod tests {
 
     #[cfg(test)]
     mod gen_map_reset_tests;
-    
+
     #[cfg(all(test, feature = "castable"))]
     mod castable_insert_typed_tests;
 

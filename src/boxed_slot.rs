@@ -1,6 +1,9 @@
+use crate::clone_gen_map_promise::CloneGenMapPromise;
 use crate::gen_map::GenMap;
 use crate::key::Key;
-use crate::slot_item::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{
+    NonMutatingSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
+};
 use std::mem::ManuallyDrop;
 
 // ─── BoxedSlot ───────────────────────────────────────────────────────────────
@@ -51,8 +54,12 @@ unsafe impl<K: Key, T> SlotStorage for BoxedSlot<K, T> {
     }
 
     #[inline]
-    unsafe fn drop_occupied(&mut self) {
-        ManuallyDrop::drop(&mut self.0.occupied);
+    unsafe fn drop_contents(&mut self, is_occupied: bool) {
+        if is_occupied {
+            ManuallyDrop::drop(&mut self.0.occupied);
+        }
+        // Vacant variant is `Option<K::Idx>` (Copy); nothing to drop. The `Box`
+        // holding the union is freed by `BoxedSlot`'s own drop afterwards.
     }
 }
 
@@ -63,17 +70,15 @@ unsafe impl<K: Key, T> SlotStorageMutOutput for BoxedSlot<K, T> {
     }
 }
 
+// The mechanical clone capability is available for any `T: Clone`.
 unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
-    // `BoxedSlot` owns its `T`, so cloning an occupied slot runs `T::clone`,
-    // which may re-enter the map through `&self` `insert`; the two-phase path
-    // is required for soundness.
-    const CLONE_MAY_REENTER: bool = true;
 
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
+            let cloned: T = (*self.0.occupied).clone();
             BoxedSlot(Box::new(SlotData {
-                occupied: ManuallyDrop::new((*self.0.occupied).clone()),
+                occupied: ManuallyDrop::new(cloned),
             }))
         } else {
             BoxedSlot(Box::new(SlotData {
@@ -81,16 +86,14 @@ unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
             }))
         }
     }
-
-    #[inline]
-    unsafe fn clone_occupied_from_output(output: &T) -> Self {
-        // `Output == Stored == T` for `BoxedSlot`, so cloning the stable `&T`
-        // output reproduces the payload without touching the live slot.
-        BoxedSlot(Box::new(SlotData {
-            occupied: ManuallyDrop::new(output.clone()),
-        }))
-    }
 }
+
+// The `&self`-safe marker is granted only when `T::clone` is promised not to
+// mutate a `GenMap` (`T: CloneGenMapPromise`). This is what makes
+// `StableGenMap<K, T>: Clone`; for a `T` whose clone may mutate the map (e.g.
+// by `insert`ing into it), the map is not `Clone`, but it is still `clone_mut`
+// / `unsafe_clone`-able.
+unsafe impl<K: Key, T: CloneGenMapPromise> NonMutatingSlotStorageClone for BoxedSlot<K, T> {}
 
 // ─── StableGenMap (type alias) ───────────────────────────────────────────────
 

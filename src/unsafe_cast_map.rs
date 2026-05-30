@@ -19,7 +19,7 @@ use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::retype_ptr::RetypePtr;
-use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
 /// Build a cast key from an inner key and a reference (for pointer metadata).
@@ -61,11 +61,20 @@ where
     C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
     GenMap<C>: Clone,
 {
+    /// Cloning copies every slot's index and generation unchanged, so keys
+    /// valid on the original stay valid on the clone 
     #[inline]
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
         }
+    }
+
+    /// Reuses `self`'s inner allocation; see
+    /// [`GenMap::clone_from`](crate::gen_map::GenMap::clone_from).
+    #[inline]
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
     }
 }
 
@@ -128,6 +137,12 @@ where
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.len()
+    }
+
+    /// Total number of slots, occupied and vacant.
+    #[inline]
+    pub fn slots_len(&self) -> usize {
+        self.inner.slots_len()
     }
 
     /// Removes all elements from the map.
@@ -418,31 +433,48 @@ where
     pub unsafe fn get_slot_unchecked_mut(&mut self, idx: IdxOfStorage<C>) -> &mut Slot<C> {
         self.inner.get_slot_unchecked_mut(idx)
     }
-    /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
-    /// the `&mut self` borrow prevents the stored type's `Clone` from
-    /// mutating the map.
+
+    /// Cloning copies every slot's index and generation unchanged, so keys
+    /// valid on the original stay valid on the clone 
+    ///
+    /// # Safety
+    /// The caller must guarantee no stored value's `Clone` mutates this map (for
+    /// example, via `insert`/`reserve`) while the pass runs; read-only re-entry is fine
+    /// (see `GenMap::unsafe_clone`).
     #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self
+    pub unsafe fn unsafe_clone(&self) -> Self
     where
         C: SlotStorageClone,
     {
         Self {
-            inner: self.inner.clone_efficiently_mut(),
+            inner: self.inner.unsafe_clone(),
         }
     }
 
-    /// Efficient clone. **UB** if the stored type's `Clone` mutates the map.
-    ///
-    /// # Safety
-    /// The stored type's `Clone` must not call any method on this map.
+    /// Clone the map through a unique borrow. 
+    /// Cloning copies every slot's index and generation unchanged, so keys
+    /// valid on the original stay valid on the clone 
     #[inline]
-    pub unsafe fn clone_efficiently(&self) -> Self
+    pub fn clone_mut(&mut self) -> Self
     where
         C: SlotStorageClone,
     {
         Self {
-            inner: self.inner.clone_efficiently(),
+            inner: self.inner.clone_mut(),
         }
+    }
+
+    /// `unsafe` counterpart of [`clone_from`](Self::clone_from): reuses `self`'s
+    /// inner allocation. 
+    /// 
+    /// # Safety
+    /// See [`GenMap::unsafe_clone_from`](crate::gen_map::GenMap::unsafe_clone_from).
+    #[inline]
+    pub unsafe fn unsafe_clone_from(&mut self, source: &Self)
+    where
+        C: SlotStorageClone,
+    {
+        self.inner.unsafe_clone_from(&source.inner);
     }
 
     // ── inner-key access ──────────────────────────────────────────────
@@ -504,7 +536,7 @@ where
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
-                self.inner.iter_unsafe().map(|(inner_key, reference)| {
+                self.inner.unsafe_iter().map(|(inner_key, reference)| {
                     (to_castable::<C>(inner_key, reference), reference)
                 }),
             );
@@ -517,7 +549,7 @@ where
     pub fn snapshot_refs(&self) -> Vec<&C::Output> {
         unsafe {
             let mut vec = Vec::with_capacity(self.inner.len());
-            vec.extend(self.inner.iter_unsafe().map(|(_, reference)| reference));
+            vec.extend(self.inner.unsafe_iter().map(|(_, reference)| reference));
             vec
         }
     }
@@ -529,7 +561,7 @@ where
             let mut vec = Vec::with_capacity(self.inner.len());
             vec.extend(
                 self.inner
-                    .iter_unsafe()
+                    .unsafe_iter()
                     .map(|(inner_key, reference)| to_castable::<C>(inner_key, reference)),
             );
             vec
@@ -544,22 +576,22 @@ where
     /// require valid metadata for the slot the key refers to, so `reset` adds no new unsafe surface.
     /// It just makes UB mistakes more likely, since a stale key can match a reused slot
     /// again, so passing one to those lookups may read the wrong slot.
-    pub fn reset(&mut self){
+    pub fn reset(&mut self) {
         self.inner.reset()
     }
 
-    // ── iter_unsafe ─────────────────────────────────────────────────────
+    // ── unsafe_iter ─────────────────────────────────────────────────────
 
     /// Shared iterator over all occupied elements.
     ///
     /// # Safety
     /// No mutation (including `insert`) may occur while iterating.
     #[inline]
-    pub unsafe fn iter_unsafe(
+    pub unsafe fn unsafe_iter(
         &self,
     ) -> impl Iterator<Item = (CastKey<C::Output, KeyOfStorage<C>>, &C::Output)> {
         self.inner
-            .iter_unsafe()
+            .unsafe_iter()
             .map(move |(inner_key, reference)| (to_castable::<C>(inner_key, reference), reference))
     }
 

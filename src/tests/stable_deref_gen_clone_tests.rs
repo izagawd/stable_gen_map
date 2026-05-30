@@ -1,7 +1,5 @@
 use crate::deref_slot::BoxStableDerefMap;
 use crate::key::DefaultKey;
-use std::cell::Cell;
-use std::collections::HashSet;
 
 #[test]
 fn clone_empty_map() {
@@ -112,16 +110,16 @@ fn clone_with_rc_clones_rc_not_inner_value() {
 }
 
 #[cfg(test)]
-mod clone_efficiently_stable_tests {
+mod clone_stable_tests {
     use super::*;
     use crate::key::{DefaultKey, Key};
 
     // Sanity: cloning an empty map should give another empty map.
     #[test]
-    fn clone_efficiently_empty_map() {
-        let mut map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
+    fn clone_empty_map() {
+        let map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
 
-        let clone = map.clone_efficiently_mut();
+        let clone = map.clone();
 
         assert_eq!(map.len(), 0);
         assert_eq!(clone.len(), 0);
@@ -131,7 +129,7 @@ mod clone_efficiently_stable_tests {
 
     // Basic semantics: contents equal, deep cloned (no alias), len preserved.
     #[test]
-    fn clone_efficiently_copies_all_live_entries_and_not_aliasing() {
+    fn clone_copies_all_live_entries_and_not_aliasing() {
         let mut map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
 
         let k1 = map.insert(Box::new("one".to_owned()));
@@ -148,7 +146,7 @@ mod clone_efficiently_stable_tests {
         let p1 = map.get(k1).unwrap() as *const String;
         let p3 = map.get(k3).unwrap() as *const String;
 
-        let clone = map.clone_efficiently_mut();
+        let clone = map.clone();
 
         // Same logical contents.
         assert_eq!(clone.len(), len_before);
@@ -161,14 +159,8 @@ mod clone_efficiently_stable_tests {
         // Deep clone: different allocations for the *same* keys.
         let c1 = clone.get(k1).unwrap() as *const String;
         let c3 = clone.get(k3).unwrap() as *const String;
-        assert_ne!(
-            p1, c1,
-            "clone_efficiently must deep-clone values, not share them"
-        );
-        assert_ne!(
-            p3, c3,
-            "clone_efficiently must deep-clone values, not share them"
-        );
+        assert_ne!(p1, c1, "clone must deep-clone values, not share them");
+        assert_ne!(p3, c3, "clone must deep-clone values, not share them");
 
         // Mutate original; clone should be unaffected.
         *map.get_mut(k1).unwrap() = "ONE!".to_owned();
@@ -179,7 +171,7 @@ mod clone_efficiently_stable_tests {
     // Free-list behaviour: after cloning, inserting into each map should
     // reuse the same free index, but with independent generations & len.
     #[test]
-    fn clone_efficiently_preserves_free_list_structure_but_independent() {
+    fn clone_preserves_free_list_structure_but_independent() {
         let mut map: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
 
         let k1 = map.insert(Box::new(10));
@@ -191,7 +183,7 @@ mod clone_efficiently_stable_tests {
         assert_eq!(*removed, 20);
         let len_before = map.len();
 
-        let clone = map.clone_efficiently_mut();
+        let clone = map.clone();
 
         assert_eq!(clone.len(), len_before);
         assert_eq!(clone.get(k1), Some(&10));
@@ -284,131 +276,104 @@ fn clone_with_holes_preserves_logical_state() {
     assert_eq!(c.get(k3), Some(&3));
     assert_eq!(c.get(k4), Some(&4));
 }
+// ── clone_from (DerefSlot): recycles buffer, mirrors source ──────────────────
 
-// Thread-local pointer to "the map being cloned".
-// Reentrant::clone will use this to insert into the map.
-thread_local! {
-    static GLOBAL_MAP_PTR: Cell<*const BoxStableDerefMap<DefaultKey, Reentrant>> =
-        Cell::new(std::ptr::null());
-}
-
-#[derive(Debug)]
-struct Reentrant {
-    val: i32,
-}
-
-impl Clone for Reentrant {
-    fn clone(&self) -> Self {
-        // On clone, insert a new element into the original map (if any).
-        GLOBAL_MAP_PTR.with(|cell| {
-            let ptr = cell.get();
-            {
-                unsafe {
-                    let map: &BoxStableDerefMap<DefaultKey, Reentrant> = &*ptr;
-                    let _ = map.insert(Box::new(Reentrant {
-                        val: self.val + 1000,
-                    }));
-                }
-            }
-        });
-
-        Reentrant { val: self.val }
-    }
-}
-
-type MapReentrant = BoxStableDerefMap<DefaultKey, Reentrant>;
 #[test]
-fn stable_clone_handles_reentrant_t_clone_two() {
-    let mut m: MapReentrant = BoxStableDerefMap::new();
+fn clone_from_contents_equal_but_independent() {
+    let mut dst: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    dst.insert(Box::new(1));
 
-    // Let Reentrant::clone know which map to mutate.
-    GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
+    let mut src: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    let k1 = src.insert(Box::new(10));
+    let k2 = src.insert(Box::new(20));
 
-    let k1 = m.insert(Box::new(Reentrant { val: 1 }));
-    let k2 = m.insert(Box::new(Reentrant { val: 2 }));
+    dst.clone_from(&src);
+    assert_eq!(dst.len(), 2);
+    assert_eq!(dst.get(k1), Some(&10));
+    assert_eq!(dst.get(k2), Some(&20));
 
-    let k3 = m.insert(Box::new(Reentrant { val: 1 }));
-    let k4 = m.insert(Box::new(Reentrant { val: 2 }));
-
-    // making two slots initialized  but free (THIS IS VERY IMPORTANT)
-    m.remove(k3);
-    m.remove(k4);
-
-    // Before clone: 2 entries
-    assert_eq!(m.len(), 2);
-
-    // clone() will cause each Reentrant::clone to insert extra entries into *m*
-    let c = m.clone();
-
-    // Stop re-entrancy after cloning, so later code doesn't accidentally hit it.
-    GLOBAL_MAP_PTR.with(|cell| cell.set(std::ptr::null()));
-
-    // Original map now has at least as many entries as before (probably more).
-    assert!(m.len() >= 2);
-
-    // Cloned map must reflect the state at clone start → 2 logical elements.
-    assert_eq!(c.len(), 2);
-
-    // k1, k2 must exist in cloned map with original vals
-    let v1 = c.get(k1).unwrap();
-    let v2 = c.get(k2).unwrap();
-    assert_eq!(v1.val, 1);
-    assert_eq!(v2.val, 2);
-
-    // cloned keys set should be exactly {k1, k2}
-    let cloned_keys: HashSet<_> = {
-        // if you already have snapshot_key_only(), use that:
-        // c.snapshot_key_only().into_iter().collect()
-        //
-        // otherwise, approximate via snapshot of pairs:
-        c.snapshot().into_iter().map(|(k, _)| k).collect()
-    };
-
-    assert_eq!(cloned_keys.len(), 2);
-    assert!(cloned_keys.contains(&k1));
-    assert!(cloned_keys.contains(&k2));
+    // independent
+    src.remove(k2);
+    assert_eq!(dst.get(k2), Some(&20));
 }
+
 #[test]
-fn stable_clone_handles_reentrant_t_clone() {
-    let m: MapReentrant = BoxStableDerefMap::new();
+fn clone_from_matches_clone() {
+    let mut src: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    let k1 = src.insert(Box::new(1));
+    let k2 = src.insert(Box::new(2));
+    let k3 = src.insert(Box::new(3));
+    src.remove(k2);
 
-    // Let Reentrant::clone know which map to mutate.
-    GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
+    let mut dst: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    dst.insert(Box::new(99));
+    dst.clone_from(&src);
+    let fresh = src.clone();
 
-    let k1 = m.insert(Box::new(Reentrant { val: 1 }));
-    let k2 = m.insert(Box::new(Reentrant { val: 2 }));
+    assert_eq!(dst.len(), fresh.len());
+    assert_eq!(dst.slots_len(), fresh.slots_len());
+    assert_eq!(dst.get(k1), fresh.get(k1));
+    assert_eq!(dst.get(k3), fresh.get(k3));
+}
 
-    // Before clone: 2 entries
-    assert_eq!(m.len(), 2);
+#[test]
+fn clone_from_deep_clones_new_boxes() {
+    let src: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    let k = src.insert(Box::new(7));
 
-    // clone() will cause each Reentrant::clone to insert extra entries into *m*
-    let c = m.clone();
+    let mut dst: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    dst.insert(Box::new(99));
+    dst.clone_from(&src);
 
-    // Stop re-entrancy after cloning, so later code doesn't accidentally hit it.
-    GLOBAL_MAP_PTR.with(|cell| cell.set(std::ptr::null()));
+    let p_src = src.get(k).unwrap() as *const i32 as usize;
+    let p_dst = dst.get(k).unwrap() as *const i32 as usize;
+    assert_ne!(p_src, p_dst, "clone_from allocates independent boxes");
+    assert_eq!(dst.get(k), Some(&7));
+}
 
-    // Original map now has at least as many entries as before (probably more).
-    assert!(m.len() >= 2);
+#[test]
+fn clone_from_with_rc_bumps_then_releases_refcount() {
+    use std::rc::Rc;
 
-    // Cloned map must reflect the state at clone start → 2 logical elements.
-    assert_eq!(c.len(), 2);
+    let src: BoxStableDerefMap<DefaultKey, Rc<String>> = BoxStableDerefMap::new();
+    let k = src.insert(Box::new(Rc::new("hi".to_string())));
+    assert_eq!(Rc::strong_count(src.get(k).unwrap()), 1);
 
-    // k1, k2 must exist in cloned map with original vals
-    let v1 = c.get(k1).unwrap();
-    let v2 = c.get(k2).unwrap();
-    assert_eq!(v1.val, 1);
-    assert_eq!(v2.val, 2);
+    let mut dst: BoxStableDerefMap<DefaultKey, Rc<String>> = BoxStableDerefMap::new();
+    dst.insert(Box::new(Rc::new("old".to_string())));
 
-    // cloned keys set should be exactly {k1, k2}
-    let cloned_keys: HashSet<_> = {
-        // if you already have snapshot_key_only(), use that:
-        // c.snapshot_key_only().into_iter().collect()
-        //
-        // otherwise, approximate via snapshot of pairs:
-        c.snapshot().into_iter().map(|(k, _)| k).collect()
-    };
+    dst.clone_from(&src);
+    // src's Rc is now shared with dst's clone; the old dst Rc was dropped.
+    assert_eq!(
+        Rc::strong_count(src.get(k).unwrap()),
+        2,
+        "clone_from clones the Rc"
+    );
+    assert!(Rc::ptr_eq(src.get(k).unwrap(), dst.get(k).unwrap()));
 
-    assert_eq!(cloned_keys.len(), 2);
-    assert!(cloned_keys.contains(&k1));
-    assert!(cloned_keys.contains(&k2));
+    drop(dst);
+    assert_eq!(
+        Rc::strong_count(src.get(k).unwrap()),
+        1,
+        "dropping dst releases its cloned Rc"
+    );
+}
+
+#[test]
+fn clone_from_preserves_holes() {
+    let mut src: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    let k1 = src.insert(Box::new(1));
+    let k2 = src.insert(Box::new(2));
+    let k3 = src.insert(Box::new(3));
+    src.remove(k2);
+    assert_eq!(src.len(), 2);
+    assert_eq!(src.slots_len(), 3);
+
+    let mut dst: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    dst.clone_from(&src);
+    assert_eq!(dst.len(), 2);
+    assert_eq!(dst.slots_len(), 3);
+    assert_eq!(dst.get(k1), Some(&1));
+    assert!(dst.get(k2).is_none());
+    assert_eq!(dst.get(k3), Some(&3));
 }
