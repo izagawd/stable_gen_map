@@ -102,7 +102,7 @@ pub unsafe trait SlotStorage: Sized {
     unsafe fn drop_contents(&mut self, is_occupied: bool);
 }
 
-/// Slot items that can provide `&mut Self::Output`.
+/// Slot srograges that can provide `&mut Self::Output`.
 ///
 /// # Safety
 /// Same pointer-stability guarantees as [`SlotStorage`].
@@ -112,7 +112,7 @@ pub unsafe trait SlotStorageMutOutput: SlotStorage {
     unsafe fn mut_output(&mut self) -> &mut Self::Output;
 }
 
-/// Slot items that can be cloned without going through a two-phase snapshot.
+/// Slot storages that can be cloned without going through a two-phase snapshot.
 ///
 /// # Safety
 /// `clone_storage` must correctly reproduce the slot's payload.

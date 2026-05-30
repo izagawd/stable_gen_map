@@ -11,7 +11,7 @@ pub mod key;
 pub mod key_piece;
 #[cfg(feature = "castable")]
 pub mod map_id;
-pub mod slot_item;
+pub mod slot_storage;
 #[cfg(feature = "castable")]
 pub mod stable_cast_map;
 #[cfg(feature = "castable")]

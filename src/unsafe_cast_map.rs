@@ -19,7 +19,7 @@ use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::retype_ptr::RetypePtr;
-use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
 /// Build a cast key from an inner key and a reference (for pointer metadata).

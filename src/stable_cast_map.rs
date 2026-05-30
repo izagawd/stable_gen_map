@@ -18,7 +18,7 @@ use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::map_id::MapId;
 use crate::retype_ptr::RetypePtr;
-use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 

@@ -1,6 +1,6 @@
 use crate::key::{is_occupied_by_generation, Key, KeyData};
 use crate::key_piece::KeyPiece;
-use crate::slot_item::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::collections::TryReserveError;
