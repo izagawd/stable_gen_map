@@ -673,7 +673,7 @@ impl<C: SlotStorage> GenMap<C> {
                             generation: slot.generation,
                             storage: slot
                                 .storage
-                                .clone_storage(is_occupied_by_generation(slot.generation)),
+                                .clone_storage(slot.is_occupied()),
                         })
                     })
                     .collect(),
