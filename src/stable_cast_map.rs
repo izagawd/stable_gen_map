@@ -18,7 +18,7 @@ use crate::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::map_id::MapId;
 use crate::retype_ptr::RetypePtr;
-use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageMutOutput};
 use crate::unsafe_cast_map;
 use crate::unsafe_cast_map::UnsafeCastMap;
 
@@ -415,34 +415,6 @@ where
     #[inline]
     pub unsafe fn get_slot_unchecked_mut(&mut self, idx: IdxOfStorage<C>) -> &mut Slot<C> {
         self.inner.get_slot_unchecked_mut(idx)
-    }
-    /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
-    /// the `&mut self` borrow prevents the stored type's `Clone` from
-    /// mutating the map.
-    #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self
-    where
-        C: SlotStorageClone,
-    {
-        Self {
-            inner: self.inner.clone_efficiently_mut(),
-            map_id: MapId::next(),
-        }
-    }
-
-    /// Efficient clone with a fresh [`MapId`]. **UB** if `Clone` mutates the map.
-    ///
-    /// # Safety
-    /// The stored type's `Clone` must not call any method on this map.
-    #[inline]
-    pub unsafe fn clone_efficiently(&self) -> Self
-    where
-        C: SlotStorageClone,
-    {
-        Self {
-            inner: self.inner.clone_efficiently(),
-            map_id: MapId::next(),
-        }
     }
 
     // ── inner-key access ──────────────────────────────────────────────

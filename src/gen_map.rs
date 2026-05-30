@@ -647,146 +647,45 @@ impl<C: SlotStorage> GenMap<C> {
             })
     }
 
-    // ── clone helpers ───────────────────────────────────────────────────
-
-    /// A more efficient clone than `Clone::clone`
-    /// # Safety
-    /// **UB** if the `Clone`
-    /// implementation of the stored type mutates the map.
-    #[inline]
-    pub unsafe fn clone_efficiently(&self) -> Self
-    where
-        C: SlotStorageClone,
-    {
-        Self {
-            num_elements: self.num_elements.clone(),
-            next_free: self.next_free.clone(),
-            slots: UnsafeCell::new(
-                (&*self.slots.get())
-                    .iter()
-                    .map(|slot_cell| {
-                        let slot = &*slot_cell.get();
-                        UnsafeCell::new(Slot {
-                            generation: slot.generation,
-                            storage: slot.storage.clone_storage(slot.is_occupied()),
-                        })
-                    })
-                    .collect(),
-            ),
-        }
-    }
-
-    /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
-    /// the `&mut self` borrow prevents the stored type's `Clone` from
-    /// mutating the map.
-    #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self
-    where
-        C: SlotStorageClone,
-    {
-        unsafe { self.clone_efficiently() }
-    }
-
-    // ── helpers used by Clone impls in stable_gen_map / stable_deref_map
-
-    /// Build a `GenMap` from pre-built parts. Used by custom `Clone` impls.
-    ///
-    /// # Safety
-    /// Caller must ensure the parts are self-consistent (matching free-list,
-    /// generation parity, element count).
-    #[inline]
-    pub(crate) unsafe fn from_raw_parts(
-        slots: Vec<UnsafeCell<Slot<C>>>,
-        next_free: Option<IdxOfStorage<C>>,
-        num_elements: usize,
-    ) -> Self {
-        Self {
-            slots: UnsafeCell::new(slots),
-            next_free: Cell::new(next_free),
-            num_elements: Cell::new(num_elements),
-        }
-    }
 }
 
 // ─── Clone (generic over any cloneable slot storage) ─────────────────────────
 //
-// A single blanket impl serves every `SlotStorage` that also implements
-// `SlotStorageClone`, including custom user storages, so nobody has to
-// re-derive the snapshot / free-list / generation bookkeeping by hand. The
-// path is chosen by `C::CLONE_MAY_REENTER`:
+// One blanket impl serves every `SlotStorage` that implements
+// `SlotStorageClone`, including custom user storages: the free-list /
+// generation bookkeeping is duplicated once here, and each slot's payload is
+// cloned in a single in-place pass via `clone_storage`.
 //
-//   * `false` — cloning a slot only duplicates a pointer (e.g. `Rc`/`Arc`/`&T`)
-//     and cannot re-enter the map, so the single pass of `clone_efficiently`
-//     is sound.
-//   * `true` — cloning runs `Output::clone`, which may re-enter the map via
-//     `&self` `insert`. Phase one captures the pointer-stable `&Output` of
-//     every occupied slot (stability guaranteed by the `SlotStorage`
-//     contract); phase two clones through `clone_occupied_from_output`, so any
-//     re-entrant insert only ever mutates the *new* map's storage, never the
-//     snapshot we read.
+// Soundness rests entirely on the `SlotStorageClone` safety contract:
+// `clone_storage` must not re-enter the map (its `&self` borrows into the slot
+// buffer for the whole pass, which a re-entrant `insert` could reallocate and
+// free). The crate's storages uphold that contract by requiring their stored
+// value to implement `CloneGenMapPromise`, so a `GenMap` of an owned payload
+// whose `Clone` might re-enter never reaches this impl in the first place — it
+// is simply not `Clone`.
 impl<C: SlotStorageClone> Clone for GenMap<C> {
     #[inline]
     fn clone(&self) -> Self {
-        // Fast path: cloning cannot re-enter, so the single pass is sound.
-        if !C::CLONE_MAY_REENTER {
-            // SAFETY: for a non-re-entrant storage, `clone_storage` never runs
-            // code that can mutate `self`, so nothing aliases `self.slots`.
-            return unsafe { self.clone_efficiently() };
-        }
-
+        // SAFETY: `SlotStorageClone` guarantees `clone_storage` does not
+        // re-enter this map, so cloning each slot in place cannot invalidate the
+        // `&self` borrow this pass holds into the slot buffer.
         unsafe {
-            // Snapshot the scalar bookkeeping up front, before any user
-            // `Output::clone` (which may re-enter `self`) gets a chance to run.
-            let next_free = self.next_free.get();
-            let num_elements = self.len();
-            let slots_ref = &*self.slots.get();
-
-            // ── phase 1: capture owned per-slot snapshot + stable payload ────
-            // (snapshot for every slot; payload is `&Output` if occupied, else
-            // the free-list index)
-            enum Payload<'a, C: SlotStorage> {
-                Occupied(&'a C::Output),
-                Vacant(Option<IdxOfStorage<C>>),
+            Self {
+                num_elements: self.num_elements.clone(),
+                next_free: self.next_free.clone(),
+                slots: UnsafeCell::new(
+                    (&*self.slots.get())
+                        .iter()
+                        .map(|slot_cell| {
+                            let slot = &*slot_cell.get();
+                            UnsafeCell::new(Slot {
+                                generation: slot.generation,
+                                storage: slot.storage.clone_storage(slot.is_occupied()),
+                            })
+                        })
+                        .collect(),
+                ),
             }
-
-            let mut snapshot: Vec<(GenOfStorage<C>, C::CloneSnapshot, Payload<'_, C>)> =
-                Vec::with_capacity(slots_ref.len());
-
-            for cell in slots_ref.iter() {
-                let slot = &*cell.get();
-                let generation = slot.generation;
-                // Captured before any `Output::clone` can re-enter `self`.
-                let captured = slot.storage.snapshot_slot();
-                let payload = if is_occupied_by_generation(generation) {
-                    Payload::Occupied(slot.storage.ref_output())
-                } else {
-                    Payload::Vacant(slot.storage.get_vacant())
-                };
-                snapshot.push((generation, captured, payload));
-            }
-
-            // ── phase 2: rebuild ─────────────────────────────────────────────
-            // `clone_occupied_from_output` may re-enter `self` via insert, but
-            // we only read the stable `&Output` refs and owned snapshots
-            // captured above and write into `new_slots`, never into
-            // `self.slots`.
-            let new_slots: Vec<UnsafeCell<Slot<C>>> = snapshot
-                .into_iter()
-                .map(|(generation, captured, payload)| {
-                    let storage = match payload {
-                        Payload::Occupied(output) => {
-                            C::clone_occupied_from_output(captured, output)
-                        }
-                        Payload::Vacant(next) => C::clone_vacant_from_snapshot(captured, next),
-                    };
-                    UnsafeCell::new(Slot {
-                        generation,
-                        storage,
-                    })
-                })
-                .collect();
-
-            GenMap::from_raw_parts(new_slots, next_free, num_elements)
         }
     }
 }

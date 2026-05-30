@@ -1,6 +1,6 @@
 use crate::boxed_slot::StableGenMap;
 use crate::key::{DefaultKey, Key};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 type Map = StableGenMap<DefaultKey, i32>;
 
@@ -44,7 +44,7 @@ fn clone_basic_contents_equal_but_independent() {
 }
 
 #[cfg(test)]
-mod clone_efficiently_tests {
+mod clone_tests {
 
     use crate::key::{DefaultKey, Key};
 
@@ -53,10 +53,10 @@ mod clone_efficiently_tests {
     type Map<T> = StableGenMap<DefaultKey, T>;
 
     #[test]
-    fn clone_efficiently_empty_map() {
-        let mut map: Map<String> = StableGenMap::new();
+    fn clone_empty_map() {
+        let map: Map<String> = StableGenMap::new();
 
-        let clone = map.clone_efficiently_mut();
+        let clone = map.clone();
 
         assert_eq!(map.len(), 0);
         assert_eq!(clone.len(), 0);
@@ -65,7 +65,7 @@ mod clone_efficiently_tests {
     }
 
     #[test]
-    fn clone_efficiently_copies_all_live_entries_and_not_aliasing() {
+    fn clone_copies_all_live_entries_and_not_aliasing() {
         let mut map: Map<String> = StableGenMap::new();
 
         // Insert enough elements to resize
@@ -93,7 +93,7 @@ mod clone_efficiently_tests {
         let p1 = map.get(k_keep_1).unwrap() as *const String;
         let p2 = map.get(k_keep_2).unwrap() as *const String;
 
-        let clone = map.clone_efficiently_mut();
+        let clone = map.clone();
 
         assert_eq!(clone.len(), len_before);
         assert_eq!(clone.len(), map.len());
@@ -103,7 +103,7 @@ mod clone_efficiently_tests {
             assert_eq!(
                 clone.get(k),
                 Some(v),
-                "clone_efficiently must copy all live entries"
+                "clone must copy all live entries"
             );
         }
 
@@ -124,7 +124,7 @@ mod clone_efficiently_tests {
     }
 
     #[test]
-    fn clone_efficiently_preserves_free_list_structure_but_independent() {
+    fn clone_preserves_free_list_structure_but_independent() {
         let mut map: Map<i32> = StableGenMap::new();
 
         let k1 = map.insert(10);
@@ -140,7 +140,7 @@ mod clone_efficiently_tests {
         let len_before = map.len();
         assert_eq!(len_before, 2);
 
-        let clone = map.clone_efficiently_mut();
+        let clone = map.clone();
         assert_eq!(clone.len(), len_before);
 
         // k2 should be invalid in both.
@@ -286,115 +286,4 @@ fn clone_into_iter_matches_snapshot() {
 
     assert_eq!(snap_map.len(), coll_map.len());
     assert_eq!(snap_map, coll_map);
-}
-
-// ----- Re-entrant T::Clone that calls insert during cloning -----
-
-// We use a thread-local pointer so Reentrant::clone can find the map.
-
-// We use a thread-local pointer so Reentrant::clone can find the map.
-thread_local! {
-    static GLOBAL_MAP_PTR: std::cell::Cell<*const StableGenMap<DefaultKey, Reentrant>> =
-        std::cell::Cell::new(std::ptr::null());
-}
-
-#[derive(Debug)]
-struct Reentrant {
-    val: i32,
-}
-
-impl Clone for Reentrant {
-    fn clone(&self) -> Self {
-        // On clone, insert a new element into the original map (if set).
-        GLOBAL_MAP_PTR.with(|cell| {
-            let ptr = cell.get();
-            {
-                unsafe {
-                    let map = &*ptr;
-                    let _ = map.insert(Reentrant {
-                        val: self.val + 1000,
-                    });
-                }
-            }
-        });
-        Reentrant { val: self.val }
-    }
-}
-
-type MapReentrant = StableGenMap<DefaultKey, Reentrant>;
-
-#[test]
-fn clone_handles_reentrant_t_clone() {
-    let m: MapReentrant = StableGenMap::new();
-
-    // allow Reentrant::clone to find this map
-    GLOBAL_MAP_PTR.set(&m as *const _);
-
-    let k1 = m.insert(Reentrant { val: 1 });
-    let k2 = m.insert(Reentrant { val: 2 });
-
-    assert_eq!(m.len(), 2);
-
-    let c = m.clone();
-
-    // stop re-entrancy for the rest of the test
-    GLOBAL_MAP_PTR.set(std::ptr::null());
-
-    // original map may have more elements because of re-entrant inserts
-    assert!(m.len() >= 2);
-
-    // cloned map must reflect only the state at clone start -> 2 elements
-    assert_eq!(c.len(), 2);
-
-    let v1 = c.get(k1).unwrap();
-    let v2 = c.get(k2).unwrap();
-    assert_eq!(v1.val, 1);
-    assert_eq!(v2.val, 2);
-
-    // cloned keys set should be exactly {k1, k2}
-    let cloned_keys: HashSet<_> = c.snapshot_keys().into_iter().collect();
-    assert_eq!(cloned_keys.len(), 2);
-    assert!(cloned_keys.contains(&k1));
-    assert!(cloned_keys.contains(&k2));
-}
-
-#[test]
-fn clone_handles_reentrant_t_clone_two() {
-    let mut m: MapReentrant = StableGenMap::new();
-
-    // allow Reentrant::clone to find this map
-    GLOBAL_MAP_PTR.with(|cell| cell.set(&m as *const _));
-
-    let k1 = m.insert(Reentrant { val: 1 });
-    let k2 = m.insert(Reentrant { val: 2 });
-
-    let k3 = m.insert(Reentrant { val: 1 });
-    let k4 = m.insert(Reentrant { val: 2 });
-
-    // making two slots initialized  but free (THIS IS VERY IMPORTANT)
-    m.remove(k3);
-    m.remove(k4);
-    assert_eq!(m.len(), 2);
-
-    let c = m.clone();
-
-    // stop re-entrancy for the rest of the test
-    GLOBAL_MAP_PTR.with(|cell| cell.set(std::ptr::null()));
-
-    // original map may have more elements because of re-entrant inserts
-    assert!(m.len() >= 2);
-
-    // cloned map must reflect only the state at clone start -> 2 elements
-    assert_eq!(c.len(), 2);
-
-    let v1 = c.get(k1).unwrap();
-    let v2 = c.get(k2).unwrap();
-    assert_eq!(v1.val, 1);
-    assert_eq!(v2.val, 2);
-
-    // cloned keys set should be exactly {k1, k2}
-    let cloned_keys: HashSet<_> = c.snapshot_keys().into_iter().collect();
-    assert_eq!(cloned_keys.len(), 2);
-    assert!(cloned_keys.contains(&k1));
-    assert!(cloned_keys.contains(&k2));
 }

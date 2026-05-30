@@ -1,5 +1,6 @@
 use crate::gen_map::GenMap;
 use crate::key::Key;
+use crate::clone_gen_map_promise::CloneGenMapPromise;
 use crate::slot_storage::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use std::mem::ManuallyDrop;
 
@@ -67,37 +68,24 @@ unsafe impl<K: Key, T> SlotStorageMutOutput for BoxedSlot<K, T> {
     }
 }
 
-unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
-    // `BoxedSlot` owns its `T`, so cloning an occupied slot runs `T::clone`,
-    // which may re-enter the map through `&self` `insert`; the two-phase path
-    // is required for soundness.
-    const CLONE_MAY_REENTER: bool = true;
-
-    type CloneSnapshot = ();
-
+unsafe impl<K: Key, T: CloneGenMapPromise> SlotStorageClone for BoxedSlot<K, T> {
+    // SAFETY: cloning an occupied slot runs `T::clone`. The `CloneGenMapPromise`
+    // bound is exactly the guarantee that `T::clone` cannot mutate / re-enter a
+    // `GenMap`, so the `&self` borrow into the slot buffer stays valid for the
+    // call. (`BoxedSlot<K, T>` for a `T` whose clone may re-enter therefore has
+    // no `SlotStorageClone` impl, and such a `StableGenMap` is not `Clone`.)
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
+            let cloned : T = (*self.0.occupied).clone();
             BoxedSlot(Box::new(SlotData {
-                occupied: ManuallyDrop::new((*self.0.occupied).clone()),
+                occupied: ManuallyDrop::new(cloned),
             }))
         } else {
             BoxedSlot(Box::new(SlotData {
                 vacant: self.0.vacant,
             }))
         }
-    }
-
-    #[inline]
-    unsafe fn snapshot_slot(&self) {}
-
-    #[inline]
-    unsafe fn clone_occupied_from_output(_snapshot: (), output: &T) -> Self {
-        // `Output == Stored == T` for `BoxedSlot`, so cloning the stable `&T`
-        // output reproduces the payload without touching the live slot.
-        BoxedSlot(Box::new(SlotData {
-            occupied: ManuallyDrop::new(output.clone()),
-        }))
     }
 }
 

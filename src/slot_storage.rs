@@ -112,114 +112,34 @@ pub unsafe trait SlotStorageMutOutput: SlotStorage {
     unsafe fn mut_output(&mut self) -> &mut Self::Output;
 }
 
-/// Slot storages that can be cloned without going through a two-phase snapshot.
+/// Per-slot storage that a [`GenMap`](crate::gen_map::GenMap) can clone.
 ///
 /// # Safety
-/// `clone_storage` must correctly reproduce the slot's payload.
+/// [`clone_storage`](Self::clone_storage) **must never cause the owning map to
+/// be mutated** — in particular it must not re-enter through `&self` `insert`.
+///
+/// Cloning runs a single pass over the live slot vector with `&self` pointing
+/// *into that vector's backing buffer*. A re-entrant `insert` could grow the
+/// map and reallocate the buffer, freeing the memory `&self` refers to while
+/// `clone_storage` is still executing — instant undefined behaviour, even
+/// though `&self` is only read. A refcount bump (`Rc`/`Arc`/`&T`) or a `Copy`
+/// is fine because it runs no user code and cannot re-enter; an owned deep
+/// clone (`Box<T>`, `T`) is sound here **only** if the cloned value's `Clone`
+/// does not touch the map.
+///
+/// The crate's storages enforce this by construction: they implement
+/// `SlotStorageClone` only when their stored value implements
+/// [`CloneGenMapPromise`](crate::clone_gen_map_promise::CloneGenMapPromise),
+/// which is precisely the promise that the value's
+/// `Clone` cannot mutate a `GenMap`. A custom storage that implements
+/// `SlotStorageClone` directly takes on the same obligation by hand.
 pub unsafe trait SlotStorageClone: SlotStorage {
-    /// Whether cloning an *occupied* slot runs user code that could re-enter
-    /// the owning map.
+    /// Clone the storage for the given occupancy. The occupied payload is
+    /// duplicated when `is_occupied`, otherwise the vacant free-list index is
+    /// copied.
     ///
-    /// - `false` — cloning has no chance of mutating a [`GenMap`](crate::gen_map::GenMap) (ie via insert).
-    ///   `Clone` uses a fast single pass ([`clone_efficiently`](crate::gen_map::GenMap::clone_efficiently)).
-    /// - `true` — cloning may re-enter the map via
-    ///   `&self` `insert`, so `GenMap`'s `Clone` uses a two-phase snapshot and
-    ///   reconstructs each occupied slot through `clone_occupied_from_output`.
-    const CLONE_MAY_REENTER: bool;
-
-    /// Owned, per-slot side data captured during phase one of the two-phase
-    /// clone, before any (possibly re-entrant) `Output::clone` runs.
-    ///
-    /// This exists so a storage can carry data that does **not** live behind
-    /// its pointer-stable [`Output`](SlotStorage::Output) — for example a
-    /// per-slot tag or `MapId` — and still reproduce it on clone. Because the
-    /// type has no lifetime parameter, the compiler guarantees a
-    /// [`snapshot_slot`](Self::snapshot_slot) value cannot borrow from the
-    /// slot, so it survives any reallocation a re-entrant `insert` triggers.
-    ///
-    /// Storages with no extra per-slot data (and storages that never re-enter)
-    /// use `()`.
-    type CloneSnapshot;
-
-    /// Clone the slot storage.
     /// # Safety
-    /// `is_occupied` must truthfully reflect the slot state.
+    /// `is_occupied` must truthfully reflect the slot's current state, and this
+    /// call must not mutate / re-enter the owning map (see the trait note).
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self;
-
-    /// Phase one of the two-phase clone: capture this slot's owned side data
-    /// ([`CloneSnapshot`](Self::CloneSnapshot)) by value.
-    ///
-    /// Called for **every** slot regardless of occupancy: the side data this
-    /// captures lives outside the occupied/vacant payload, so it is reproduced
-    /// for vacant slots ([`clone_vacant_from_snapshot`](Self::clone_vacant_from_snapshot))
-    /// and occupied slots ([`clone_occupied_from_output`](Self::clone_occupied_from_output))
-    /// alike. It must therefore read only occupancy-independent state — never
-    /// the payload union.
-    ///
-    /// Runs before any `Output::clone`, so reading `&self` here is sound: no
-    /// re-entrant `insert` has had a chance to reallocate the slot vector yet.
-    /// The returned value is owned (it cannot borrow `self`), so phase two may
-    /// keep it across the re-entrant clone.
-    ///
-    /// Implementations **must not** themselves mutate or re-enter the owning
-    /// map. Only invoked when `CLONE_MAY_REENTER` is `true`; other storages may
-    /// leave the default (it is never reached).
-    ///
-    /// # Safety
-    /// No occupancy requirement; may be called on any slot of this storage.
-    unsafe fn snapshot_slot(&self) -> Self::CloneSnapshot {
-        unreachable!(
-            "snapshot_slot was called on a SlotStorage whose \
-             CLONE_MAY_REENTER is false; this is a bug in the SlotStorage impl"
-        )
-    }
-
-    /// Phase two of the two-phase clone, occupied case: reconstruct an
-    /// *occupied* slot from the owned [`snapshot`](Self::CloneSnapshot) captured
-    /// in phase one plus the slot's pointer-stable
-    /// [`Output`](SlotStorage::Output) reference, rather than from the live slot.
-    ///
-    /// Only invoked by `GenMap`'s `Clone` when `CLONE_MAY_REENTER` is `true`:
-    /// phase one captures the stable `&Output` (guaranteed stable by the
-    /// [`SlotStorage`] safety contract) together with `snapshot`, and phase two
-    /// calls this to clone the payload, so any re-entrant `insert` triggered by
-    /// `Output::clone` only mutates the *new* map. `snapshot` is owned, so it is
-    /// equally safe to hold across that re-entry. Storages with
-    /// `CLONE_MAY_REENTER == false` never reach this and may leave the default.
-    ///
-    /// # Safety
-    /// `output` must be the [`Output`](SlotStorage::Output) of an occupied slot
-    /// of this storage type, and `snapshot` must be the value returned by
-    /// [`snapshot_slot`](Self::snapshot_slot) for that same slot.
-    unsafe fn clone_occupied_from_output(
-        _snapshot: Self::CloneSnapshot,
-        _output: &Self::Output,
-    ) -> Self {
-        unreachable!(
-            "clone_occupied_from_output was called on a SlotStorage whose \
-             CLONE_MAY_REENTER is false; this is a bug in the SlotStorage impl"
-        )
-    }
-
-    /// Phase two of the two-phase clone, vacant case: reconstruct a *vacant*
-    /// slot from its owned [`snapshot`](Self::CloneSnapshot) and free-list
-    /// successor index.
-    ///
-    /// The default ignores `snapshot` and defers to
-    /// [`new_vacant`](SlotStorage::new_vacant), which is correct for storages
-    /// whose side data is empty (`CloneSnapshot = ()`) or carried only by
-    /// occupied slots. Override it to preserve per-slot side data (e.g. a tag)
-    /// across the clone of a vacant slot. Only invoked when `CLONE_MAY_REENTER`
-    /// is `true`.
-    ///
-    /// # Safety
-    /// `snapshot` must be the value returned by
-    /// [`snapshot_slot`](Self::snapshot_slot) for the slot being rebuilt.
-    unsafe fn clone_vacant_from_snapshot(
-        snapshot: Self::CloneSnapshot,
-        next: Option<<Self::Key as Key>::Idx>,
-    ) -> Self {
-        let _ = snapshot;
-        Self::new_vacant(next)
-    }
 }

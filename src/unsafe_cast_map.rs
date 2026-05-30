@@ -19,7 +19,7 @@ use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
 use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
 use crate::key::Key;
 use crate::retype_ptr::RetypePtr;
-use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::slot_storage::{SlotStorage, SlotStorageMutOutput};
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
 /// Build a cast key from an inner key and a reference (for pointer metadata).
@@ -417,32 +417,6 @@ where
     #[inline]
     pub unsafe fn get_slot_unchecked_mut(&mut self, idx: IdxOfStorage<C>) -> &mut Slot<C> {
         self.inner.get_slot_unchecked_mut(idx)
-    }
-    /// Safe wrapper around [`clone_efficiently`](Self::clone_efficiently):
-    /// the `&mut self` borrow prevents the stored type's `Clone` from
-    /// mutating the map.
-    #[inline]
-    pub fn clone_efficiently_mut(&mut self) -> Self
-    where
-        C: SlotStorageClone,
-    {
-        Self {
-            inner: self.inner.clone_efficiently_mut(),
-        }
-    }
-
-    /// Efficient clone. **UB** if the stored type's `Clone` mutates the map.
-    ///
-    /// # Safety
-    /// The stored type's `Clone` must not call any method on this map.
-    #[inline]
-    pub unsafe fn clone_efficiently(&self) -> Self
-    where
-        C: SlotStorageClone,
-    {
-        Self {
-            inner: self.inner.clone_efficiently(),
-        }
     }
 
     // ── inner-key access ──────────────────────────────────────────────
