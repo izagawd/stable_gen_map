@@ -100,11 +100,7 @@ mod clone_tests {
 
         // Every live (k, v) pair from the original must appear with same value in clone.
         for (k, v) in map.snapshot() {
-            assert_eq!(
-                clone.get(k),
-                Some(v),
-                "clone must copy all live entries"
-            );
+            assert_eq!(clone.get(k), Some(v), "clone must copy all live entries");
         }
 
         // Freed keys must still be invalid in the clone.
@@ -361,9 +357,17 @@ fn clone_then_drop_both_is_balanced_with_holes() {
 
     // Drop the original: exactly its 3 live values drop (vacant slots drop none).
     drop(map);
-    assert_eq!(drops.get(), 5, "dropping the original drops its 3 live values");
+    assert_eq!(
+        drops.get(),
+        5,
+        "dropping the original drops its 3 live values"
+    );
 
     // Drop the clone: its own 3 live values drop. No double-free, no leak.
     drop(cloned);
-    assert_eq!(drops.get(), 8, "dropping the clone drops its own 3 live values");
+    assert_eq!(
+        drops.get(),
+        8,
+        "dropping the clone drops its own 3 live values"
+    );
 }

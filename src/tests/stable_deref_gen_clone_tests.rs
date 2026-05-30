@@ -159,14 +159,8 @@ mod clone_stable_tests {
         // Deep clone: different allocations for the *same* keys.
         let c1 = clone.get(k1).unwrap() as *const String;
         let c3 = clone.get(k3).unwrap() as *const String;
-        assert_ne!(
-            p1, c1,
-            "clone must deep-clone values, not share them"
-        );
-        assert_ne!(
-            p3, c3,
-            "clone must deep-clone values, not share them"
-        );
+        assert_ne!(p1, c1, "clone must deep-clone values, not share them");
+        assert_ne!(p3, c3, "clone must deep-clone values, not share them");
 
         // Mutate original; clone should be unaffected.
         *map.get_mut(k1).unwrap() = "ONE!".to_owned();

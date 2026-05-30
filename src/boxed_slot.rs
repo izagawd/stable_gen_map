@@ -1,6 +1,6 @@
+use crate::clone_gen_map_promise::CloneGenMapPromise;
 use crate::gen_map::GenMap;
 use crate::key::Key;
-use crate::clone_gen_map_promise::CloneGenMapPromise;
 use crate::slot_storage::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use std::mem::ManuallyDrop;
 
@@ -77,7 +77,7 @@ unsafe impl<K: Key, T: CloneGenMapPromise> SlotStorageClone for BoxedSlot<K, T> 
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
-            let cloned : T = (*self.0.occupied).clone();
+            let cloned: T = (*self.0.occupied).clone();
             BoxedSlot(Box::new(SlotData {
                 occupied: ManuallyDrop::new(cloned),
             }))

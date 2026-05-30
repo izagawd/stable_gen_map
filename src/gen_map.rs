@@ -646,7 +646,6 @@ impl<C: SlotStorage> GenMap<C> {
                 }
             })
     }
-
 }
 
 // ─── Clone (generic over any cloneable slot storage) ─────────────────────────

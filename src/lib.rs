@@ -3,9 +3,9 @@
 #![cfg_attr(feature = "castable", feature(unsize))]
 
 pub mod boxed_slot;
-pub mod clone_gen_map_promise;
 #[cfg(feature = "castable")]
 pub mod cast_key;
+pub mod clone_gen_map_promise;
 pub mod deref_slot;
 pub mod gen_map;
 pub mod key;
