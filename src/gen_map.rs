@@ -82,8 +82,9 @@ impl<C: SlotStorageMutOutput> Slot<C> {
 impl<C: SlotStorage> Drop for Slot<C> {
     #[inline]
     fn drop(&mut self) {
-        if is_occupied_by_generation(self.generation) {
-            unsafe { self.storage.drop_occupied() }
+        unsafe {
+            self.storage
+                .drop_contents(self.is_occupied())
         }
     }
 }
@@ -745,36 +746,43 @@ impl<C: SlotStorageClone> Clone for GenMap<C> {
             let num_elements = self.len();
             let slots_ref = &*self.slots.get();
 
-            // ── phase 1: capture stable `&Output` / vacant next-index ────────
-            enum Snap<'a, C: SlotStorage> {
+            // ── phase 1: capture owned per-slot snapshot + stable payload ────
+            // (snapshot for every slot; payload is `&Output` if occupied, else
+            // the free-list index)
+            enum Payload<'a, C: SlotStorage> {
                 Occupied(&'a C::Output),
                 Vacant(Option<IdxOfStorage<C>>),
             }
 
-            let mut snapshot: Vec<(GenOfStorage<C>, Snap<'_, C>)> =
+            let mut snapshot: Vec<(GenOfStorage<C>, C::CloneSnapshot, Payload<'_, C>)> =
                 Vec::with_capacity(slots_ref.len());
 
             for cell in slots_ref.iter() {
                 let slot = &*cell.get();
                 let generation = slot.generation;
-                let snap = if is_occupied_by_generation(generation) {
-                    Snap::Occupied(slot.storage.ref_output())
+                // Captured before any `Output::clone` can re-enter `self`.
+                let captured = slot.storage.snapshot_slot();
+                let payload = if is_occupied_by_generation(generation) {
+                    Payload::Occupied(slot.storage.ref_output())
                 } else {
-                    Snap::Vacant(slot.storage.get_vacant())
+                    Payload::Vacant(slot.storage.get_vacant())
                 };
-                snapshot.push((generation, snap));
+                snapshot.push((generation, captured, payload));
             }
 
             // ── phase 2: rebuild ─────────────────────────────────────────────
             // `clone_occupied_from_output` may re-enter `self` via insert, but
-            // we only read the stable `&Output` refs captured above and write
-            // into `new_slots`, never into `self.slots`.
+            // we only read the stable `&Output` refs and owned snapshots
+            // captured above and write into `new_slots`, never into
+            // `self.slots`.
             let new_slots: Vec<UnsafeCell<Slot<C>>> = snapshot
                 .into_iter()
-                .map(|(generation, snap)| {
-                    let storage = match snap {
-                        Snap::Occupied(output) => C::clone_occupied_from_output(output),
-                        Snap::Vacant(next) => C::new_vacant(next),
+                .map(|(generation, captured, payload)| {
+                    let storage = match payload {
+                        Payload::Occupied(output) => {
+                            C::clone_occupied_from_output(captured, output)
+                        }
+                        Payload::Vacant(next) => C::clone_vacant_from_snapshot(captured, next),
                     };
                     UnsafeCell::new(Slot {
                         generation,

@@ -71,8 +71,11 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise> SlotStorage for DerefSlot<K, Ptr> {
     }
 
     #[inline]
-    unsafe fn drop_occupied(&mut self) {
-        ManuallyDrop::drop(&mut self.0.occupied);
+    unsafe fn drop_contents(&mut self, is_occupied: bool) {
+        if is_occupied {
+            ManuallyDrop::drop(&mut self.0.occupied);
+        }
+        // Vacant variant is `Option<K::Idx>` (Copy); nothing to drop.
     }
 }
 
@@ -91,6 +94,8 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise + SmartPtrCloneable> SlotStorageClon
     // and cannot. The kind comes from `SmartPtrCloneable::KIND`.
     const CLONE_MAY_REENTER: bool = matches!(Ptr::KIND, SmartPtrKind::Owned);
 
+    type CloneSnapshot = ();
+
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
@@ -105,7 +110,10 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise + SmartPtrCloneable> SlotStorageClon
     }
 
     #[inline]
-    unsafe fn clone_occupied_from_output(output: &Ptr::Target) -> Self {
+    unsafe fn snapshot_slot(&self) {}
+
+    #[inline]
+    unsafe fn clone_occupied_from_output(_snapshot: (), output: &Ptr::Target) -> Self {
         // Only reached for `Owned` pointers (`CLONE_MAY_REENTER == true`),
         // where `clone_from_reference` returns `Some`.
         DerefSlot(SlotData {

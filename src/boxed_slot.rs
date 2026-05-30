@@ -51,8 +51,12 @@ unsafe impl<K: Key, T> SlotStorage for BoxedSlot<K, T> {
     }
 
     #[inline]
-    unsafe fn drop_occupied(&mut self) {
-        ManuallyDrop::drop(&mut self.0.occupied);
+    unsafe fn drop_contents(&mut self, is_occupied: bool) {
+        if is_occupied {
+            ManuallyDrop::drop(&mut self.0.occupied);
+        }
+        // Vacant variant is `Option<K::Idx>` (Copy); nothing to drop. The `Box`
+        // holding the union is freed by `BoxedSlot`'s own drop afterwards.
     }
 }
 
@@ -69,6 +73,8 @@ unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
     // is required for soundness.
     const CLONE_MAY_REENTER: bool = true;
 
+    type CloneSnapshot = ();
+
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
@@ -83,7 +89,10 @@ unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
     }
 
     #[inline]
-    unsafe fn clone_occupied_from_output(output: &T) -> Self {
+    unsafe fn snapshot_slot(&self) {}
+
+    #[inline]
+    unsafe fn clone_occupied_from_output(_snapshot: (), output: &T) -> Self {
         // `Output == Stored == T` for `BoxedSlot`, so cloning the stable `&T`
         // output reproduces the payload without touching the live slot.
         BoxedSlot(Box::new(SlotData {
