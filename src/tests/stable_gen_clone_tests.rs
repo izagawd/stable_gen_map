@@ -371,3 +371,195 @@ fn clone_then_drop_both_is_balanced_with_holes() {
         "dropping the clone drops its own 3 live values"
     );
 }
+// ── clone_from: recycles self's slot buffer; result mirrors source ───────────
+
+#[test]
+fn clone_from_empty() {
+    let mut dst: Map = Map::new();
+    let src: Map = Map::new();
+    dst.clone_from(&src);
+    assert_eq!(dst.len(), 0);
+    assert_eq!(dst.slots_len(), 0);
+}
+
+#[test]
+fn clone_from_contents_equal_but_independent() {
+    let mut dst: Map = Map::new();
+    dst.insert(1);
+    dst.insert(2);
+
+    let mut src: Map = Map::new();
+    let k1 = src.insert(10);
+    let k2 = src.insert(20);
+    let k3 = src.insert(30);
+
+    dst.clone_from(&src);
+
+    // dst now mirrors src
+    assert_eq!(dst.len(), 3);
+    assert_eq!(dst.get(k1), Some(&10));
+    assert_eq!(dst.get(k2), Some(&20));
+    assert_eq!(dst.get(k3), Some(&30));
+
+    // independent: mutating src does not affect dst
+    src.remove(k2);
+    let k4 = src.insert(40);
+    assert_eq!(dst.get(k2), Some(&20));
+    assert_eq!(dst.get(k4), None);
+}
+
+#[test]
+fn clone_from_matches_clone() {
+    let mut src: Map = Map::new();
+    let k1 = src.insert(1);
+    let k2 = src.insert(2);
+    let k3 = src.insert(3);
+    src.remove(k2); // a hole
+
+    let mut dst: Map = Map::new();
+    dst.insert(99); // pre-existing content, discarded
+
+    dst.clone_from(&src);
+    let fresh = src.clone();
+
+    assert_eq!(dst.len(), fresh.len());
+    assert_eq!(dst.slots_len(), fresh.slots_len());
+    assert_eq!(dst.get(k1), fresh.get(k1));
+    assert_eq!(dst.get(k3), fresh.get(k3));
+    assert_eq!(dst.get(k2), None);
+}
+
+#[test]
+fn clone_from_overwrites_larger_dst() {
+    // dst bigger than src: clone_from shrinks it to source's slot count.
+    let mut dst: Map = Map::new();
+    for i in 0..10 {
+        dst.insert(i);
+    }
+    assert_eq!(dst.slots_len(), 10);
+
+    let src: Map = Map::new();
+    let a = src.insert(100);
+    let b = src.insert(200);
+
+    dst.clone_from(&src);
+    assert_eq!(dst.len(), 2);
+    assert_eq!(dst.slots_len(), 2, "dst shrinks to source's slot count");
+    assert_eq!(dst.get(a), Some(&100));
+    assert_eq!(dst.get(b), Some(&200));
+}
+
+#[test]
+fn clone_from_grows_smaller_dst() {
+    let mut dst: Map = Map::new();
+    dst.insert(1);
+
+    let src: Map = Map::new();
+    let mut keys = Vec::new();
+    for i in 0..50 {
+        keys.push((src.insert(i), i));
+    }
+
+    dst.clone_from(&src);
+    assert_eq!(dst.len(), 50);
+    assert_eq!(dst.slots_len(), 50);
+    for (k, v) in keys {
+        assert_eq!(dst.get(k), Some(&v));
+    }
+}
+
+#[test]
+fn clone_from_preserves_holes() {
+    let mut src: Map = Map::new();
+    let k1 = src.insert(1);
+    let k2 = src.insert(2);
+    let k3 = src.insert(3);
+    src.remove(k2); // vacant slot remains
+    assert_eq!(src.len(), 2);
+    assert_eq!(src.slots_len(), 3);
+
+    let mut dst: Map = Map::new();
+    dst.insert(9);
+    dst.clone_from(&src);
+
+    assert_eq!(dst.len(), 2);
+    assert_eq!(dst.slots_len(), 3, "the hole is mirrored");
+    assert_eq!(dst.get(k1), Some(&1));
+    assert_eq!(dst.get(k3), Some(&3));
+    assert!(dst.get(k2).is_none());
+}
+
+#[test]
+fn clone_from_reuses_slot_buffer() {
+    // White-box: with enough capacity already, clone_from recycles the existing
+    // slot-vector allocation instead of reallocating.
+    let mut dst: Map = Map::new();
+    for i in 0..8 {
+        dst.insert(i); // allocate a buffer with capacity >= 8
+    }
+    let ptr_before = unsafe { (*dst.slots.get()).as_ptr() };
+
+    let src: Map = Map::new();
+    for i in 0..4 {
+        src.insert(i * 10); // fewer slots than dst's capacity
+    }
+
+    dst.clone_from(&src);
+    let ptr_after = unsafe { (*dst.slots.get()).as_ptr() };
+    assert_eq!(ptr_before, ptr_after, "clone_from reuses the slot buffer");
+    assert_eq!(dst.len(), 4);
+}
+
+#[test]
+fn clone_from_deep_clones_values() {
+    let src: Map = Map::new();
+    let k = src.insert(7);
+
+    let mut dst: Map = Map::new();
+    dst.insert(99);
+    dst.clone_from(&src);
+
+    let p_src = src.get(k).unwrap() as *const i32;
+    let p_dst = dst.get(k).unwrap() as *const i32;
+    assert_ne!(p_src, p_dst, "values are cloned into fresh storage");
+    assert_eq!(dst.get(k), Some(&7));
+}
+
+#[test]
+fn clone_from_is_drop_balanced() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let drops = Rc::new(Cell::new(0usize));
+    let mk = |v: i32| DropTracked {
+        drops: drops.clone(),
+        val: v,
+    };
+
+    // dst with 3 live values, one removed -> a hole.
+    let mut dst: StableGenMap<DefaultKey, DropTracked> = StableGenMap::new();
+    dst.insert(mk(1));
+    let r = dst.insert(mk(2));
+    dst.insert(mk(3));
+    dst.remove(r); // drops 1 -> counter 1
+    assert_eq!(drops.get(), 1);
+
+    // src with 2 live values.
+    let src: StableGenMap<DefaultKey, DropTracked> = StableGenMap::new();
+    let s1 = src.insert(mk(10));
+    let s2 = src.insert(mk(20));
+
+    // clone_from drops dst's 2 remaining live values (1 -> 3) and clones src's
+    // 2 (running Clone, never Drop).
+    dst.clone_from(&src);
+    assert_eq!(drops.get(), 3, "clone_from drops dst's old live values once");
+    assert_eq!(dst.len(), 2);
+    assert_eq!(dst.get(s1).map(|t| t.val), Some(10));
+    assert_eq!(dst.get(s2).map(|t| t.val), Some(20));
+
+    // Drop both: src's 2 originals + dst's 2 clones. No double-free, no leak.
+    drop(src);
+    assert_eq!(drops.get(), 5);
+    drop(dst);
+    assert_eq!(drops.get(), 7, "drop-balanced: every value dropped once");
+}

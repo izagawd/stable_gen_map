@@ -276,3 +276,104 @@ fn clone_with_holes_preserves_logical_state() {
     assert_eq!(c.get(k3), Some(&3));
     assert_eq!(c.get(k4), Some(&4));
 }
+// ── clone_from (DerefSlot): recycles buffer, mirrors source ──────────────────
+
+#[test]
+fn clone_from_contents_equal_but_independent() {
+    let mut dst: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    dst.insert(Box::new(1));
+
+    let mut src: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    let k1 = src.insert(Box::new(10));
+    let k2 = src.insert(Box::new(20));
+
+    dst.clone_from(&src);
+    assert_eq!(dst.len(), 2);
+    assert_eq!(dst.get(k1), Some(&10));
+    assert_eq!(dst.get(k2), Some(&20));
+
+    // independent
+    src.remove(k2);
+    assert_eq!(dst.get(k2), Some(&20));
+}
+
+#[test]
+fn clone_from_matches_clone() {
+    let mut src: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    let k1 = src.insert(Box::new(1));
+    let k2 = src.insert(Box::new(2));
+    let k3 = src.insert(Box::new(3));
+    src.remove(k2);
+
+    let mut dst: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    dst.insert(Box::new(99));
+    dst.clone_from(&src);
+    let fresh = src.clone();
+
+    assert_eq!(dst.len(), fresh.len());
+    assert_eq!(dst.slots_len(), fresh.slots_len());
+    assert_eq!(dst.get(k1), fresh.get(k1));
+    assert_eq!(dst.get(k3), fresh.get(k3));
+}
+
+#[test]
+fn clone_from_deep_clones_new_boxes() {
+    let src: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    let k = src.insert(Box::new(7));
+
+    let mut dst: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    dst.insert(Box::new(99));
+    dst.clone_from(&src);
+
+    let p_src = src.get(k).unwrap() as *const i32 as usize;
+    let p_dst = dst.get(k).unwrap() as *const i32 as usize;
+    assert_ne!(p_src, p_dst, "clone_from allocates independent boxes");
+    assert_eq!(dst.get(k), Some(&7));
+}
+
+#[test]
+fn clone_from_with_rc_bumps_then_releases_refcount() {
+    use std::rc::Rc;
+
+    let src: BoxStableDerefMap<DefaultKey, Rc<String>> = BoxStableDerefMap::new();
+    let k = src.insert(Box::new(Rc::new("hi".to_string())));
+    assert_eq!(Rc::strong_count(src.get(k).unwrap()), 1);
+
+    let mut dst: BoxStableDerefMap<DefaultKey, Rc<String>> = BoxStableDerefMap::new();
+    dst.insert(Box::new(Rc::new("old".to_string())));
+
+    dst.clone_from(&src);
+    // src's Rc is now shared with dst's clone; the old dst Rc was dropped.
+    assert_eq!(
+        Rc::strong_count(src.get(k).unwrap()),
+        2,
+        "clone_from clones the Rc"
+    );
+    assert!(Rc::ptr_eq(src.get(k).unwrap(), dst.get(k).unwrap()));
+
+    drop(dst);
+    assert_eq!(
+        Rc::strong_count(src.get(k).unwrap()),
+        1,
+        "dropping dst releases its cloned Rc"
+    );
+}
+
+#[test]
+fn clone_from_preserves_holes() {
+    let mut src: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    let k1 = src.insert(Box::new(1));
+    let k2 = src.insert(Box::new(2));
+    let k3 = src.insert(Box::new(3));
+    src.remove(k2);
+    assert_eq!(src.len(), 2);
+    assert_eq!(src.slots_len(), 3);
+
+    let mut dst: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
+    dst.clone_from(&src);
+    assert_eq!(dst.len(), 2);
+    assert_eq!(dst.slots_len(), 3);
+    assert_eq!(dst.get(k1), Some(&1));
+    assert!(dst.get(k2).is_none());
+    assert_eq!(dst.get(k3), Some(&3));
+}
