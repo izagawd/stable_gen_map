@@ -666,7 +666,7 @@ impl<C: SlotStorageClone> GenMap<C> {
     /// Cloning a slot may run user code, and
     /// the pass holds `&self` into the slot buffer throughout. The caller must
     /// guarantee none of that code **mutates this map** (for example, via
-    /// `insert`) before the pass finishes; a mutation that grows / reallocates
+    /// `insert`/`reserve`) before the pass finishes; a mutation that grows / reallocates
     /// the slot buffer would free the memory this borrow points into, which is
     /// undefined behaviour. Read-only re-entry (`get`, `len`, iteration, …) is
     /// fine.

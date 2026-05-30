@@ -140,7 +140,7 @@ pub unsafe trait SlotStorageClone: SlotStorage {
 
 /// Promise that this storage's [`clone_storage`](SlotStorageClone::clone_storage)
 /// **cannot mutate the [`GenMap`](crate::gen_map::GenMap) being cloned** (for
-/// example, via `insert`) — so it is sound to call through a shared `&self`
+/// example, via `insert`/`reserve`) — so it is sound to call through a shared `&self`
 /// during the map's single-pass clone. Only *mutation* matters here; a clone
 /// that merely reads the map (`get`, `len`, iteration, …) is fine and does not
 /// disqualify a storage.

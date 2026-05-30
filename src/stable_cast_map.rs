@@ -437,7 +437,7 @@ where
     /// keys valid on the original stay do **NOT** stay valid on the clone
     /// # Safety
     /// The caller must guarantee no stored value's `Clone` mutates this map (for
-    /// example, via `insert`) while the pass runs; read-only re-entry is fine
+    /// example, via `insert`/`reserve`) while the pass runs; read-only re-entry is fine
     /// (see `GenMap::unsafe_clone`).
     #[inline]
     pub unsafe fn unsafe_clone(&self) -> Self
