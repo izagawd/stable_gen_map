@@ -19,8 +19,8 @@ friction.
 ## Basic example
 
 ```rust
-use stable_gen_map::key::DefaultKey;
-use stable_gen_map::stable_gen_map::StableGenMap;
+use stable_gen_map::DefaultKey;
+use stable_gen_map::StableGenMap;
 
 fn main() {
   let map = StableGenMap::<DefaultKey, String>::new();
@@ -123,7 +123,7 @@ These rely on the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize
 
 ```toml
 [dependencies]
-stable_gen_map = { version = "0.24", features = ["castable"] }
+stable_gen_map = { version = "0.27", features = ["castable"] }
 ```
 
 The two layers — the safe `StableCastMap` and the low-level `unsafe`
@@ -139,9 +139,9 @@ site.
 ### Quick example
 
 ```rust
-use stable_gen_map::cast_key::StableCastKey;
-use stable_gen_map::key::DefaultKey;
-use stable_gen_map::stable_cast_map::StableBoxCastMap;
+use stable_gen_map::StableCastKey;
+use stable_gen_map::DefaultKey;
+use stable_gen_map::StableBoxCastMap;
 use std::any::Any;
 
 type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;
