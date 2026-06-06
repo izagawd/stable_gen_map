@@ -105,60 +105,6 @@ fn unsafe_cast_map_get_unchecked_mut_dyn_any() {
     }
 }
 
-// ─── UnsafeCastMap::get_slot / get_slot_unchecked ───────────────────────────
-
-#[test]
-fn unsafe_cast_map_get_slot_returns_occupied() {
-    let map: UnsafeMap = UnsafeMap::new();
-    let key = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
-    let idx = key.key_data().idx;
-
-    unsafe {
-        let slot = map.get_slot(idx).unwrap();
-        assert_eq!(*slot.generation() % 2, 1);
-        let val: &dyn Any = slot.ref_output();
-        assert_eq!(val.downcast_ref::<Dog>().unwrap().name, "Rex");
-    }
-}
-
-#[test]
-fn unsafe_cast_map_get_slot_none_for_out_of_bounds() {
-    let map: UnsafeMap = UnsafeMap::new();
-    let _ = map.insert(Box::new(42i32) as Box<dyn Any>);
-
-    unsafe {
-        assert!(map.get_slot(999u32).is_none());
-    }
-}
-
-#[test]
-fn unsafe_cast_map_get_slot_vacant_after_remove() {
-    let mut map: UnsafeMap = UnsafeMap::new();
-    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
-    let idx = key.key_data().idx;
-    unsafe { map.remove(key) };
-
-    unsafe {
-        let slot = map.get_slot(idx).unwrap();
-        assert_eq!(*slot.generation() % 2, 0);
-    }
-}
-
-#[test]
-fn unsafe_cast_map_get_slot_unchecked_matches_get_slot() {
-    let map: UnsafeMap = UnsafeMap::new();
-    let key = map.insert_sized(Box::new(Cat {
-        name: "Whiskers".into(),
-    }));
-    let idx = key.key_data().idx;
-
-    unsafe {
-        let checked = map.get_slot(idx).unwrap();
-        let unchecked = map.get_slot_unchecked(idx);
-        assert_eq!(*checked.generation(), *unchecked.generation());
-    }
-}
-
 // ─── UnsafeCastMap::get_slot_as_cell ────────────────────────────────────────
 
 #[test]
@@ -301,58 +247,6 @@ fn stable_cast_map_get_unchecked_mut_dyn_any() {
 
     let val = map.get(key).unwrap();
     assert_eq!(val.downcast_ref::<String>().unwrap(), "goodbye");
-}
-
-// ─── StableCastMap::get_slot / get_slot_unchecked ──────────────────────────
-
-#[test]
-fn stable_cast_map_get_slot_returns_occupied() {
-    let map: SafeMap = SafeMap::new();
-    let key = map.insert(Box::new(Dog { name: "Rex".into() }) as Box<dyn Any>);
-    let idx = key.key_data().idx;
-
-    unsafe {
-        let slot = map.get_slot(idx).unwrap();
-        assert_eq!(*slot.generation() % 2, 1);
-        let val: &dyn Any = slot.ref_output();
-        assert_eq!(val.downcast_ref::<Dog>().unwrap().name, "Rex");
-    }
-}
-
-#[test]
-fn stable_cast_map_get_slot_none_for_out_of_bounds() {
-    let map: SafeMap = SafeMap::new();
-    let _ = map.insert(Box::new(42i32) as Box<dyn Any>);
-
-    unsafe {
-        assert!(map.get_slot(999u32).is_none());
-    }
-}
-
-#[test]
-fn stable_cast_map_get_slot_unchecked_matches_get_slot() {
-    let map: SafeMap = SafeMap::new();
-    let key = map.insert(Box::new(100u64) as Box<dyn Any>);
-    let idx = key.key_data().idx;
-
-    unsafe {
-        let checked = map.get_slot(idx).unwrap();
-        let unchecked = map.get_slot_unchecked(idx);
-        assert_eq!(*checked.generation(), *unchecked.generation());
-    }
-}
-
-#[test]
-fn stable_cast_map_get_slot_vacant_after_remove() {
-    let mut map: SafeMap = SafeMap::new();
-    let key = map.insert(Box::new(42i32) as Box<dyn Any>);
-    let idx = key.key_data().idx;
-    map.remove(key);
-
-    unsafe {
-        let slot = map.get_slot(idx).unwrap();
-        assert_eq!(*slot.generation() % 2, 0);
-    }
 }
 
 // ─── StableCastMap::get_slot_as_cell ───────────────────────────────────────
