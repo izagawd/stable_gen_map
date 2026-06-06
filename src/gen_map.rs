@@ -331,7 +331,7 @@ impl<C: SlotStorage> GenMap<C> {
     /// on to mutate the map is undefined as well, even if you, or the function, never read the
     /// `&Slot` reference again. `&UnsafeCell<Slot>` makes no freeze promise, so you may
     /// keep it (and pass it around) across mutations of the map, provided you
-    /// do not access it. Even calling `cell.get()` to get the `rawptr` may be UB after a resize
+    /// do not access it. Even merely calling `cell.get()` to get the `rawptr` may be UB after a resize.
     #[inline]
     pub unsafe fn get_slot_as_cell(&self, idx: IdxOfStorage<C>) -> Option<&UnsafeCell<Slot<C>>> {
         let slots = &*self.slots.get();
