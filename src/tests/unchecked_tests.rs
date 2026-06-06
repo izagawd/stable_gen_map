@@ -78,97 +78,6 @@ fn get_unchecked_mut_multiple_keys() {
     assert_eq!(map.get(k2).unwrap(), "world?");
 }
 
-// ─── get_slot ───────────────────────────────────────────────────────────────
-
-#[test]
-fn get_slot_returns_occupied_slot() {
-    let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let k = map.insert(42);
-    let idx = k.data().idx;
-
-    unsafe {
-        let slot = map.get_slot(idx).unwrap();
-        // occupied slots have odd generation
-        assert_eq!(*slot.generation() % 2, 1);
-        assert_eq!(*slot.ref_output(), 42);
-    }
-}
-
-#[test]
-fn get_slot_returns_vacant_slot_after_remove() {
-    let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let k = map.insert(42);
-    let idx = k.data().idx;
-    map.remove(k);
-
-    unsafe {
-        let slot = map.get_slot(idx).unwrap();
-        // vacant slots have even generation
-        assert_eq!(*slot.generation() % 2, 0);
-    }
-}
-
-#[test]
-fn get_slot_returns_none_for_out_of_bounds() {
-    let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let _ = map.insert(42);
-
-    unsafe {
-        assert!(map.get_slot(999u32).is_none());
-    }
-}
-
-#[test]
-fn get_slot_ref_output_matches_get() {
-    let map: StableGenMap<DefaultKey, String> = StableGenMap::new();
-    let k = map.insert("hello".to_string());
-    let idx = k.data().idx;
-
-    unsafe {
-        let slot = map.get_slot(idx).unwrap();
-        let via_slot = slot.ref_output();
-        let via_get = map.get(k).unwrap();
-        assert_eq!(via_slot, via_get);
-    }
-}
-
-// ─── get_slot_unchecked ─────────────────────────────────────────────────────
-
-#[test]
-fn get_slot_unchecked_returns_same_as_get_slot() {
-    let map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let k1 = map.insert(10);
-    let k2 = map.insert(20);
-    let idx1 = k1.data().idx;
-    let idx2 = k2.data().idx;
-
-    unsafe {
-        let checked = map.get_slot(idx1).unwrap();
-        let unchecked = map.get_slot_unchecked(idx1);
-        assert_eq!(*checked.generation(), *unchecked.generation());
-        assert_eq!(*checked.ref_output(), *unchecked.ref_output());
-
-        let checked = map.get_slot(idx2).unwrap();
-        let unchecked = map.get_slot_unchecked(idx2);
-        assert_eq!(*checked.generation(), *unchecked.generation());
-        assert_eq!(*checked.ref_output(), *unchecked.ref_output());
-    }
-}
-
-#[test]
-fn get_slot_unchecked_can_observe_vacant_slot() {
-    let mut map: StableGenMap<DefaultKey, i32> = StableGenMap::new();
-    let k = map.insert(42);
-    let idx = k.data().idx;
-    map.remove(k);
-
-    unsafe {
-        let slot = map.get_slot_unchecked(idx);
-        // After removal the generation is bumped to even (vacant)
-        assert_eq!(*slot.generation() % 2, 0);
-    }
-}
-
 // ─── get_slot_as_cell ───────────────────────────────────────────────────────
 
 #[test]
@@ -258,7 +167,8 @@ fn slot_storage_returns_slot_storage_ref() {
     let idx = k.data().idx;
 
     unsafe {
-        let slot = map.get_slot(idx).unwrap();
+        let cell = map.get_slot_as_cell(idx).unwrap();
+        let slot = &*cell.get();
         // item() returns &BoxedSlot, ref_output() on item gives us the value
         let _item = slot.storage();
     }
@@ -303,21 +213,6 @@ fn get_unchecked_mut_works_with_deref_map() {
         map.get_unchecked_mut(k).push_str(" world");
     }
     assert_eq!(map.get(k).unwrap(), "hello world");
-}
-
-#[test]
-fn get_slot_on_deref_map() {
-    use crate::deref_slot::BoxStableDerefMap;
-
-    let map: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
-    let k = map.insert(Box::new(77));
-    let idx = k.data().idx;
-
-    unsafe {
-        let slot = map.get_slot(idx).unwrap();
-        assert_eq!(*slot.generation() % 2, 1);
-        assert_eq!(*slot.ref_output(), 77);
-    }
 }
 
 #[test]

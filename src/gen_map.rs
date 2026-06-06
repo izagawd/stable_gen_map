@@ -299,72 +299,67 @@ impl<C: SlotStorage> GenMap<C> {
         }
     }
 
-    /// Returns a reference to the raw [`Slot`] at the given index.
+    /// Returns the [`UnsafeCell`] that wraps the [`Slot`] at `idx`, or `None`
+    /// if `idx` is out of bounds.
     ///
-    /// Performs bounds checking. Returns `None` if out of bounds.
-    ///
-    /// # Safety
-    /// The returned slot exposes internal data structures. The caller
-    /// must not use this to violate map invariants, and must check
-    /// occupancy before accessing the slot's value.
-    ///
-    /// **Holding a `&Slot` reference, performing an `insert`, and then
-    /// accessing that old `&Slot` or any of its contents is undefined behaviour.** `insert` only
-    /// requires `&self` and may reallocate the backing storage, which
-    /// invalidates all previously obtained slot references.
-    #[inline]
-    pub unsafe fn get_slot(&self, idx: IdxOfStorage<C>) -> Option<&Slot<C>> {
-        let slots = &*self.slots.get();
-        let slot = &*slots.get(idx.into_usize())?.get();
-        Some(slot)
-    }
-
-    /// Returns a reference to the raw [`Slot`] without bounds checking.
+    /// Because the index is bounds-checked, the returned reference is
+    /// guaranteed to point at a live element of the *current* backing buffer
+    /// at the moment this returns. Reading or writing the slot still goes
+    /// through [`UnsafeCell::get`], which hands back a raw pointer you must
+    /// dereference inside an `unsafe` block.
     ///
     /// # Safety
-    /// - The index must be in bounds.
-    /// - The caller must check occupancy before accessing the slot's value.
+    /// The obligations below apply to *accessing* the slot through the
+    /// returned cell (the `unsafe` deref of `cell.get()`), not to merely
+    /// obtaining the cell:
+    /// - Check occupancy with [`Slot::is_occupied`] before reading the slot's
+    ///   value; a vacant slot's value is not initialized.
+    /// - Do not derive a `&mut Slot` from the cell while any other reference
+    ///   into the same slot is live.
     ///
-    /// **Holding a `&Slot` reference, performing an `insert`, and then
-    /// accessing that old `&Slot` or any of its contents is undefined behaviour.** `insert` only
-    /// requires `&self` and may reallocate the backing storage, which
-    /// invalidates all previously obtained slot references.
-    #[inline]
-    pub unsafe fn get_slot_unchecked(&self, idx: IdxOfStorage<C>) -> &Slot<C> {
-        let slots = &*self.slots.get();
-        &*slots.get_unchecked(idx.into_usize()).get()
-    }
-
-    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
-    /// at the given index.
+    /// # Reallocation, and why this returns a cell instead of `&Slot`
+    /// [`insert`](Self::insert) takes only `&self` and may grow — and thus
+    /// reallocate — the backing buffer, freeing the old allocation. Any
+    /// reference obtained before such an insert, this cell included, then
+    /// points into freed memory.
     ///
-    /// Performs bounds checking. Returns `None` if out of bounds.
+    /// A bare `&Slot` would be the wrong thing to hand out here. A shared
+    /// reference to a non-`UnsafeCell` type is *frozen*: the language is
+    /// entitled to assume its bytes never change for as long as it lives, so
+    /// merely keeping one alive across an in-place mutation of that slot is
+    /// already undefined — and passing such a reference to a routine that goes
+    /// on to mutate the map is undefined as well, even if you never read the
+    /// reference again. `&UnsafeCell<Slot>` makes no freeze promise, so you may
+    /// keep it (and pass it around) across an *in-place* mutation, provided you
+    /// do not dereference it.
     ///
-    /// # Safety
-    /// The returned cell exposes internal data structures. The caller
-    /// must check occupancy before accessing the slot's value.
-    ///
-    /// **Holding a cell reference, performing an `insert`, and then
-    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
-    /// requires `&self` and may reallocate the backing storage, which
-    /// invalidates all previously obtained references.
+    /// Reallocation is the one case that still catches *either* kind of
+    /// reference. Dereferencing a reference into the freed buffer is always
+    /// undefined. And if that reference is itself a live argument of the call
+    /// that does the reallocation, it is undefined even without a dereference,
+    /// because the memory cannot be freed while a callee still holds a
+    /// reference to it. The discipline, then: never dereference a slot
+    /// reference taken before a possibly-growing insert, and never pass one
+    /// into the call that performs that insert.
     #[inline]
     pub unsafe fn get_slot_as_cell(&self, idx: IdxOfStorage<C>) -> Option<&UnsafeCell<Slot<C>>> {
         let slots = &*self.slots.get();
         slots.get(idx.into_usize())
     }
 
-    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
-    /// without bounds checking.
+    /// Returns the [`UnsafeCell`] wrapping the [`Slot`] at `idx` without a
+    /// bounds check.
     ///
     /// # Safety
-    /// - The index must be in bounds.
-    /// - The caller must check occupancy before accessing the slot's value.
-    ///
-    /// **Holding a cell reference, performing an `insert`, and then
-    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
-    /// requires `&self` and may reallocate the backing storage, which
-    /// invalidates all previously obtained references.
+    /// In addition to every obligation documented on
+    /// [`get_slot_as_cell`](Self::get_slot_as_cell):
+    /// - `idx` must be in bounds for the current backing buffer. With no
+    ///   bounds check, an out-of-range `idx` makes this *construct* a
+    ///   reference to out-of-bounds memory, which is undefined immediately —
+    ///   before any access through the cell. This extra, unconditional
+    ///   precondition is the reason the unchecked variant is genuinely
+    ///   `unsafe` to call, whereas the checked variant's hazards all live at
+    ///   the point of access.
     #[inline]
     pub unsafe fn get_slot_as_cell_unchecked(&self, idx: IdxOfStorage<C>) -> &UnsafeCell<Slot<C>> {
         let slots = &*self.slots.get();

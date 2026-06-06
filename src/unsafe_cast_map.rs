@@ -348,65 +348,23 @@ where
         let patched = to_castable::<C>(inner_key, reference);
         Some((patched, reference))
     }
-    // ── get_slot ────────────────────────────────────────────────────────
-    /// Returns a reference to the raw [`Slot`] at the given index.
-    ///
-    /// Performs bounds checking. Returns `None` if out of bounds.
-    ///
-    /// # Safety
-    /// The returned slot exposes internal data structures. The caller
-    /// must check occupancy before accessing the slot's value.
-    ///
-    /// **Holding a `&Slot` reference, performing an `insert`, and then
-    /// accessing that old `&Slot` or any of its contents is undefined behaviour.** `insert` only
-    /// requires `&self` and may reallocate the backing storage, which
-    /// invalidates all previously obtained slot references.
-    #[inline]
-    pub unsafe fn get_slot(&self, idx: IdxOfStorage<C>) -> Option<&Slot<C>> {
-        self.inner.get_slot(idx)
-    }
-    /// Returns a reference to the raw [`Slot`] without bounds checking.
+    // ── slot access (cell + mut) ────────────────────────────────────────
+    /// Bounds-checked cell access for the slot at `idx`. Forwards to
+    /// [`GenMap::get_slot_as_cell`](crate::gen_map::GenMap::get_slot_as_cell),
+    /// whose documentation covers the semantics and the full safety contract.
     ///
     /// # Safety
-    /// - The index must be in bounds.
-    /// - The caller must check occupancy before accessing the slot's value.
-    ///
-    /// **Holding a `&Slot` reference, performing an `insert`, and then
-    /// accessing that old `&Slot` or any of its contents is undefined behaviour.** `insert` only
-    /// requires `&self` and may reallocate the backing storage, which
-    /// invalidates all previously obtained slot references.
-    #[inline]
-    pub unsafe fn get_slot_unchecked(&self, idx: IdxOfStorage<C>) -> &Slot<C> {
-        self.inner.get_slot_unchecked(idx)
-    }
-    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
-    /// at the given index.
-    ///
-    /// Performs bounds checking. Returns `None` if out of bounds.
-    ///
-    /// # Safety
-    /// The returned cell exposes internal data structures. The caller
-    /// must check occupancy before accessing the slot's value.
-    ///
-    /// **Holding a cell reference, performing an `insert`, and then
-    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
-    /// requires `&self` and may reallocate the backing storage, which
-    /// invalidates all previously obtained references.
+    /// See [`GenMap::get_slot_as_cell`](crate::gen_map::GenMap::get_slot_as_cell).
     #[inline]
     pub unsafe fn get_slot_as_cell(&self, idx: IdxOfStorage<C>) -> Option<&UnsafeCell<Slot<C>>> {
         self.inner.get_slot_as_cell(idx)
     }
-    /// Returns a reference to the raw [`UnsafeCell`] wrapping the [`Slot`]
-    /// without bounds checking.
+    /// Unchecked cell access for the slot at `idx`. Forwards to
+    /// [`GenMap::get_slot_as_cell_unchecked`](crate::gen_map::GenMap::get_slot_as_cell_unchecked),
+    /// whose documentation covers the semantics and the full safety contract.
     ///
     /// # Safety
-    /// - The index must be in bounds.
-    /// - The caller must check occupancy before accessing the slot's value.
-    ///
-    /// **Holding a cell reference, performing an `insert`, and then
-    /// accessing that old reference or any of its contents is undefined behaviour.** `insert` only
-    /// requires `&self` and may reallocate the backing storage, which
-    /// invalidates all previously obtained references.
+    /// See [`GenMap::get_slot_as_cell_unchecked`](crate::gen_map::GenMap::get_slot_as_cell_unchecked).
     #[inline]
     pub unsafe fn get_slot_as_cell_unchecked(&self, idx: IdxOfStorage<C>) -> &UnsafeCell<Slot<C>> {
         self.inner.get_slot_as_cell_unchecked(idx)
