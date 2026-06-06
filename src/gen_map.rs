@@ -313,34 +313,25 @@ impl<C: SlotStorage> GenMap<C> {
     /// returned cell (the `unsafe` deref of `cell.get()`), not to merely
     /// obtaining the cell:
     /// - Check occupancy with [`Slot::is_occupied`] before reading the slot's
-    ///   value; a vacant slot's value is not initialized.
+    ///   value. a vacant slot's value is not initialized.
     /// - Do not derive a `&mut Slot` from the cell while any other reference
     ///   into the same slot is live.
     ///
-    /// # Reallocation, and why this returns a cell instead of `&Slot`
-    /// [`insert`](Self::insert) takes only `&self` and may grow — and thus
-    /// reallocate — the backing buffer, freeing the old allocation. Any
+    /// In addition to that, **and this part is actually very important**, [`insert`](Self::insert) takes only `&self` and may grow, and thus
+    /// reallocate the backing buffer, freeing the old allocation. Any
     /// reference obtained before such an insert, this cell included, then
     /// points into freed memory.
     ///
-    /// A bare `&Slot` would be the wrong thing to hand out here. A shared
-    /// reference to a non-`UnsafeCell` type is *frozen*: the language is
-    /// entitled to assume its bytes never change for as long as it lives, so
-    /// merely keeping one alive across an in-place mutation of that slot is
-    /// already undefined — and passing such a reference to a routine that goes
-    /// on to mutate the map is undefined as well, even if you never read the
-    /// reference again. `&UnsafeCell<Slot>` makes no freeze promise, so you may
-    /// keep it (and pass it around) across an *in-place* mutation, provided you
-    /// do not dereference it.
+    /// A bare `&Slot` is a reference to a non-`UnsafeCell`, which implies some of its contents may be *frozen* ***(and some of its fields are indeed frozen)***
     ///
-    /// Reallocation is the one case that still catches *either* kind of
-    /// reference. Dereferencing a reference into the freed buffer is always
-    /// undefined. And if that reference is itself a live argument of the call
-    /// that does the reallocation, it is undefined even without a dereference,
-    /// because the memory cannot be freed while a callee still holds a
-    /// reference to it. The discipline, then: never dereference a slot
-    /// reference taken before a possibly-growing insert, and never pass one
-    /// into the call that performs that insert.
+    /// Meaning Rust is
+    /// entitled to assume some of its bytes never change for as long as `&Slot` lives, so
+    /// merely keeping one alive across a resize is
+    /// already undefined behavior, and passing such a reference to a function that goes
+    /// on to mutate the map is undefined as well, even if you, or the function, never read the
+    /// `&Slot` reference again. `&UnsafeCell<Slot>` makes no freeze promise, so you may
+    /// keep it (and pass it around) across mutations of the map, provided you
+    /// do not access it. Even calling `cell.get()` to get the `rawptr` may be UB after a resize
     #[inline]
     pub unsafe fn get_slot_as_cell(&self, idx: IdxOfStorage<C>) -> Option<&UnsafeCell<Slot<C>>> {
         let slots = &*self.slots.get();
@@ -355,7 +346,7 @@ impl<C: SlotStorage> GenMap<C> {
     /// [`get_slot_as_cell`](Self::get_slot_as_cell):
     /// - `idx` must be in bounds for the current backing buffer. With no
     ///   bounds check, an out-of-range `idx` makes this *construct* a
-    ///   reference to out-of-bounds memory, which is undefined immediately —
+    ///   reference to out-of-bounds memory, which is undefined immediately
     ///   before any access through the cell. This extra, unconditional
     ///   precondition is the reason the unchecked variant is genuinely
     ///   `unsafe` to call, whereas the checked variant's hazards all live at
