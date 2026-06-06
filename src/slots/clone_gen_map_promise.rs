@@ -4,22 +4,22 @@ use std::sync::Arc;
 // ─── CloneGenMapPromise ──────────────────────────────────────────────────────
 
 /// A promise that `Self`'s [`Clone`] implementation cannot **mutate** a
-/// [`GenMap`](crate::gen_map::GenMap) — for example, by calling `insert` (or
+/// [`GenMap`](crate::core::gen_map::GenMap) — for example, by calling `insert` (or
 /// anything else that grows / reallocates one) — directly or transitively while
 /// it runs. Only mutation matters: a `Clone` that merely *reads* a map (`get`,
 /// `len`, iteration, …) is fine, because reads touch nothing about the buffer's
 /// allocation.
 ///
 /// This is the cloning counterpart of
-/// [`DerefGenMapPromise`](crate::deref_slot::DerefGenMapPromise). It exists
+/// [`DerefGenMapPromise`](crate::slots::deref_slot::DerefGenMapPromise). It exists
 /// because a `GenMap` clones its slots in a single pass while holding a shared
 /// borrow into the slot buffer (see
-/// [`SlotStorageClone`](crate::slot_storage::SlotStorageClone)); a stored value
+/// [`SlotStorageClone`](crate::core::slot_storage::SlotStorageClone)); a stored value
 /// whose `Clone` mutated and reallocated that buffer mid-clone would invalidate
 /// the borrow — undefined behaviour. Requiring stored values to implement this
-/// trait is how [`BoxedSlot`](crate::boxed_slot::BoxedSlot) and
-/// [`DerefSlot`](crate::deref_slot::DerefSlot) earn the
-/// [`NonMutatingSlotStorageClone`](crate::slot_storage::NonMutatingSlotStorageClone)
+/// trait is how [`BoxedSlot`](crate::slots::boxed_slot::BoxedSlot) and
+/// [`DerefSlot`](crate::slots::deref_slot::DerefSlot) earn the
+/// [`NonMutatingSlotStorageClone`](crate::core::slot_storage::NonMutatingSlotStorageClone)
 /// marker, and is why a `GenMap` of an owned payload whose `Clone` *might*
 /// mutate the map is simply not `Clone` (though it is still `clone_mut`-able).
 ///
@@ -32,11 +32,11 @@ use std::sync::Arc;
 /// # Examples
 /// A type that is `Clone` but **not** `CloneGenMapPromise` produces a `GenMap`
 /// that is itself not `Clone` — this is the gate that keeps a clone that might
-/// mutate the map out of [`GenMap::clone`](crate::gen_map::GenMap):
+/// mutate the map out of [`GenMap::clone`](crate::core::gen_map::GenMap):
 ///
 /// ```compile_fail
-/// use stable_gen_map::boxed_slot::StableGenMap;
-/// use stable_gen_map::key::DefaultKey;
+/// use stable_gen_map::slots::boxed_slot::StableGenMap;
+/// use stable_gen_map::keys::key::DefaultKey;
 ///
 /// #[derive(Clone)]
 /// struct NotPromised(i32);
@@ -48,7 +48,7 @@ use std::sync::Arc;
 ///
 /// # Safety
 /// Implementing this for a type whose `Clone` *can* mutate a `GenMap` (e.g. by
-/// `insert`ing into it) allows [`GenMap::clone`](crate::gen_map::GenMap) to
+/// `insert`ing into it) allows [`GenMap::clone`](crate::core::gen_map::GenMap) to
 /// trigger undefined behaviour.
 pub unsafe trait CloneGenMapPromise: Clone {}
 

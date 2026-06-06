@@ -5,8 +5,8 @@
 //! the caller must ensure the key's pointer metadata is valid for the
 //! data stored at that slot.
 //!
-//! For a safe wrapper that checks a per-map [`MapId`](crate::map_id::MapId),
-//! see [`StableCastMap`](crate::stable_cast_map::StableCastMap).
+//! For a safe wrapper that checks a per-map [`MapId`](crate::cast::map_id::MapId),
+//! see [`StableCastMap`](crate::cast::stable_cast_map::StableCastMap).
 
 use std::any::Any;
 use std::cell::UnsafeCell;
@@ -14,12 +14,12 @@ use std::collections::TryReserveError;
 use std::ops::{Deref, DerefMut};
 use std::ptr::Pointee;
 
-use crate::cast_key::CastKey;
-use crate::deref_slot::{DerefGenMapPromise, DerefSlot};
-use crate::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
-use crate::key::Key;
-use crate::retype_ptr::RetypePtr;
-use crate::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::cast::cast_key::CastKey;
+use crate::slots::deref_slot::{DerefGenMapPromise, DerefSlot};
+use crate::core::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
+use crate::keys::key::Key;
+use crate::cast::retype_ptr::RetypePtr;
+use crate::core::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
 /// Build a cast key from an inner key and a reference (for pointer metadata).
@@ -71,7 +71,7 @@ where
     }
 
     /// Reuses `self`'s inner allocation; see
-    /// [`GenMap::clone_from`](crate::gen_map::GenMap::clone_from).
+    /// [`GenMap::clone_from`](crate::core::gen_map::GenMap::clone_from).
     #[inline]
     fn clone_from(&mut self, source: &Self) {
         self.inner.clone_from(&source.inner);
@@ -350,21 +350,21 @@ where
     }
     // ── slot access (cell + mut) ────────────────────────────────────────
     /// Bounds-checked cell access for the slot at `idx`. Forwards to
-    /// [`GenMap::get_slot_as_cell`](crate::gen_map::GenMap::get_slot_as_cell),
+    /// [`GenMap::get_slot_as_cell`](crate::core::gen_map::GenMap::get_slot_as_cell),
     /// whose documentation covers the semantics and the full safety contract.
     ///
     /// # Safety
-    /// See [`GenMap::get_slot_as_cell`](crate::gen_map::GenMap::get_slot_as_cell).
+    /// See [`GenMap::get_slot_as_cell`](crate::core::gen_map::GenMap::get_slot_as_cell).
     #[inline]
     pub unsafe fn get_slot_as_cell(&self, idx: IdxOfStorage<C>) -> Option<&UnsafeCell<Slot<C>>> {
         self.inner.get_slot_as_cell(idx)
     }
     /// Unchecked cell access for the slot at `idx`. Forwards to
-    /// [`GenMap::get_slot_as_cell_unchecked`](crate::gen_map::GenMap::get_slot_as_cell_unchecked),
+    /// [`GenMap::get_slot_as_cell_unchecked`](crate::core::gen_map::GenMap::get_slot_as_cell_unchecked),
     /// whose documentation covers the semantics and the full safety contract.
     ///
     /// # Safety
-    /// See [`GenMap::get_slot_as_cell_unchecked`](crate::gen_map::GenMap::get_slot_as_cell_unchecked).
+    /// See [`GenMap::get_slot_as_cell_unchecked`](crate::core::gen_map::GenMap::get_slot_as_cell_unchecked).
     #[inline]
     pub unsafe fn get_slot_as_cell_unchecked(&self, idx: IdxOfStorage<C>) -> &UnsafeCell<Slot<C>> {
         self.inner.get_slot_as_cell_unchecked(idx)
@@ -426,7 +426,7 @@ where
     /// inner allocation. 
     /// 
     /// # Safety
-    /// See [`GenMap::unsafe_clone_from`](crate::gen_map::GenMap::unsafe_clone_from).
+    /// See [`GenMap::unsafe_clone_from`](crate::core::gen_map::GenMap::unsafe_clone_from).
     #[inline]
     pub unsafe fn unsafe_clone_from(&mut self, source: &Self)
     where

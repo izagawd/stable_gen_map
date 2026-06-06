@@ -1,4 +1,4 @@
-//! Tests for [`GenMap::reset`](crate::gen_map::GenMap::reset).
+//! Tests for [`GenMap::reset`](crate::core::gen_map::GenMap::reset).
 //!
 //! `reset` empties the map, winds every slot's generation back to zero, and
 //! keeps capacity. Unlike `clear`, it does **not** invalidate outstanding keys:
@@ -7,8 +7,8 @@
 //!
 //! These tests are feature-independent — `GenMap` does not require `castable`.
 
-use crate::boxed_slot::StableGenMap;
-use crate::key::DefaultKey;
+use crate::slots::boxed_slot::StableGenMap;
+use crate::keys::key::DefaultKey;
 
 /// `reset` empties the map.
 #[test]

@@ -5,10 +5,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// map id (0 is never a valid map id).
 static NEXT_MAP_ID: AtomicUsize = AtomicUsize::new(1);
 
-/// A unique map identifier, used by [`StableCastMap`](crate::stable_cast_map::StableCastMap)
+/// A unique map identifier, used by [`StableCastMap`](crate::cast::stable_cast_map::StableCastMap)
 /// to bind keys to the map that created them.
 ///
-/// Stored inside each [`StableCastKey`](crate::cast_key::StableCastKey) and
+/// Stored inside each [`StableCastKey`](crate::cast::cast_key::StableCastKey) and
 /// checked on every keyed access so that a key from one map cannot be used
 /// on another.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

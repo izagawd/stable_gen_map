@@ -1,6 +1,6 @@
-use crate::boxed_slot::StableGenMap;
-use crate::key::DefaultKey;
-use crate::key::Key;
+use crate::slots::boxed_slot::StableGenMap;
+use crate::keys::key::DefaultKey;
+use crate::keys::key::Key;
 
 // ─── get_unchecked ──────────────────────────────────────────────────────────
 
@@ -192,7 +192,7 @@ fn slot_generation_mut_can_be_read() {
 
 #[test]
 fn get_unchecked_works_with_deref_map() {
-    use crate::deref_slot::BoxStableDerefMap;
+    use crate::slots::deref_slot::BoxStableDerefMap;
 
     let map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
     let k = map.insert(Box::new("hello".to_string()));
@@ -204,7 +204,7 @@ fn get_unchecked_works_with_deref_map() {
 
 #[test]
 fn get_unchecked_mut_works_with_deref_map() {
-    use crate::deref_slot::BoxStableDerefMap;
+    use crate::slots::deref_slot::BoxStableDerefMap;
 
     let mut map: BoxStableDerefMap<DefaultKey, String> = BoxStableDerefMap::new();
     let k = map.insert(Box::new("hello".to_string()));
@@ -217,7 +217,7 @@ fn get_unchecked_mut_works_with_deref_map() {
 
 #[test]
 fn get_slot_mut_on_deref_map() {
-    use crate::deref_slot::BoxStableDerefMap;
+    use crate::slots::deref_slot::BoxStableDerefMap;
 
     let mut map: BoxStableDerefMap<DefaultKey, i32> = BoxStableDerefMap::new();
     let k = map.insert(Box::new(77));

@@ -1,12 +1,12 @@
-//! Castable key types for use with [`UnsafeCastMap`](crate::unsafe_cast_map::UnsafeCastMap)
-//! and [`StableCastMap`](crate::stable_cast_map::StableCastMap).
+//! Castable key types for use with [`UnsafeCastMap`](crate::cast::unsafe_cast_map::UnsafeCastMap)
+//! and [`StableCastMap`](crate::cast::stable_cast_map::StableCastMap).
 //!
 //! - [`CastKey<T, K>`] stores pointer metadata alongside a generational index.
 //!   It is the bare key used by `UnsafeCastMap`.
-//! - [`StableCastKey<T, K>`] wraps a `CastKey` and adds a [`MapId`](crate::map_id::MapId),
+//! - [`StableCastKey<T, K>`] wraps a `CastKey` and adds a [`MapId`](crate::cast::map_id::MapId),
 //!   making it safe to use with `StableCastMap` (cross-map misuse returns `None`).
 //!
-//! Neither `CastKey` nor `StableCastKey` is a [`Key`](crate::key::Key).
+//! Neither `CastKey` nor `StableCastKey` is a [`Key`](crate::keys::key::Key).
 //! The cast map wrappers handle conversion at the boundary.
 //!
 //! # Sizes (64-bit)
@@ -16,7 +16,7 @@
 
 use std::ptr::Pointee;
 
-use crate::key::{DefaultKey, Key, KeyData};
+use crate::keys::key::{DefaultKey, Key, KeyData};
 
 // ─── CastKey<T, K> ──────────────────────────────────────────────────────
 
@@ -150,13 +150,13 @@ where
 
 // ─── StableCastKey<T, K> ─────────────────────────────────────────────────
 
-/// A [`CastKey`] paired with a [`MapId`](crate::map_id::MapId) so that
+/// A [`CastKey`] paired with a [`MapId`](crate::cast::map_id::MapId) so that
 /// cross-map misuse is caught at runtime rather than being UB.
 pub struct StableCastKey<T: ?Sized + Pointee, K: Key = DefaultKey>
 where
     <T as Pointee>::Metadata: Copy,
 {
-    pub(crate) map_id: crate::map_id::MapId,
+    pub(crate) map_id: crate::cast::map_id::MapId,
     pub(crate) inner: CastKey<T, K>,
 }
 
@@ -229,7 +229,7 @@ where
     /// The caller must ensure that `map_id` identifies the map that owns the slot
     /// addressed by `cast_key.inner_key()`, and that the metadata is valid for `T`.
     #[inline]
-    pub unsafe fn from_parts(cast_key: CastKey<T, K>, map_id: crate::map_id::MapId) -> Self {
+    pub unsafe fn from_parts(cast_key: CastKey<T, K>, map_id: crate::cast::map_id::MapId) -> Self {
         StableCastKey {
             inner: cast_key,
             map_id,
@@ -250,7 +250,7 @@ where
 
     /// Returns the map identity this key is bound to.
     #[inline]
-    pub fn map_id(&self) -> crate::map_id::MapId {
+    pub fn map_id(&self) -> crate::cast::map_id::MapId {
         self.map_id
     }
 

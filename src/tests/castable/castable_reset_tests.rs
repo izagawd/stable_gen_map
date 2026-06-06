@@ -1,18 +1,18 @@
 //! Tests for `reset` on the cast maps.
 //!
-//! * [`StableCastMap::reset`](crate::stable_cast_map::StableCastMap::reset)
+//! * [`StableCastMap::reset`](crate::cast::stable_cast_map::StableCastMap::reset)
 //!   mints a fresh `MapId`, so pre-`reset` keys fail the id check and safe
 //!   lookups return `None`.
-//! * [`UnsafeCastMap::reset`](crate::unsafe_cast_map::UnsafeCastMap::reset) has
+//! * [`UnsafeCastMap::reset`](crate::cast::unsafe_cast_map::UnsafeCastMap::reset) has
 //!   no `MapId`, so it carries the same key-collision hazard as
 //!   `GenMap::reset`; the unsafe lookups already require valid metadata.
 //!
 //! Requires the `castable` feature.
 
-use crate::cast_key::StableCastKey;
-use crate::key::DefaultKey;
-use crate::stable_cast_map::StableBoxCastMap;
-use crate::unsafe_cast_map::UnsafeBoxCastMap;
+use crate::cast::cast_key::StableCastKey;
+use crate::keys::key::DefaultKey;
+use crate::cast::stable_cast_map::StableBoxCastMap;
+use crate::cast::unsafe_cast_map::UnsafeBoxCastMap;
 use std::any::Any;
 
 #[derive(Debug, PartialEq)]

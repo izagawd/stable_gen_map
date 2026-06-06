@@ -1,7 +1,7 @@
-use crate::cast_key::StableCastKey;
-use crate::key::DefaultKey;
-use crate::stable_cast_map::StableBoxCastMap;
-use crate::unsafe_cast_map::UnsafeBoxCastMap;
+use crate::cast::cast_key::StableCastKey;
+use crate::keys::key::DefaultKey;
+use crate::cast::stable_cast_map::StableBoxCastMap;
+use crate::cast::unsafe_cast_map::UnsafeBoxCastMap;
 use std::any::Any;
 
 type SafeMap = StableBoxCastMap<DefaultKey, dyn Any>;

@@ -1,4 +1,4 @@
-use crate::map_id::MapId;
+use crate::cast::map_id::MapId;
 
 #[test]
 fn different_map_id_next_calls_get_different_ids() {

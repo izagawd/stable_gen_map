@@ -1,7 +1,7 @@
-use crate::boxed_slot::StableGenMap;
-use crate::key::DefaultKey;
-use crate::key::{Key, KeyData};
-use crate::key_piece::KeyPiece;
+use crate::slots::boxed_slot::StableGenMap;
+use crate::keys::key::DefaultKey;
+use crate::keys::key::{Key, KeyData};
+use crate::keys::key_piece::KeyPiece;
 use std::collections::HashSet;
 use std::num::NonZero;
 use std::panic::{catch_unwind, AssertUnwindSafe};

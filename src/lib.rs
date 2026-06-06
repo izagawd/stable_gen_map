@@ -4,165 +4,47 @@
 
 // Module tree
 // ===========
-// The public module *paths* are deliberately kept flat (`stable_gen_map::key`,
-// `stable_gen_map::gen_map`, `stable_gen_map::boxed_slot`, …) so that existing
-// imports, the intra-doc links in this crate's docs, the `new_key_type!` macro
-// (which expands to `$crate::key::…`), and downstream users all keep working
-// unchanged. The source files are grouped into folders purely for navigation,
-// and each module is pointed at its file with `#[path]`:
+// Files are grouped into folders that mirror the public module hierarchy
+// (folder == module), so the source layout and the module paths line up:
 //
-//   keys/     key types and the numeric key-piece trait (+ castable keys / map ids)
-//   core/     the generational-map engine and its slot-storage abstraction
-//   storage/  concrete per-slot storage strategies and the clone promise they use
-//   cast/     the nightly `castable` layer: type-erased maps and pointer re-typing
+//   keys/     key types and the numeric key-piece trait
+//   core/     the generational-map engine and the slot-storage trait
+//   slots/    concrete per-slot storage strategies and the clone promise
+//   cast/     the nightly `castable` layer (type-erased maps), gated as a whole
+//
+// The most commonly used types are re-exported at the crate root below, so the
+// typical user can write `stable_gen_map::StableGenMap` / `DefaultKey` etc.
 
-// ─── keys ────────────────────────────────────────────────────────────────────
-#[path = "keys/key_piece.rs"]
-pub mod key_piece;
-#[path = "keys/key.rs"]
-pub mod key;
-#[cfg(feature = "castable")]
-#[path = "keys/cast_key.rs"]
-pub mod cast_key;
-#[cfg(feature = "castable")]
-#[path = "keys/map_id.rs"]
-pub mod map_id;
+pub mod keys;
+pub mod core;
+pub mod slots;
 
-// ─── core engine ─────────────────────────────────────────────────────────────
-#[path = "core/gen_map.rs"]
-pub mod gen_map;
-#[path = "core/slot_storage.rs"]
-pub mod slot_storage;
-
-// ─── storage strategies ──────────────────────────────────────────────────────
-#[path = "storage/boxed_slot.rs"]
-pub mod boxed_slot;
-#[path = "storage/deref_slot.rs"]
-pub mod deref_slot;
-#[path = "storage/clone_gen_map_promise.rs"]
-pub mod clone_gen_map_promise;
-
-// ─── cast layer (nightly `castable` feature) ─────────────────────────────────
+// `castable` feature (nightly only). Gating the whole `cast` module here means
+// its submodules need no individual `#[cfg]`.
 #[cfg(feature = "castable")]
-#[path = "cast/stable_cast_map.rs"]
-pub mod stable_cast_map;
-#[cfg(feature = "castable")]
-#[path = "cast/unsafe_cast_map.rs"]
-pub mod unsafe_cast_map;
-#[cfg(feature = "castable")]
-#[path = "cast/retype_ptr.rs"]
-pub mod retype_ptr;
+pub mod cast;
 
-pub use boxed_slot::{BoxedSlot, StableGenMap};
-pub use deref_slot::{BoxStableDerefMap, DerefSlot, StableDerefMap};
-pub use gen_map::{GenMap, Slot};
-pub use key::{DefaultKey, Key, KeyData};
+pub use slots::boxed_slot::{BoxedSlot, StableGenMap};
+pub use slots::deref_slot::{BoxStableDerefMap, DerefSlot, StableDerefMap};
+pub use core::gen_map::{GenMap, Slot};
+pub use keys::key::{DefaultKey, Key, KeyData};
 
 // `castable` feature (nightly only).
 #[cfg(feature = "castable")]
-pub use cast_key::{CastKey, StableCastKey};
+pub use cast::cast_key::{CastKey, StableCastKey};
 #[cfg(feature = "castable")]
-pub use map_id::MapId;
+pub use cast::map_id::MapId;
 #[cfg(feature = "castable")]
-pub use stable_cast_map::{StableBoxCastMap, StableCastMap};
+pub use cast::stable_cast_map::{StableBoxCastMap, StableCastMap};
 #[cfg(feature = "castable")]
-pub use unsafe_cast_map::{UnsafeBoxCastMap, UnsafeCastMap};
+pub use cast::unsafe_cast_map::{UnsafeBoxCastMap, UnsafeCastMap};
 
 #[cfg(test)]
 mod tests {
-    // ─── StableGenMap (boxed-slot) tests ─────────────────────────────────────
-    #[cfg(test)]
-    #[path = "gen/stable_gen_map_tests.rs"]
-    mod stable_gen_map_tests;
+    mod gen;
+    mod deref;
+    mod common;
 
-    #[cfg(test)]
-    #[path = "gen/stable_gen_map_overflow_tests.rs"]
-    mod stable_gen_map_overflow_tests;
-
-    #[cfg(test)]
-    #[path = "gen/stable_gen_clone_tests.rs"]
-    mod stable_gen_clone_tests;
-
-    #[cfg(test)]
-    #[path = "gen/stable_gen_drain_tests.rs"]
-    mod stable_gen_drain_tests;
-
-    #[cfg(test)]
-    #[path = "gen/stable_gen_retain_tests.rs"]
-    mod stable_gen_retain_tests;
-
-    #[cfg(test)]
-    #[path = "gen/stable_gen_snapshot_tests.rs"]
-    mod stable_gen_snapshot_tests;
-
-    #[cfg(test)]
-    #[path = "gen/gen_map_reset_tests.rs"]
-    mod gen_map_reset_tests;
-
-    // ─── StableDerefMap tests ────────────────────────────────────────────────
-    #[cfg(test)]
-    #[path = "deref/stable_deref_gen_map_tests.rs"]
-    mod stable_deref_gen_map_tests;
-
-    #[cfg(test)]
-    #[path = "deref/stable_deref_gen_map_overflow_tests.rs"]
-    mod stable_deref_gen_map_overflow_tests;
-
-    #[cfg(test)]
-    #[path = "deref/stable_deref_gen_clone_tests.rs"]
-    mod stable_deref_gen_clone_tests;
-
-    #[cfg(test)]
-    #[path = "deref/stable_deref_gen_drain_tests.rs"]
-    mod stable_deref_gen_drain_tests;
-
-    #[cfg(test)]
-    #[path = "deref/stable_deref_gen_retain_tests.rs"]
-    mod stable_deref_gen_retain_tests;
-
-    #[cfg(test)]
-    #[path = "deref/stable_deref_gen_snapshot_tests.rs"]
-    mod stable_deref_gen_snapshot_tests;
-
-    // ─── cross-cutting tests ─────────────────────────────────────────────────
-    #[cfg(test)]
-    #[path = "common/pointer_stability_tests.rs"]
-    mod pointer_stability_tests;
-
-    #[cfg(test)]
-    #[path = "common/key_macro_tests.rs"]
-    mod key_macro_tests;
-
-    #[cfg(test)]
-    #[path = "common/unchecked_tests.rs"]
-    mod unchecked_tests;
-
-    // ─── castable-feature tests (nightly only) ───────────────────────────────
-    #[cfg(all(test, feature = "castable"))]
-    #[path = "castable/map_id_tests.rs"]
-    mod map_id_tests;
-
-    #[cfg(all(test, feature = "castable"))]
-    #[path = "castable/castable_key_tests.rs"]
-    mod castable_key_tests;
-
-    #[cfg(all(test, feature = "castable"))]
-    #[path = "castable/castable_map_tests.rs"]
-    mod castable_map_tests;
-
-    #[cfg(all(test, feature = "castable"))]
-    #[path = "castable/castable_reset_tests.rs"]
-    mod castable_reset_tests;
-
-    #[cfg(all(test, feature = "castable"))]
-    #[path = "castable/castable_insert_typed_tests.rs"]
-    mod castable_insert_typed_tests;
-
-    #[cfg(all(test, feature = "castable"))]
-    #[path = "castable/castable_unchecked_tests.rs"]
-    mod castable_unchecked_tests;
-
-    #[cfg(all(test, feature = "castable"))]
-    #[path = "castable/castable_pointer_stability_tests.rs"]
-    mod castable_pointer_stability_tests;
+    #[cfg(feature = "castable")]
+    mod castable;
 }

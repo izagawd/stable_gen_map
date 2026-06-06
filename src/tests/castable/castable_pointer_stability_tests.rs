@@ -12,10 +12,10 @@
 //!   * `upcast` then `remove` reconstructing a valid `Box<dyn Any>` from a
 //!     vtable (the fat-pointer retype path).
 
-use crate::cast_key::StableCastKey;
-use crate::deref_slot::DerefSlot;
-use crate::key::DefaultKey;
-use crate::stable_cast_map::{StableBoxCastMap, StableCastMap};
+use crate::cast::cast_key::StableCastKey;
+use crate::slots::deref_slot::DerefSlot;
+use crate::keys::key::DefaultKey;
+use crate::cast::stable_cast_map::{StableBoxCastMap, StableCastMap};
 use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;

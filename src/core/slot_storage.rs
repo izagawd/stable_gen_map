@@ -1,4 +1,4 @@
-use crate::key::Key;
+use crate::keys::key::Key;
 use std::mem::ManuallyDrop;
 
 // ─── SlotData (shared union) ─────────────────────────────────────────────────
@@ -19,8 +19,8 @@ pub(crate) union SlotData<S, K: Key> {
 /// its occupied payload and its vacant free-list index in the **same** memory —
 /// that is, a `union` is *involved* somewhere in the implementation. The
 /// implementor itself need not be a union: the union may sit behind a `Box`
-/// (as in [`BoxedSlot`](crate::boxed_slot::BoxedSlot)) or be nested in a field
-/// (as in [`DerefSlot`](crate::deref_slot::DerefSlot)). A slot is never occupied
+/// (as in [`BoxedSlot`](crate::slots::boxed_slot::BoxedSlot)) or be nested in a field
+/// (as in [`DerefSlot`](crate::slots::deref_slot::DerefSlot)). A slot is never occupied
 /// and vacant at the same time, so the two states can reuse one region and a
 /// vacant slot costs no more than its payload.
 ///
@@ -114,14 +114,14 @@ pub unsafe trait SlotStorageMutOutput: SlotStorage {
 /// a problem — calling `get`, `len`, iterating, etc. on the same map is fine,
 /// since it touches nothing about the buffer's allocation. Whether such a
 /// mutation can happen depends on the caller's context, not on this trait:
-/// - [`GenMap`](crate::gen_map::GenMap)'s `Clone` clones every slot in one pass
+/// - [`GenMap`](crate::core::gen_map::GenMap)'s `Clone` clones every slot in one pass
 ///   while holding a shared borrow into the slot buffer, so it requires the
 ///   extra [`NonMutatingSlotStorageClone`] promise (a re-entrant `insert` mid
 ///   pass would reallocate that buffer and dangle the borrow).
-/// - [`GenMap::clone_mut`](crate::gen_map::GenMap::clone_mut) needs only this
+/// - [`GenMap::clone_mut`](crate::core::gen_map::GenMap::clone_mut) needs only this
 ///   trait: its `&mut self` borrow already rules out a concurrent `&self`
 ///   mutation such as `insert`.
-/// - [`GenMap::unsafe_clone`](crate::gen_map::GenMap::unsafe_clone) needs only
+/// - [`GenMap::unsafe_clone`](crate::core::gen_map::GenMap::unsafe_clone) needs only
 ///   this trait too, and shifts that obligation onto its caller.
 ///
 /// # Safety
@@ -139,19 +139,19 @@ pub unsafe trait SlotStorageClone: SlotStorage {
 }
 
 /// Promise that this storage's [`clone_storage`](SlotStorageClone::clone_storage)
-/// **cannot mutate the [`GenMap`](crate::gen_map::GenMap) being cloned** (for
+/// **cannot mutate the [`GenMap`](crate::core::gen_map::GenMap) being cloned** (for
 /// example, via `insert`/`reserve`) — so it is sound to call through a shared `&self`
 /// during the map's single-pass clone. Only *mutation* matters here; a clone
 /// that merely reads the map (`get`, `len`, iteration, …) is fine and does not
 /// disqualify a storage.
 ///
 /// This is the marker that unlocks `GenMap<C>: Clone`. Without it, a storage may
-/// still cloneable through [`GenMap::clone_mut`](crate::gen_map::GenMap::clone_mut)
-/// or the `unsafe` [`GenMap::unsafe_clone`](crate::gen_map::GenMap::unsafe_clone),
+/// still cloneable through [`GenMap::clone_mut`](crate::core::gen_map::GenMap::clone_mut)
+/// or the `unsafe` [`GenMap::unsafe_clone`](crate::core::gen_map::GenMap::unsafe_clone),
 /// but not through the safe `&self` `Clone`.
 ///
 /// The crate's storages obtain this by requiring their stored value to implement
-/// [`CloneGenMapPromise`](crate::clone_gen_map_promise::CloneGenMapPromise),
+/// [`CloneGenMapPromise`](crate::slots::clone_gen_map_promise::CloneGenMapPromise),
 /// which is exactly the value-level version of the same promise (a refcount bump
 /// for `Rc`/`Arc`/`&T`, a `Copy`, or a deep clone whose contents are themselves
 /// promised). A custom storage implements this directly, taking on the
@@ -160,5 +160,5 @@ pub unsafe trait SlotStorageClone: SlotStorage {
 /// # Safety
 /// Implementing this for a storage whose [`clone_storage`](SlotStorageClone::clone_storage) implementation *can* mutate the map being cloned
 /// (e.g. by `insert`ing into it) may allow
-/// [`GenMap::clone`](crate::gen_map::GenMap) to trigger undefined behaviour.
+/// [`GenMap::clone`](crate::core::gen_map::GenMap) to trigger undefined behaviour.
 pub unsafe trait NonMutatingSlotStorageClone: SlotStorageClone {}

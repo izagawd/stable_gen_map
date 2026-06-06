@@ -1,4 +1,4 @@
-use crate::key_piece::KeyPiece;
+use crate::keys::key_piece::KeyPiece;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyData<Idx: KeyPiece, Generation: KeyPiece> {
@@ -88,21 +88,21 @@ macro_rules! new_key_type {
         $(#[$attr])*
         #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
         $vis struct $name {
-            key_data: $crate::key::KeyData<u32, u32>,
+            key_data: $crate::keys::key::KeyData<u32, u32>,
         }
 
-        impl From<$crate::key::KeyData<u32, u32>> for $name {
+        impl From<$crate::keys::key::KeyData<u32, u32>> for $name {
             #[inline]
-            fn from(key_data: $crate::key::KeyData<u32, u32>) -> Self {
+            fn from(key_data: $crate::keys::key::KeyData<u32, u32>) -> Self {
                 Self { key_data }
             }
         }
 
-        unsafe impl $crate::key::Key for $name {
+        unsafe impl $crate::keys::key::Key for $name {
             type Idx = u32;
             type Gen = u32;
             #[inline]
-            fn data(&self) -> $crate::key::KeyData<u32, u32> {
+            fn data(&self) -> $crate::keys::key::KeyData<u32, u32> {
                 self.key_data
             }
         }
@@ -113,20 +113,20 @@ macro_rules! new_key_type {
         $(#[$attr])*
         #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
         $vis struct $name {
-            key_data: $crate::key::KeyData<$idx, $gen>,
+            key_data: $crate::keys::key::KeyData<$idx, $gen>,
         }
 
-        impl From<$crate::key::KeyData<$idx, $gen>> for $name {
-            fn from(key_data: $crate::key::KeyData<$idx, $gen>) -> Self {
+        impl From<$crate::keys::key::KeyData<$idx, $gen>> for $name {
+            fn from(key_data: $crate::keys::key::KeyData<$idx, $gen>) -> Self {
                 Self { key_data }
             }
         }
 
-        unsafe impl $crate::key::Key for $name {
+        unsafe impl $crate::keys::key::Key for $name {
             type Idx = $idx;
             type Gen = $gen;
 
-            fn data(&self) -> $crate::key::KeyData<$idx, $gen> {
+            fn data(&self) -> $crate::keys::key::KeyData<$idx, $gen> {
                 self.key_data
             }
         }

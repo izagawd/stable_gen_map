@@ -1,5 +1,5 @@
-use crate::boxed_slot::StableGenMap;
-use crate::key::{DefaultKey, Key};
+use crate::slots::boxed_slot::StableGenMap;
+use crate::keys::key::{DefaultKey, Key};
 use std::collections::HashMap;
 
 type Map = StableGenMap<DefaultKey, i32>;
@@ -46,9 +46,9 @@ fn clone_basic_contents_equal_but_independent() {
 #[cfg(test)]
 mod clone_tests {
 
-    use crate::key::{DefaultKey, Key};
+    use crate::keys::key::{DefaultKey, Key};
 
-    use crate::boxed_slot::StableGenMap;
+    use crate::slots::boxed_slot::StableGenMap;
 
     type Map<T> = StableGenMap<DefaultKey, T>;
 
@@ -315,7 +315,7 @@ impl Drop for DropTracked {
         self.drops.set(self.drops.get() + 1);
     }
 }
-unsafe impl crate::clone_gen_map_promise::CloneGenMapPromise for DropTracked {}
+unsafe impl crate::slots::clone_gen_map_promise::CloneGenMapPromise for DropTracked {}
 
 #[test]
 fn clone_then_drop_both_is_balanced_with_holes() {

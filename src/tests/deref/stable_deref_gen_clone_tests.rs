@@ -1,5 +1,5 @@
-use crate::deref_slot::BoxStableDerefMap;
-use crate::key::DefaultKey;
+use crate::slots::deref_slot::BoxStableDerefMap;
+use crate::keys::key::DefaultKey;
 
 #[test]
 fn clone_empty_map() {
@@ -112,7 +112,7 @@ fn clone_with_rc_clones_rc_not_inner_value() {
 #[cfg(test)]
 mod clone_stable_tests {
     use super::*;
-    use crate::key::{DefaultKey, Key};
+    use crate::keys::key::{DefaultKey, Key};
 
     // Sanity: cloning an empty map should give another empty map.
     #[test]

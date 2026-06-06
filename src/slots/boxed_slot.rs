@@ -1,7 +1,7 @@
-use crate::clone_gen_map_promise::CloneGenMapPromise;
-use crate::gen_map::GenMap;
-use crate::key::Key;
-use crate::slot_storage::{
+use crate::slots::clone_gen_map_promise::CloneGenMapPromise;
+use crate::core::gen_map::GenMap;
+use crate::keys::key::Key;
+use crate::core::slot_storage::{
     NonMutatingSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
 };
 use std::mem::ManuallyDrop;

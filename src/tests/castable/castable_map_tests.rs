@@ -1,8 +1,8 @@
-use crate::cast_key::StableCastKey;
-use crate::deref_slot::DerefSlot;
-use crate::key::DefaultKey;
-use crate::key::Key;
-use crate::stable_cast_map::{StableBoxCastMap, StableCastMap};
+use crate::cast::cast_key::StableCastKey;
+use crate::slots::deref_slot::DerefSlot;
+use crate::keys::key::DefaultKey;
+use crate::keys::key::Key;
+use crate::cast::stable_cast_map::{StableBoxCastMap, StableCastMap};
 use std::any::Any;
 use std::ops::Deref;
 

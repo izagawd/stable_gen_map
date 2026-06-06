@@ -1,6 +1,6 @@
-use crate::key::{is_occupied_by_generation, Key, KeyData};
-use crate::key_piece::KeyPiece;
-use crate::slot_storage::{
+use crate::keys::key::{is_occupied_by_generation, Key, KeyData};
+use crate::keys::key_piece::KeyPiece;
+use crate::core::slot_storage::{
     NonMutatingSlotStorageClone, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
 };
 use num_traits::{CheckedAdd, One, Zero};
@@ -106,14 +106,14 @@ impl<C: SlotStorage> Slot<C> {
 /// references.
 ///
 /// The storage strategy is determined by `C`:
-/// - [`BoxedSlot`](crate::boxed_slot::BoxedSlot) – wraps each value in a `Box`;
+/// - [`BoxedSlot`](crate::slots::boxed_slot::BoxedSlot) – wraps each value in a `Box`;
 ///   the allocation is reused across remove/insert cycles.
-/// - [`DerefSlot`](crate::deref_slot::DerefSlot) – stores a user-supplied smart
+/// - [`DerefSlot`](crate::slots::deref_slot::DerefSlot) – stores a user-supplied smart
 ///   pointer directly.
 ///
 /// You will normally use the type aliases
-/// [`StableGenMap`](crate::boxed_slot::StableGenMap) and
-/// [`StableDerefMap`](crate::deref_slot::StableDerefMap).
+/// [`StableGenMap`](crate::slots::boxed_slot::StableGenMap) and
+/// [`StableDerefMap`](crate::slots::deref_slot::StableDerefMap).
 pub struct GenMap<C: SlotStorage> {
     pub(crate) slots: UnsafeCell<Vec<UnsafeCell<Slot<C>>>>,
     pub(crate) next_free: Cell<Option<IdxOfStorage<C>>>,
