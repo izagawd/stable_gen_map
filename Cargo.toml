@@ -20,6 +20,6 @@ num-traits = "0.2.19"
 
 [features]
 default = []
-## Enables `CastKey`, `StableCastMap`, and the `new_castable_key_type!` macro.
+
 ## Requires a **nightly** toolchain (`ptr_metadata`, `coerce_unsized`, `unsize`).
 castable = []
