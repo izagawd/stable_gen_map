@@ -315,7 +315,7 @@ impl Drop for DropTracked {
         self.drops.set(self.drops.get() + 1);
     }
 }
-unsafe impl crate::slots::clone_gen_map_promise::CloneGenMapPromise for DropTracked {}
+unsafe impl crate::core::clone_gen_map_promise::CloneGenMapPromise for DropTracked {}
 
 #[test]
 fn clone_then_drop_both_is_balanced_with_holes() {

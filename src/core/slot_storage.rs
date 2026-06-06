@@ -151,7 +151,7 @@ pub unsafe trait SlotStorageClone: SlotStorage {
 /// but not through the safe `&self` `Clone`.
 ///
 /// The crate's storages obtain this by requiring their stored value to implement
-/// [`CloneGenMapPromise`](crate::slots::clone_gen_map_promise::CloneGenMapPromise),
+/// [`CloneGenMapPromise`](crate::core::clone_gen_map_promise::CloneGenMapPromise),
 /// which is exactly the value-level version of the same promise (a refcount bump
 /// for `Rc`/`Arc`/`&T`, a `Copy`, or a deep clone whose contents are themselves
 /// promised). A custom storage implements this directly, taking on the

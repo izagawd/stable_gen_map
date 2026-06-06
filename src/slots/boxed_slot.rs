@@ -1,4 +1,4 @@
-use crate::slots::clone_gen_map_promise::CloneGenMapPromise;
+use crate::core::clone_gen_map_promise::CloneGenMapPromise;
 use crate::core::gen_map::GenMap;
 use crate::keys::key::Key;
 use crate::core::slot_storage::{

@@ -8,8 +8,8 @@
 // (folder == module), so the source layout and the module paths line up:
 //
 //   keys/     key types and the numeric key-piece trait
-//   core/     the generational-map engine and the slot-storage trait
-//   slots/    concrete per-slot storage strategies and the clone promise
+//   core/     the generational-map engine, slot-storage trait, and clone promise
+//   slots/    concrete per-slot storage strategies (boxed / deref)
 //   cast/     the nightly `castable` layer (type-erased maps), gated as a whole
 //
 // The most commonly used types are re-exported at the crate root below, so the
