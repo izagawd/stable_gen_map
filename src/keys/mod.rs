@@ -5,5 +5,5 @@
 //! abstracts the unsigned-integer index and generation components a key is
 //! built from.
 
-pub mod key_piece;
 pub mod key;
+pub mod key_piece;

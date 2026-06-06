@@ -1,5 +1,5 @@
-use crate::slots::deref_slot::BoxStableDerefMap;
 use crate::keys::key::DefaultKey;
+use crate::slots::deref_slot::BoxStableDerefMap;
 
 #[test]
 fn snapshot_on_empty_map_is_empty() {
@@ -13,8 +13,8 @@ fn snapshot_on_empty_map_is_empty() {
 
 #[cfg(test)]
 mod snapshot_stablegen_tests {
-    use crate::slots::deref_slot::BoxStableDerefMap;
     use crate::keys::key::DefaultKey;
+    use crate::slots::deref_slot::BoxStableDerefMap;
     use std::collections::HashSet;
 
     #[test]

@@ -1,5 +1,5 @@
-use crate::slots::boxed_slot::StableGenMap;
 use crate::keys::key::{DefaultKey, Key};
+use crate::slots::boxed_slot::StableGenMap;
 use std::collections::HashMap;
 
 type Map = StableGenMap<DefaultKey, i32>;
@@ -552,7 +552,11 @@ fn clone_from_is_drop_balanced() {
     // clone_from drops dst's 2 remaining live values (1 -> 3) and clones src's
     // 2 (running Clone, never Drop).
     dst.clone_from(&src);
-    assert_eq!(drops.get(), 3, "clone_from drops dst's old live values once");
+    assert_eq!(
+        drops.get(),
+        3,
+        "clone_from drops dst's old live values once"
+    );
     assert_eq!(dst.len(), 2);
     assert_eq!(dst.get(s1).map(|t| t.val), Some(10));
     assert_eq!(dst.get(s2).map(|t| t.val), Some(20));

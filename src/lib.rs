@@ -15,8 +15,8 @@
 // The most commonly used types are re-exported at the crate root below, so the
 // typical user can write `stable_gen_map::StableGenMap` / `DefaultKey` etc.
 
-pub mod keys;
 pub mod core;
+pub mod keys;
 pub mod slots;
 
 // `castable` feature (nightly only). Gating the whole `cast` module here means
@@ -24,10 +24,10 @@ pub mod slots;
 #[cfg(feature = "castable")]
 pub mod cast;
 
-pub use slots::boxed_slot::{BoxedSlot, StableGenMap};
-pub use slots::deref_slot::{BoxStableDerefMap, DerefSlot, StableDerefMap};
 pub use core::gen_map::{GenMap, Slot};
 pub use keys::key::{DefaultKey, Key, KeyData};
+pub use slots::boxed_slot::{BoxedSlot, StableGenMap};
+pub use slots::deref_slot::{BoxStableDerefMap, DerefSlot, StableDerefMap};
 
 // `castable` feature (nightly only).
 #[cfg(feature = "castable")]
@@ -41,9 +41,9 @@ pub use cast::unsafe_cast_map::{UnsafeBoxCastMap, UnsafeCastMap};
 
 #[cfg(test)]
 mod tests {
-    mod gen;
-    mod deref;
     mod common;
+    mod deref;
+    mod gen;
 
     #[cfg(feature = "castable")]
     mod castable;

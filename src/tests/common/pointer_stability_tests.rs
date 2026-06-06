@@ -9,9 +9,9 @@
 //! A plain `cargo test` only checks the values; Miri is what validates the
 //! `UnsafeCell` reborrow + reallocation does not invalidate the held reference.
 
+use crate::keys::key::DefaultKey;
 use crate::slots::boxed_slot::StableGenMap;
 use crate::slots::deref_slot::StableDerefMap;
-use crate::keys::key::DefaultKey;
 use std::rc::Rc;
 use std::sync::Arc;
 

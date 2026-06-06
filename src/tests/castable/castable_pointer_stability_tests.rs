@@ -13,9 +13,9 @@
 //!     vtable (the fat-pointer retype path).
 
 use crate::cast::cast_key::StableCastKey;
-use crate::slots::deref_slot::DerefSlot;
-use crate::keys::key::DefaultKey;
 use crate::cast::stable_cast_map::{StableBoxCastMap, StableCastMap};
+use crate::keys::key::DefaultKey;
+use crate::slots::deref_slot::DerefSlot;
 use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;

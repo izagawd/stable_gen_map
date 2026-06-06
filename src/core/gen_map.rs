@@ -1,8 +1,8 @@
-use crate::keys::key::{is_occupied_by_generation, Key, KeyData};
-use crate::keys::key_piece::KeyPiece;
 use crate::core::slot_storage::{
     NonMutatingSlotStorageClone, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
 };
+use crate::keys::key::{is_occupied_by_generation, Key, KeyData};
+use crate::keys::key_piece::KeyPiece;
 use num_traits::{CheckedAdd, One, Zero};
 use std::cell::{Cell, UnsafeCell};
 use std::collections::TryReserveError;

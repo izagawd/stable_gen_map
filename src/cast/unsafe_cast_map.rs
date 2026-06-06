@@ -15,11 +15,11 @@ use std::ops::{Deref, DerefMut};
 use std::ptr::Pointee;
 
 use crate::cast::cast_key::CastKey;
-use crate::slots::deref_slot::{DerefGenMapPromise, DerefSlot};
-use crate::core::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
-use crate::keys::key::Key;
 use crate::cast::retype_ptr::RetypePtr;
+use crate::core::gen_map::{self, GenMap, IdxOfStorage, KeyOfStorage, Slot};
 use crate::core::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::keys::key::Key;
+use crate::slots::deref_slot::{DerefGenMapPromise, DerefSlot};
 // ─── Conversion helper ─────────────────────────────────────────────────────
 
 /// Build a cast key from an inner key and a reference (for pointer metadata).
@@ -62,7 +62,7 @@ where
     GenMap<C>: Clone,
 {
     /// Cloning copies every slot's index and generation unchanged, so keys
-    /// valid on the original stay valid on the clone 
+    /// valid on the original stay valid on the clone
     #[inline]
     fn clone(&self) -> Self {
         Self {
@@ -393,7 +393,7 @@ where
     }
 
     /// Cloning copies every slot's index and generation unchanged, so keys
-    /// valid on the original stay valid on the clone 
+    /// valid on the original stay valid on the clone
     ///
     /// # Safety
     /// The caller must guarantee no stored value's `Clone` mutates this map (for
@@ -409,9 +409,9 @@ where
         }
     }
 
-    /// Clone the map through a unique borrow. 
+    /// Clone the map through a unique borrow.
     /// Cloning copies every slot's index and generation unchanged, so keys
-    /// valid on the original stay valid on the clone 
+    /// valid on the original stay valid on the clone
     #[inline]
     pub fn clone_mut(&mut self) -> Self
     where
@@ -423,8 +423,8 @@ where
     }
 
     /// `unsafe` counterpart of [`clone_from`](Self::clone_from): reuses `self`'s
-    /// inner allocation. 
-    /// 
+    /// inner allocation.
+    ///
     /// # Safety
     /// See [`GenMap::unsafe_clone_from`](crate::core::gen_map::GenMap::unsafe_clone_from).
     #[inline]

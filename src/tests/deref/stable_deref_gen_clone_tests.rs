@@ -1,5 +1,5 @@
-use crate::slots::deref_slot::BoxStableDerefMap;
 use crate::keys::key::DefaultKey;
+use crate::slots::deref_slot::BoxStableDerefMap;
 
 #[test]
 fn clone_empty_map() {

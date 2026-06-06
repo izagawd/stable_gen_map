@@ -1,6 +1,6 @@
 use crate::cast::cast_key::StableCastKey;
-use crate::keys::key::DefaultKey;
 use crate::cast::stable_cast_map::StableBoxCastMap;
+use crate::keys::key::DefaultKey;
 
 use std::any::Any;
 use std::ops::Deref;

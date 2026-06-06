@@ -1,9 +1,9 @@
 use crate::core::clone_gen_map_promise::CloneGenMapPromise;
 use crate::core::gen_map::GenMap;
-use crate::keys::key::Key;
 use crate::core::slot_storage::{
     NonMutatingSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
 };
+use crate::keys::key::Key;
 use std::mem::ManuallyDrop;
 
 // ─── BoxedSlot ───────────────────────────────────────────────────────────────
@@ -72,7 +72,6 @@ unsafe impl<K: Key, T> SlotStorageMutOutput for BoxedSlot<K, T> {
 
 // The mechanical clone capability is available for any `T: Clone`.
 unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
-
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {

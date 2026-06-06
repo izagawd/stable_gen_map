@@ -13,14 +13,14 @@ use std::ops::{Deref, DerefMut};
 use std::ptr::Pointee;
 
 use crate::cast::cast_key::{CastKey, StableCastKey};
-use crate::slots::deref_slot::{DerefGenMapPromise, DerefSlot};
-use crate::core::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
-use crate::keys::key::Key;
 use crate::cast::map_id::MapId;
 use crate::cast::retype_ptr::RetypePtr;
-use crate::core::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::cast::unsafe_cast_map;
 use crate::cast::unsafe_cast_map::UnsafeCastMap;
+use crate::core::gen_map::{IdxOfStorage, KeyOfStorage, Slot};
+use crate::core::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
+use crate::keys::key::Key;
+use crate::slots::deref_slot::{DerefGenMapPromise, DerefSlot};
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -423,9 +423,9 @@ where
     }
 
     /// `unsafe` counterpart of [`clone_from`](Self::clone_from)
-    /// reuses `self`'s inner allocation and uses a fresh map identity. 
-    /// 
-    /// # Safety 
+    /// reuses `self`'s inner allocation and uses a fresh map identity.
+    ///
+    /// # Safety
     /// See [`GenMap::unsafe_clone_from`](crate::core::gen_map::GenMap::unsafe_clone_from)
     /// for the safety contract.
     #[inline]

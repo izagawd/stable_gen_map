@@ -1,6 +1,6 @@
-use crate::slots::boxed_slot::StableGenMap;
 use crate::keys::key::DefaultKey;
 use crate::keys::key::Key;
+use crate::slots::boxed_slot::StableGenMap;
 
 // ─── get_unchecked ──────────────────────────────────────────────────────────
 

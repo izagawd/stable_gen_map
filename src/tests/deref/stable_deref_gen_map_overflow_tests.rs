@@ -1,5 +1,5 @@
-use crate::slots::deref_slot::BoxStableDerefMap;
 use crate::keys::key::Key;
+use crate::slots::deref_slot::BoxStableDerefMap;
 
 crate::new_key_type! {
     struct TinyDerefGenKey(u8, u8);

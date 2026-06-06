@@ -7,8 +7,8 @@
 //!
 //! These tests are feature-independent — `GenMap` does not require `castable`.
 
-use crate::slots::boxed_slot::StableGenMap;
 use crate::keys::key::DefaultKey;
+use crate::slots::boxed_slot::StableGenMap;
 
 /// `reset` empties the map.
 #[test]

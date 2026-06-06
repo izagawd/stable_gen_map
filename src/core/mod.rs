@@ -7,6 +7,6 @@
 //! `clone_gen_map_promise` holds the `CloneGenMapPromise` trait that stored
 //! values implement so a `GenMap` can be cloned soundly.
 
+pub mod clone_gen_map_promise;
 pub mod gen_map;
 pub mod slot_storage;
-pub mod clone_gen_map_promise;
