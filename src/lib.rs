@@ -21,6 +21,21 @@ pub mod unsafe_cast_map;
 #[cfg(feature = "castable")]
 pub mod retype_ptr;
 
+pub use boxed_slot::{BoxedSlot, StableGenMap};
+pub use deref_slot::{BoxStableDerefMap, DerefSlot, StableDerefMap};
+pub use gen_map::{GenMap, Slot};
+pub use key::{DefaultKey, Key, KeyData};
+
+// `castable` feature (nightly only).
+#[cfg(feature = "castable")]
+pub use cast_key::{CastKey, StableCastKey};
+#[cfg(feature = "castable")]
+pub use map_id::MapId;
+#[cfg(feature = "castable")]
+pub use stable_cast_map::{StableBoxCastMap, StableCastMap};
+#[cfg(feature = "castable")]
+pub use unsafe_cast_map::{UnsafeBoxCastMap, UnsafeCastMap};
+
 #[cfg(test)]
 mod tests {
     #[cfg(test)]
