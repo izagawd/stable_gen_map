@@ -6,10 +6,10 @@ type Map = StableGenMap<DefaultKey, i32>;
 
 #[test]
 fn clone_empty() {
-    let m: Map = Map::new();
+    let mut m: Map = Map::new();
     assert_eq!(m.len(), 0);
 
-    let c = m.clone();
+    let c = m.clone_mut();
     assert_eq!(c.len(), 0);
 }
 
@@ -23,7 +23,7 @@ fn clone_basic_contents_equal_but_independent() {
 
     assert_eq!(m.len(), 3);
 
-    let c = m.clone();
+    let c = m.clone_mut();
     assert_eq!(c.len(), 3);
 
     // cloned values
@@ -54,9 +54,9 @@ mod clone_tests {
 
     #[test]
     fn clone_empty_map() {
-        let map: Map<String> = StableGenMap::new();
+        let mut map: Map<String> = StableGenMap::new();
 
-        let clone = map.clone();
+        let clone = map.clone_mut();
 
         assert_eq!(map.len(), 0);
         assert_eq!(clone.len(), 0);
@@ -93,7 +93,7 @@ mod clone_tests {
         let p1 = map.get(k_keep_1).unwrap() as *const String;
         let p2 = map.get(k_keep_2).unwrap() as *const String;
 
-        let clone = map.clone();
+        let clone = map.clone_mut();
 
         assert_eq!(clone.len(), len_before);
         assert_eq!(clone.len(), map.len());
@@ -136,7 +136,7 @@ mod clone_tests {
         let len_before = map.len();
         assert_eq!(len_before, 2);
 
-        let clone = map.clone();
+        let clone = map.clone_mut();
         assert_eq!(clone.len(), len_before);
 
         // k2 should be invalid in both.
@@ -177,7 +177,7 @@ mod clone_tests {
 
 #[test]
 fn clone_preserves_all_keys_and_values() {
-    let m: Map = Map::new();
+    let mut m: Map = Map::new();
 
     let mut inserted = HashMap::new();
     for i in 0..16 {
@@ -185,7 +185,7 @@ fn clone_preserves_all_keys_and_values() {
         inserted.insert(k, i);
     }
 
-    let c = m.clone();
+    let c = m.clone_mut();
     assert_eq!(m.len(), c.len());
     assert_eq!(c.len(), inserted.len());
 
@@ -223,7 +223,7 @@ fn clone_respects_free_list_and_generations() {
     let removed_data = k2.data();
 
     // Clone after removal (so both maps have the same free list shape)
-    let c = m.clone();
+    let c = m.clone_mut();
 
     // First insert in original should reuse the removed slot index
     let k_new_orig = m.insert(99);
@@ -244,7 +244,7 @@ fn clone_respects_free_list_and_generations() {
 
 #[test]
 fn clone_multi_slot() {
-    let m: Map = Map::new();
+    let mut m: Map = Map::new();
 
     // Force multiple resizes (SLOTS is small)
     let mut keys = Vec::new();
@@ -253,7 +253,7 @@ fn clone_multi_slot() {
         keys.push((k, i));
     }
 
-    let c = m.clone();
+    let c = m.clone_mut();
     assert_eq!(m.len(), c.len());
     assert_eq!(m.len(), keys.len());
 
@@ -274,8 +274,11 @@ fn clone_into_iter_matches_snapshot() {
 
     // snapshot from original (keys + values)
     let snap = m.snapshot();
-    // consume a clone
-    let collected: Vec<_> = m.clone().into_iter().collect();
+    // consume a clone. `snap` holds a shared borrow of `m` across this call, so
+    // `clone_mut` (which needs `&mut m`) won't borrow-check; `unsafe_clone` takes
+    // `&self`. SAFETY: cloning an `i32` runs no user code, and only the read-only
+    // `snap` borrow is live, so nothing mutates `m` mid-clone.
+    let collected: Vec<_> = unsafe { m.unsafe_clone() }.into_iter().collect();
 
     let snap_map: HashMap<_, _> = snap.into_iter().map(|(k, v)| (k, *v)).collect();
     let coll_map: HashMap<_, _> = collected.into_iter().collect();
@@ -284,20 +287,9 @@ fn clone_into_iter_matches_snapshot() {
     assert_eq!(snap_map, coll_map);
 }
 
-// ── clone gate: positive direction ───────────────────────────────────────────
-// A payload that implements `CloneGenMapPromise` makes the map `Clone`. The
-// negative direction (a `Clone`-but-not-promised payload yields a non-`Clone`
-// map) is a `compile_fail` doctest on `CloneGenMapPromise`.
-const _: fn() = || {
-    fn assert_clone<T: Clone>() {}
-    assert_clone::<StableGenMap<DefaultKey, i32>>();
-    assert_clone::<StableGenMap<DefaultKey, String>>();
-};
-
-// ── clone is drop-balanced, including across holes ───────────────────────────
+// ── clone_mut is drop-balanced, including across holes ───────────────────────
 // A drop-counting payload. Its `Clone` only clones an `Rc<Cell>` and copies an
-// `i32`, so it cannot touch a map — hence the (sound) hand-written promise.
-// This also exercises the user opt-in path for a custom payload.
+// `i32`, so it cannot touch a map.
 struct DropTracked {
     drops: std::rc::Rc<std::cell::Cell<usize>>,
     val: i32,
@@ -315,7 +307,6 @@ impl Drop for DropTracked {
         self.drops.set(self.drops.get() + 1);
     }
 }
-unsafe impl crate::core::clone_gen_map_promise::CloneGenMapPromise for DropTracked {}
 
 #[test]
 fn clone_then_drop_both_is_balanced_with_holes() {
@@ -344,7 +335,7 @@ fn clone_then_drop_both_is_balanced_with_holes() {
 
     // Clone duplicates only the 3 live slots (running Clone, never Drop) and
     // must not read the 2 vacant slots as occupied.
-    let cloned = map.clone();
+    let cloned = map.clone_mut();
     assert_eq!(drops.get(), 2, "cloning runs Clone, not Drop");
     assert_eq!(cloned.len(), 3);
 
@@ -371,13 +362,13 @@ fn clone_then_drop_both_is_balanced_with_holes() {
         "dropping the clone drops its own 3 live values"
     );
 }
-// ── clone_from: recycles self's slot buffer; result mirrors source ───────────
+// ── clone_from_mut: recycles self's slot buffer; result mirrors source ───────
 
 #[test]
 fn clone_from_empty() {
     let mut dst: Map = Map::new();
-    let src: Map = Map::new();
-    dst.clone_from(&src);
+    let mut src: Map = Map::new();
+    dst.clone_from_mut(&mut src);
     assert_eq!(dst.len(), 0);
     assert_eq!(dst.slots_len(), 0);
 }
@@ -393,7 +384,7 @@ fn clone_from_contents_equal_but_independent() {
     let k2 = src.insert(20);
     let k3 = src.insert(30);
 
-    dst.clone_from(&src);
+    dst.clone_from_mut(&mut src);
 
     // dst now mirrors src
     assert_eq!(dst.len(), 3);
@@ -419,8 +410,8 @@ fn clone_from_matches_clone() {
     let mut dst: Map = Map::new();
     dst.insert(99); // pre-existing content, discarded
 
-    dst.clone_from(&src);
-    let fresh = src.clone();
+    dst.clone_from_mut(&mut src);
+    let fresh = src.clone_mut();
 
     assert_eq!(dst.len(), fresh.len());
     assert_eq!(dst.slots_len(), fresh.slots_len());
@@ -438,11 +429,11 @@ fn clone_from_overwrites_larger_dst() {
     }
     assert_eq!(dst.slots_len(), 10);
 
-    let src: Map = Map::new();
+    let mut src: Map = Map::new();
     let a = src.insert(100);
     let b = src.insert(200);
 
-    dst.clone_from(&src);
+    dst.clone_from_mut(&mut src);
     assert_eq!(dst.len(), 2);
     assert_eq!(dst.slots_len(), 2, "dst shrinks to source's slot count");
     assert_eq!(dst.get(a), Some(&100));
@@ -454,13 +445,13 @@ fn clone_from_grows_smaller_dst() {
     let mut dst: Map = Map::new();
     dst.insert(1);
 
-    let src: Map = Map::new();
+    let mut src: Map = Map::new();
     let mut keys = Vec::new();
     for i in 0..50 {
         keys.push((src.insert(i), i));
     }
 
-    dst.clone_from(&src);
+    dst.clone_from_mut(&mut src);
     assert_eq!(dst.len(), 50);
     assert_eq!(dst.slots_len(), 50);
     for (k, v) in keys {
@@ -480,7 +471,7 @@ fn clone_from_preserves_holes() {
 
     let mut dst: Map = Map::new();
     dst.insert(9);
-    dst.clone_from(&src);
+    dst.clone_from_mut(&mut src);
 
     assert_eq!(dst.len(), 2);
     assert_eq!(dst.slots_len(), 3, "the hole is mirrored");
@@ -499,12 +490,12 @@ fn clone_from_reuses_slot_buffer() {
     }
     let ptr_before = unsafe { (*dst.slots.get()).as_ptr() };
 
-    let src: Map = Map::new();
+    let mut src: Map = Map::new();
     for i in 0..4 {
         src.insert(i * 10); // fewer slots than dst's capacity
     }
 
-    dst.clone_from(&src);
+    dst.clone_from_mut(&mut src);
     let ptr_after = unsafe { (*dst.slots.get()).as_ptr() };
     assert_eq!(ptr_before, ptr_after, "clone_from reuses the slot buffer");
     assert_eq!(dst.len(), 4);
@@ -512,12 +503,12 @@ fn clone_from_reuses_slot_buffer() {
 
 #[test]
 fn clone_from_deep_clones_values() {
-    let src: Map = Map::new();
+    let mut src: Map = Map::new();
     let k = src.insert(7);
 
     let mut dst: Map = Map::new();
     dst.insert(99);
-    dst.clone_from(&src);
+    dst.clone_from_mut(&mut src);
 
     let p_src = src.get(k).unwrap() as *const i32;
     let p_dst = dst.get(k).unwrap() as *const i32;
@@ -545,13 +536,13 @@ fn clone_from_is_drop_balanced() {
     assert_eq!(drops.get(), 1);
 
     // src with 2 live values.
-    let src: StableGenMap<DefaultKey, DropTracked> = StableGenMap::new();
+    let mut src: StableGenMap<DefaultKey, DropTracked> = StableGenMap::new();
     let s1 = src.insert(mk(10));
     let s2 = src.insert(mk(20));
 
     // clone_from drops dst's 2 remaining live values (1 -> 3) and clones src's
     // 2 (running Clone, never Drop).
-    dst.clone_from(&src);
+    dst.clone_from_mut(&mut src);
     assert_eq!(
         drops.get(),
         3,

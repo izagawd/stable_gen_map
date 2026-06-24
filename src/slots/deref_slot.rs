@@ -1,7 +1,6 @@
-use crate::core::clone_gen_map_promise::CloneGenMapPromise;
 use crate::core::gen_map::GenMap;
 use crate::core::slot_storage::{
-    NonMutatingSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
+    SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
 };
 use crate::keys::key::Key;
 use std::mem::ManuallyDrop;
@@ -91,9 +90,7 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise + DerefMut> SlotStorageMutOutput for
 
 // The mechanical clone capability is available for any cloneable pointer.
 unsafe impl<K: Key, Ptr: DerefGenMapPromise + Clone> SlotStorageClone for DerefSlot<K, Ptr> {
-    // Cloning an occupied slot clones the stored pointer. This trait makes no
-    // claim about whether that mutates the map; the `&self`-safe marker is
-    // granted separately, below.
+    // Cloning an occupied slot clones the stored pointer.
     #[inline]
     unsafe fn clone_storage(&self, is_occupied: bool) -> Self {
         if is_occupied {
@@ -106,16 +103,6 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise + Clone> SlotStorageClone for DerefS
             })
         }
     }
-}
-
-// The `&self`-safe marker is granted when the pointer's clone is promised not to
-// mutate a `GenMap` (`Ptr: CloneGenMapPromise`) — unconditional for shared
-// pointers (`Rc`/`Arc`/`&T`: a refcount bump / copy), and for an owned `Box<T>`
-// exactly when `T: CloneGenMapPromise`. This is what makes the corresponding
-// `StableDerefMap`/`BoxStableDerefMap` `Clone`.
-unsafe impl<K: Key, Ptr: DerefGenMapPromise + CloneGenMapPromise> NonMutatingSlotStorageClone
-    for DerefSlot<K, Ptr>
-{
 }
 
 // ─── Type aliases ────────────────────────────────────────────────────────────

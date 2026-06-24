@@ -130,15 +130,15 @@ fn deref_get_by_index_only_matches_key_get() {
 fn can_clone_deref_shared_items_even_if_dereffed_value_doesnt_implement_clone() {
     struct Foo; // foo doesnt implement clone
 
-    let deref = StableDerefMap::<DefaultKey, _>::new();
+    let mut deref = StableDerefMap::<DefaultKey, _>::new();
     deref.insert(Rc::new(Foo));
     deref.insert(Rc::new(Foo));
-    let _ = deref.clone();
+    let _ = deref.clone_mut();
 
-    let deref = StableDerefMap::<DefaultKey, _>::new();
+    let mut deref = StableDerefMap::<DefaultKey, _>::new();
     deref.insert(Arc::new(Foo));
     deref.insert(Arc::new(Foo));
-    let _ = deref.clone();
+    let _ = deref.clone_mut();
 }
 #[test]
 fn deref_drop_is_called_exactly_once_per_element() {

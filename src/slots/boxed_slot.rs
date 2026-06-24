@@ -1,7 +1,6 @@
-use crate::core::clone_gen_map_promise::CloneGenMapPromise;
 use crate::core::gen_map::GenMap;
 use crate::core::slot_storage::{
-    NonMutatingSlotStorageClone, SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
+    SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
 };
 use crate::keys::key::Key;
 use std::mem::ManuallyDrop;
@@ -86,13 +85,6 @@ unsafe impl<K: Key, T: Clone> SlotStorageClone for BoxedSlot<K, T> {
         }
     }
 }
-
-// The `&self`-safe marker is granted only when `T::clone` is promised not to
-// mutate a `GenMap` (`T: CloneGenMapPromise`). This is what makes
-// `StableGenMap<K, T>: Clone`; for a `T` whose clone may mutate the map (e.g.
-// by `insert`ing into it), the map is not `Clone`, but it is still `clone_mut`
-// / `unsafe_clone`-able.
-unsafe impl<K: Key, T: CloneGenMapPromise> NonMutatingSlotStorageClone for BoxedSlot<K, T> {}
 
 // ─── StableGenMap (type alias) ───────────────────────────────────────────────
 

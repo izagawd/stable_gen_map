@@ -47,36 +47,6 @@ where
     map_id: MapId,
 }
 
-// ─── Clone ──────────────────────────────────────────────────────────────────
-
-impl<C: SlotStorage> Clone for StableCastMap<C>
-where
-    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
-    UnsafeCastMap<C>: Clone,
-{
-    /// Clones the map.
-    ///
-    /// The clone receives a fresh map identity. Keys from the original are
-    /// **not** valid on the clone
-    #[inline]
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            map_id: MapId::next(),
-        }
-    }
-
-    /// Reuses `self`'s inner allocation (see
-    /// [`GenMap::clone_from`](crate::core::gen_map::GenMap::clone_from)) and, like
-    /// [`clone`](Self::clone), gives the result a fresh map identity — keys from
-    /// `source` are **not** valid on `self` afterwards.
-    #[inline]
-    fn clone_from(&mut self, source: &Self) {
-        self.inner.clone_from(&source.inner);
-        self.map_id = MapId::next();
-    }
-}
-
 // ─── Basic methods ──────────────────────────────────────────────────────────
 
 impl<C: SlotStorage> Default for StableCastMap<C>
@@ -422,7 +392,7 @@ where
         }
     }
 
-    /// `unsafe` counterpart of [`clone_from`](Self::clone_from)
+    /// `unsafe` counterpart of [`clone_from_mut`](Self::clone_from_mut)
     /// reuses `self`'s inner allocation and uses a fresh map identity.
     ///
     /// # Safety
@@ -434,6 +404,22 @@ where
         C: SlotStorageClone,
     {
         self.inner.unsafe_clone_from(&source.inner);
+        self.map_id = MapId::next();
+    }
+
+    /// Clone `source` into `self` through a unique borrow of `source`, reusing
+    /// `self`'s inner allocation and giving the result a fresh map identity —
+    /// keys from `source` are **not** valid on `self` afterwards.
+    ///
+    /// The `&mut source` borrow rules out a concurrent `&source` mutation during
+    /// the pass; see
+    /// [`GenMap::clone_from_mut`](crate::core::gen_map::GenMap::clone_from_mut).
+    #[inline]
+    pub fn clone_from_mut(&mut self, source: &mut Self)
+    where
+        C: SlotStorageClone,
+    {
+        self.inner.clone_from_mut(&mut source.inner);
         self.map_id = MapId::next();
     }
 

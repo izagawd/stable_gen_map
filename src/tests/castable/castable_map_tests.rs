@@ -501,9 +501,9 @@ type RcMap = StableCastMap<DerefSlot<DefaultKey, std::rc::Rc<dyn Any>>>;
 
 #[test]
 fn clone_produces_independent_map() {
-    let map: RcMap = RcMap::new();
+    let mut map: RcMap = RcMap::new();
     let key = map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
-    let cloned = map.clone();
+    let cloned = map.clone_mut();
     // old key does NOT work on clone (fresh map id)
     assert!(cloned.get(key).is_none());
     assert_eq!(cloned.len(), map.len());
@@ -514,19 +514,19 @@ fn clone_produces_independent_map() {
 
 #[test]
 fn clone_preserves_len() {
-    let map: RcMap = RcMap::new();
+    let mut map: RcMap = RcMap::new();
     map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
     map.insert(std::rc::Rc::new(2i32) as std::rc::Rc<dyn Any>);
     map.insert(std::rc::Rc::new(3i32) as std::rc::Rc<dyn Any>);
-    let cloned = map.clone();
+    let cloned = map.clone_mut();
     assert_eq!(cloned.len(), 3);
 }
 
 #[test]
 fn clone_new_keys_work_on_clone_only() {
-    let map: RcMap = RcMap::new();
+    let mut map: RcMap = RcMap::new();
     map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
-    let cloned = map.clone();
+    let cloned = map.clone_mut();
     let new_key = cloned.insert(std::rc::Rc::new(99i32) as std::rc::Rc<dyn Any>);
     assert!(cloned.get(new_key).is_some());
     assert!(map.get(new_key).is_none());
@@ -534,17 +534,17 @@ fn clone_new_keys_work_on_clone_only() {
 
 #[test]
 fn clone_original_keys_do_not_work_on_clone() {
-    let map: RcMap = RcMap::new();
+    let mut map: RcMap = RcMap::new();
     let key = map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
-    let cloned = map.clone();
+    let cloned = map.clone_mut();
     assert!(cloned.get(key).is_none());
 }
 
 #[test]
 fn clone_remove_on_clone_does_not_affect_original() {
-    let map: RcMap = RcMap::new();
+    let mut map: RcMap = RcMap::new();
     map.insert(std::rc::Rc::new(42i32) as std::rc::Rc<dyn Any>);
-    let mut cloned = map.clone();
+    let mut cloned = map.clone_mut();
     let clone_keys = cloned.snapshot_keys();
     for k in clone_keys {
         cloned.remove(k);
@@ -699,9 +699,9 @@ fn two_maps_have_different_ids() {
 
 #[test]
 fn clone_gets_fresh_map_id() {
-    let map: RcMap = RcMap::new();
+    let mut map: RcMap = RcMap::new();
     map.insert(std::rc::Rc::new(1i32) as std::rc::Rc<dyn Any>);
-    let cloned = map.clone();
+    let cloned = map.clone_mut();
     assert_ne!(map.map_id(), cloned.map_id());
 }
 

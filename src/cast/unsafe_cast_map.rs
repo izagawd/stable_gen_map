@@ -54,30 +54,6 @@ where
     pub(crate) inner: GenMap<C>,
 }
 
-// ─── Clone ──────────────────────────────────────────────────────────────────
-
-impl<C: SlotStorage> Clone for UnsafeCastMap<C>
-where
-    C::Stored: Deref<Target = C::Output> + DerefGenMapPromise,
-    GenMap<C>: Clone,
-{
-    /// Cloning copies every slot's index and generation unchanged, so keys
-    /// valid on the original stay valid on the clone
-    #[inline]
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-
-    /// Reuses `self`'s inner allocation; see
-    /// [`GenMap::clone_from`](crate::core::gen_map::GenMap::clone_from).
-    #[inline]
-    fn clone_from(&mut self, source: &Self) {
-        self.inner.clone_from(&source.inner);
-    }
-}
-
 // ─── Basic methods ──────────────────────────────────────────────────────────
 
 impl<C: SlotStorage> Default for UnsafeCastMap<C>
@@ -422,8 +398,8 @@ where
         }
     }
 
-    /// `unsafe` counterpart of [`clone_from`](Self::clone_from): reuses `self`'s
-    /// inner allocation.
+    /// `unsafe` counterpart of [`clone_from_mut`](Self::clone_from_mut): reuses
+    /// `self`'s inner allocation.
     ///
     /// # Safety
     /// See [`GenMap::unsafe_clone_from`](crate::core::gen_map::GenMap::unsafe_clone_from).
@@ -433,6 +409,21 @@ where
         C: SlotStorageClone,
     {
         self.inner.unsafe_clone_from(&source.inner);
+    }
+
+    /// Clone `source` into `self` through a unique borrow of `source`, reusing
+    /// `self`'s inner allocation. The `&mut source` borrow rules out a
+    /// concurrent `&source` mutation during the pass; see
+    /// [`GenMap::clone_from_mut`](crate::core::gen_map::GenMap::clone_from_mut).
+    ///
+    /// Cloning copies every slot's index and generation unchanged, so keys valid
+    /// on `source` stay valid on `self`.
+    #[inline]
+    pub fn clone_from_mut(&mut self, source: &mut Self)
+    where
+        C: SlotStorageClone,
+    {
+        self.inner.clone_from_mut(&mut source.inner);
     }
 
     // ── inner-key access ──────────────────────────────────────────────
