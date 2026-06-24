@@ -1,6 +1,4 @@
-use crate::core::slot_storage::{
-    NonMutatingSlotStorageClone, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
-};
+use crate::core::slot_storage::{SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::keys::key::{is_occupied_by_generation, Key, KeyData};
 use crate::keys::key_piece::KeyPiece;
 use num_traits::{CheckedAdd, One, Zero};
@@ -708,7 +706,7 @@ impl<C: SlotStorageClone> GenMap<C> {
         // A panic mid-clone leaves the slots half-rebuilt with no consistent
         // state to recover, so abort by double-panicking. `forget` disarms the
         // guard on success.
-        let guard = PanicOnDrop("aborting: a panic during GenMap::clone_from is unrecoverable");
+        let guard = PanicOnDrop("aborting: a panic during GenMap::unsafe_clone_from is unrecoverable");
 
         let src_slots = &*source.slots.get();
         let dst_slots = self.slots.get_mut();
@@ -727,37 +725,20 @@ impl<C: SlotStorageClone> GenMap<C> {
 
         std::mem::forget(guard);
     }
-}
 
-// ─── Clone (for storages whose clone cannot mutate the map) ──────────────────
-//
-// One blanket impl serves every storage that implements
-// `NonMutatingSlotStorageClone`, including custom user storages: the free-list
-// / generation bookkeeping is duplicated once, and each slot's payload is cloned
-// in a single in-place pass (`unsafe_clone`).
-//
-// The `&self` pass is sound only because the marker promises `clone_storage`
-// will not mutate `self` (its `&self` borrows into the slot buffer for the whole
-// pass, which a mutation such as `insert` could grow / reallocate and free;
-// read-only re-entry is harmless). The crate's storages obtain that promise by
-// requiring their stored value to be `CloneGenMapPromise`, so a `GenMap` of an
-// owned payload whose `Clone` might mutate the map is simply not `Clone` —
-// though it is still `clone_mut`-able.
-impl<C: NonMutatingSlotStorageClone> Clone for GenMap<C> {
+    /// Clone `source` into `self` through a unique borrow of `source`, reusing
+    /// `self`'s slot-vector allocation.
+    ///
+    /// The `&mut source` borrow rules out a concurrent `&source` mutation (e.g.
+    /// `insert`) during the pass, so no `clone_storage` can grow / reallocate
+    /// `source.slots` mid-clone; read-only re-entry would be harmless anyway.
+    ///
+    /// If a stored `Clone` panics, the half-rebuilt map cannot be restored, so the
+    /// process **aborts** rather than expose a broken map.
     #[inline]
-    fn clone(&self) -> Self {
-        // SAFETY: `NonMutatingSlotStorageClone` guarantees `clone_storage` does
-        // not mutate this map, so the single in-place pass cannot invalidate the
-        // `&self` borrow it holds into the slot buffer.
-        unsafe { self.unsafe_clone() }
-    }
-
-    /// Clones `source` into `self`, reusing `self`'s existing slot-vector
-    /// allocation (see [`unsafe_clone_from`](Self::unsafe_clone_from)).
-    #[inline]
-    fn clone_from(&mut self, source: &Self) {
-        // SAFETY: the `NonMutatingSlotStorageClone` bound guarantees
-        // `clone_storage` cannot mutate either map mid-pass.
+    pub fn clone_from_mut(&mut self, source: &mut Self) {
+        // SAFETY: `&mut source` guarantees no `clone_storage` on this pass can
+        // mutate `source` and reallocate its slot buffer.
         unsafe { self.unsafe_clone_from(source) }
     }
 }
