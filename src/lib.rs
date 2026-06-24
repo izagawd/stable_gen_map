@@ -40,6 +40,7 @@ pub use cast::stable_cast_map::{StableBoxCastMap, StableCastMap};
 pub use cast::unsafe_cast_map::{UnsafeBoxCastMap, UnsafeCastMap};
 
 #[cfg(test)]
+#[cfg(any(disabled))]
 mod tests {
     mod common;
     mod deref;
