@@ -3,7 +3,7 @@ all-features = true
 
 [package]
 name = "stable_gen_map"
-version = "0.28.0"
+version = "0.28.1"
 edition = "2021"
 rust-version = "1.79.0"
 authors = ["Izagawd <theizaboss@gmail.com>"]
@@ -19,7 +19,7 @@ homepage = "https://github.com/izagawd/stable_gen_map"
 num-traits = "0.2.19"
 
 [features]
-default = []
+default = ["castable"]
 
 ## Requires a **nightly** toolchain (`ptr_metadata`, `coerce_unsized`, `unsize`).
 castable = []
