@@ -30,7 +30,6 @@ use crate::keys::key_piece::KeyPiece;
 /// The index and generation types default to `u32`.
 ///
 /// `K` is the backing key type (defaults to [`DefaultKey`]).
-#[repr(C)]
 pub struct CastKey<T: ?Sized + Pointee, K: Key = DefaultKey>
 where
     <T as Pointee>::Metadata: Copy,
@@ -43,16 +42,16 @@ where
 
 
 
-pub struct DispatchableKey<'a, T: ?Sized, K: Key = DefaultKey> {
+pub struct DynKey<'a, T: ?Sized, K: Key = DefaultKey> {
     ptr: NonNull<T>,            // addr = packed KeyData, metadata = vtable / len / ()
     _borrow: PhantomData<&'a KeyData<K::Idx, K::Gen>>
 }
 
-impl<'a, T: ?Sized + Unsize<U>, U: ?Sized, K: Key> CoerceUnsized<DispatchableKey<'a, U, K>> for DispatchableKey<'a, T, K> {}
-impl<'a, T: ?Sized + Unsize<U>, U: ?Sized, K: Key> DispatchFromDyn<DispatchableKey<'a, U, K>> for DispatchableKey<'a, T, K> {}
-impl<'a, T: ?Sized, K: Key> Receiver for DispatchableKey<'a, T, K> { type Target = T; }
+impl<'a, T: ?Sized + Unsize<U>, U: ?Sized, K: Key> CoerceUnsized<DynKey<'a, U, K>> for DynKey<'a, T, K> {}
+impl<'a, T: ?Sized + Unsize<U>, U: ?Sized, K: Key> DispatchFromDyn<DynKey<'a, U, K>> for DynKey<'a, T, K> {}
+impl<'a, T: ?Sized, K: Key> Receiver for DynKey<'a, T, K> { type Target = T; }
 
-impl<'a, T: ?Sized + Pointee, K: Key> DispatchableKey<'a, T, K>
+impl<'a, T: ?Sized + Pointee, K: Key> DynKey<'a, T, K>
 where T::Metadata: Copy,
 {
 
@@ -85,7 +84,7 @@ where T::Metadata: Copy,
     }
 }
 
-impl<'a, T: ?Sized + Pointee, K: Key> From<&'a CastKey<T, K>> for DispatchableKey<'a, T, K>
+impl<'a, T: ?Sized + Pointee, K: Key> From<&'a CastKey<T, K>> for DynKey<'a, T, K>
 where
     T::Metadata: Copy,
 {
@@ -190,6 +189,12 @@ impl<T: ?Sized + Pointee, K: Key> CastKey<T, K>
 where
     <T as Pointee>::Metadata: Copy,
 {
+
+    #[inline]
+    pub fn as_dyn(&self) -> DynKey<T, K> {
+        DynKey::new(self)
+    }
+
     /// Returns the generational key data.
     #[inline]
     pub fn key_data(&self) -> KeyData<K::Idx, K::Gen> {
