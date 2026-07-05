@@ -1,6 +1,7 @@
 #![cfg_attr(feature = "castable", feature(ptr_metadata))]
 #![cfg_attr(feature = "castable", feature(coerce_unsized))]
 #![cfg_attr(feature = "castable", feature(unsize))]
+#![cfg_attr(feature = "castable", feature(arbitrary_self_types_pointers))]
 
 // Module tree
 // ===========
@@ -31,9 +32,11 @@ pub use slots::deref_slot::{BoxStableDerefMap, DerefSlot, StableDerefMap};
 
 // `castable` feature (nightly only).
 #[cfg(feature = "castable")]
-pub use cast::cast_key::{CastKey, StableCastKey};
+pub use cast::any_haver::{type_id_from_meta, AnyHaver};
 #[cfg(feature = "castable")]
-pub use cast::map_id::MapId;
+pub use cast::cast_box::{CastBox};
+#[cfg(feature = "castable")]
+pub use cast::cast_key::CastKey;
 #[cfg(feature = "castable")]
 pub use cast::stable_cast_map::{StableBoxCastMap, StableCastMap};
 #[cfg(feature = "castable")]

@@ -73,6 +73,11 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise> SlotStorage for DerefSlot<K, Ptr> {
     }
 
     #[inline]
+    unsafe fn ref_stored(&self) -> &Self::Stored {
+        self.0.occupied.deref()
+    }
+
+    #[inline]
     unsafe fn drop_contents(&mut self, is_occupied: bool) {
         if is_occupied {
             ManuallyDrop::drop(&mut self.0.occupied);

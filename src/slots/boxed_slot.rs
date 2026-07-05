@@ -4,7 +4,7 @@ use crate::core::slot_storage::{
 };
 use crate::keys::key::Key;
 use std::mem::ManuallyDrop;
-
+use std::ops::Deref;
 // ─── BoxedSlot ───────────────────────────────────────────────────────────────
 
 /// Per-slot storage that wraps the payload in a `Box` for pointer stability.
@@ -29,6 +29,11 @@ unsafe impl<K: Key, T> SlotStorage for BoxedSlot<K, T> {
     #[inline]
     unsafe fn set_vacant(&mut self, next: Option<K::Idx>) {
         self.0.vacant = next;
+    }
+
+    #[inline]
+    unsafe fn ref_stored(&self) -> &Self::Stored {
+        self.0.occupied.deref()
     }
 
     #[inline]
