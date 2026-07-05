@@ -1,4 +1,6 @@
+#![cfg_attr(feature = "castable", feature(arbitrary_self_types))]
 #![cfg_attr(feature = "castable", feature(ptr_metadata))]
+#![cfg_attr(feature = "castable", feature(dispatch_from_dyn))]
 #![cfg_attr(feature = "castable", feature(coerce_unsized))]
 #![cfg_attr(feature = "castable", feature(unsize))]
 #![cfg_attr(feature = "castable", feature(arbitrary_self_types_pointers))]
