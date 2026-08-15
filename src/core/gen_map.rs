@@ -400,6 +400,9 @@ impl<C: SlotStorage> GenMap<C> {
     // ── insert ──────────────────────────────────────────────────────────
 
     /// Simple insert. Returns the key for the stored output.
+    /// # Panics
+    ///
+    /// Panics if the GenMap is full
     #[inline]
     pub fn insert(&self, value: C::Stored) -> KeyOfStorage<C> {
         self.insert_with_key(|_| value)
@@ -407,6 +410,9 @@ impl<C: SlotStorage> GenMap<C> {
 
     /// Inserts a value produced by `func`, which receives the key that will
     /// identify the inserted element.
+    /// # Panics
+    ///
+    /// Panics if the GenMap is full
     #[inline]
     pub fn insert_with_key(
         &self,
@@ -417,6 +423,9 @@ impl<C: SlotStorage> GenMap<C> {
 
     /// Like [`insert_with_key`](Self::insert_with_key) but the closure may
     /// return `Err`, in which case the slot is released.
+    /// # Panics
+    ///
+    /// Panics if the GenMap is full
     #[inline]
     pub fn try_insert_with_key<E>(
         &self,
