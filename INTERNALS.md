@@ -1,9 +1,9 @@
 # Internal invariants
 
 These are rules `GenMap`'s internals rely on. You only need to care about
-these if you're implementing a custom `SlotStorage`, using `from_raw_parts`, or
-building on top of `GenMap` with `unsafe`. Ordinary users of `StableGenMap`,
-`StableDerefMap`, or the castable maps can ignore this file.
+these if you're implementing a custom `SlotStorage`, or
+building on top of `GenMap` with `unsafe`. Ordinary users of `StableGenMap` or
+`StableDerefMap` can ignore this file.
 
 - **Generation parity.** Even generation means vacant, odd generation means
   occupied. A freshly created slot starts at generation 0 (even, vacant). Each

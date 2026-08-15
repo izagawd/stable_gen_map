@@ -96,88 +96,10 @@ The safety model follows from those signatures:
   insert with `&self`, and you get stable `&T` / `&mut T`. Prefer it over
   `StableGenMap` when your element needs to be boxed anyway.
 
-### Type-erased maps *(requires the `castable` feature, nightly only)*
-
-- `StableCastMap<C>` — the safe, recommended API for **type-erased heterogeneous
-  storage** (e.g. `Box<dyn Any>`) with castable keys. Each map gets a unique
-  `MapId` on creation, and every `StableCastKey` carries it, so a key from map A
-  used on map B returns `None` instead of causing UB. `C` is the per-slot storage
-  strategy (a `SlotStorage` implementor such as `DerefSlot<K, Box<dyn Any>>`); use
-  the alias `StableBoxCastMap<K, T>` for the common `Box` case.
-
-- `UnsafeCastMap<C>` — the low-level building block for `StableCastMap`. Same
-  typed lookups via `CastKey`, but `get`, `get_mut`, and `downcast_key` are
-  `unsafe` because no map-id check is performed. Use it when building your own
-  safe abstraction; `UnsafeBoxCastMap<K, T>` covers the common case.
-
-Keys implement the `Key` trait; use the provided `DefaultKey` or define your own
-(e.g. with smaller index / generation types).
-
-
----
-
-## The `castable` feature (nightly only)
-
-Enables `StableCastMap` and `UnsafeCastMap`, which use keys that can be cast.
-These rely on the nightly features `ptr_metadata`, `coerce_unsized`, and `unsize`.
-
-```toml
-[dependencies]
-stable_gen_map = { version = "0.27", features = ["castable"] }
-```
-
-The two layers — the safe `StableCastMap` and the low-level `unsafe`
-`UnsafeCastMap` — are described above. For the common case of `Box<dyn Any>`
-with `DefaultKey`, use the aliases `StableBoxCastMap<DefaultKey, dyn Any>` and
-`UnsafeBoxCastMap<DefaultKey, dyn Any>`.
-
-A **cast key** is a typed handle into the erased map: it carries the value's
-type both as a type parameter and as stored pointer metadata, so `map.get(key)`
-returns a correctly typed `&T` (e.g. `&Dog`) with no `downcast_ref` at the call
-site.
-
-### Quick example
-
-```rust
-use stable_gen_map::StableCastKey;
-use stable_gen_map::DefaultKey;
-use stable_gen_map::StableBoxCastMap;
-use std::any::Any;
-
-type CastMap = StableBoxCastMap<DefaultKey, dyn Any>;
-
-fn main() {
-    let map: CastMap = CastMap::new();
-
-    // Insert a concrete type into a dyn Any map.
-    let dog_key: StableCastKey<Dog> = map.insert_sized(Box::new(Dog { name: "Rex".into() }));
-
-    // Upcast the key when you need the erased form.
-    let dyn_key: StableCastKey<dyn Any> = dog_key.upcast::<dyn Any>();
-
-    // Downcast back to the concrete type.
-    let recovered: StableCastKey<Dog> = map.downcast_key::<Dog>(dyn_key).unwrap();
-    assert_eq!(map.get(recovered).unwrap().name, "Rex");
-}
-
-struct Dog { name: String }
-```
-
-Since the keys of the cast maps store pointer metadata directly (not inside a `NonNull`),
-implicit `CoerceUnsized` is not available, hence the `.upcast()` method.
-
-### Clone semantics
-
-When a `StableCastMap` is cloned, the clone receives a **fresh map identity**.
-Keys from the original are not valid on the clone; use iteration (`snapshot`,
-`iter_mut`, `drain`) to obtain new keys for the cloned data.
-
----
-
 ## Internals
 
 The invariants the map's internals rely on (generation parity, overflow
 retirement, free-list consistency, `num_elements` accuracy, NonZero key
 generation) live in [INTERNALS.md](INTERNALS.md). You only need them if you're
-implementing a custom `SlotStorage`, using `from_raw_parts`, or building on top of
+implementing a custom `SlotStorage`, or building on top of
 `GenMap` using `unsafe`.

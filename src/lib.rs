@@ -1,9 +1,4 @@
-#![cfg_attr(feature = "castable", feature(arbitrary_self_types))]
-#![cfg_attr(feature = "castable", feature(ptr_metadata))]
-#![cfg_attr(feature = "castable", feature(dispatch_from_dyn))]
-#![cfg_attr(feature = "castable", feature(coerce_unsized))]
-#![cfg_attr(feature = "castable", feature(unsize))]
-#![cfg_attr(feature = "castable", feature(arbitrary_self_types_pointers))]
+
 
 // Module tree
 // ===========
@@ -13,7 +8,6 @@
 //   keys/     key types and the numeric key-piece trait
 //   core/     the generational-map engine and the slot-storage trait
 //   slots/    concrete per-slot storage strategies (boxed / deref)
-//   cast/     the nightly `castable` layer (type-erased maps), gated as a whole
 //
 // The most commonly used types are re-exported at the crate root below, so the
 // typical user can write `stable_gen_map::StableGenMap` / `DefaultKey` etc.
@@ -22,35 +16,16 @@ pub mod core;
 pub mod keys;
 pub mod slots;
 
-// `castable` feature (nightly only). Gating the whole `cast` module here means
-// its submodules need no individual `#[cfg]`.
-#[cfg(feature = "castable")]
-pub mod cast;
 
 pub use core::gen_map::{GenMap, Slot};
 pub use keys::key::{DefaultKey, Key, KeyData};
 pub use slots::boxed_slot::{BoxedSlot, StableGenMap};
 pub use slots::deref_slot::{BoxStableDerefMap, DerefSlot, StableDerefMap};
 
-// `castable` feature (nightly only).
-#[cfg(feature = "castable")]
-pub use cast::any_haver::{type_id_from_meta, AnyHaver};
-#[cfg(feature = "castable")]
-pub use cast::cast_box::{CastBox};
-#[cfg(feature = "castable")]
-pub use cast::cast_key::CastKey;
-#[cfg(feature = "castable")]
-pub use cast::stable_cast_map::{StableBoxCastMap, StableCastMap};
-#[cfg(feature = "castable")]
-pub use cast::unsafe_cast_map::{UnsafeBoxCastMap, UnsafeCastMap};
 
 #[cfg(test)]
-#[cfg(any(disabled))]
 mod tests {
     mod common;
     mod deref;
     mod gen;
-
-    #[cfg(feature = "castable")]
-    mod castable;
 }
