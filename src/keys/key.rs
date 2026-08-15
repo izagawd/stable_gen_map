@@ -37,7 +37,9 @@ pub(crate) fn is_occupied_by_generation<Num: KeyPiece>(generation: Num) -> bool 
 /// generational invariants that keep lookups sound.
 ///
 /// Additionally, the [`From`] implementation that builds the key from its
-/// [`KeyData`] must faithfully store what it is given.
+/// [`KeyData`] must faithfully store what it is given: building a key from a
+/// [`KeyData`] and then calling [`data`](Key::data) on it must give back that
+/// exact same [`KeyData`].
 ///
 /// Finally, neither `data` nor the `From` implementation may re-enter the map.
 /// They must not call any [`GenMap`](crate::core::gen_map::GenMap) method,
@@ -110,8 +112,16 @@ unsafe impl Key for DefaultKey {
 /// ```
 #[macro_export]
 macro_rules! new_key_type {
-    // Internal: emit a single key type with an explicit WRAP_ON_OVERFLOW value.
-    (@emit $(#[$attr:meta])* $vis:vis $name:ident, $idx:ty, $gen:ty, $wrap:expr) => {
+    () => {};
+
+    // Internal: no type group given, so fill in the default u32/u32 and forward
+    // to the arm below.
+    (@emit $(#[$attr:meta])* $vis:vis $name:ident, $wrap:expr) => {
+        $crate::new_key_type!(@emit $(#[$attr])* $vis $name (u32, u32), $wrap);
+    };
+    // Internal: the one and only key-type body, with an explicit
+    // WRAP_ON_OVERFLOW value.
+    (@emit $(#[$attr:meta])* $vis:vis $name:ident ( $idx:ty , $gen:ty ), $wrap:expr) => {
         $(#[$attr])*
         #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
         $vis struct $name {
@@ -136,25 +146,15 @@ macro_rules! new_key_type {
         }
     };
 
-    // `wrapping` opt-in, custom index/generation types.
-    ( wrapping $(#[$attr:meta])* $vis:vis struct $name:ident ( $idx:ty , $gen:ty ) ; $($rest:tt)* ) => {
-        $crate::new_key_type!(@emit $(#[$attr])* $vis $name, $idx, $gen, true);
+    // `wrapping` opt-in: reuse slots on generation overflow. The index/generation
+    // type group is optional and defaults to u32/u32.
+    ( wrapping $(#[$attr:meta])* $vis:vis struct $name:ident $( ( $idx:ty , $gen:ty ) )? ; $($rest:tt)* ) => {
+        $crate::new_key_type!(@emit $(#[$attr])* $vis $name $( ( $idx , $gen ) )?, true);
         $crate::new_key_type!($($rest)*);
     };
-    // `wrapping` opt-in, default u32/u32.
-    ( wrapping $(#[$attr:meta])* $vis:vis struct $name:ident ; $($rest:tt)* ) => {
-        $crate::new_key_type!(@emit $(#[$attr])* $vis $name, u32, u32, true);
+    // Default: retire slots on generation overflow. Same optional type group.
+    ( $(#[$attr:meta])* $vis:vis struct $name:ident $( ( $idx:ty , $gen:ty ) )? ; $($rest:tt)* ) => {
+        $crate::new_key_type!(@emit $(#[$attr])* $vis $name $( ( $idx , $gen ) )?, false);
         $crate::new_key_type!($($rest)*);
     };
-    // Default (retire on overflow), custom index/generation types.
-    ( $(#[$attr:meta])* $vis:vis struct $name:ident ( $idx:ty , $gen:ty ) ; $($rest:tt)* ) => {
-        $crate::new_key_type!(@emit $(#[$attr])* $vis $name, $idx, $gen, false);
-        $crate::new_key_type!($($rest)*);
-    };
-    // Default (retire on overflow), default u32/u32.
-    ( $(#[$attr:meta])* $vis:vis struct $name:ident ; $($rest:tt)* ) => {
-        $crate::new_key_type!(@emit $(#[$attr])* $vis $name, u32, u32, false);
-        $crate::new_key_type!($($rest)*);
-    };
-    () => {};
 }

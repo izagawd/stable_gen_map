@@ -13,6 +13,9 @@ use std::ops::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
 /// Beyond having no interior mutability, %, checked_add, and the ordering must behave as they do for the standard unsigned integers,
 /// and TryInto<Self::AsNonZero> must succeed for every non-zero value (in particular every odd value).
 /// The map relies on these to skip occupancy/zero checks in unsafe code.
+/// Converting a value with [`into_usize`](KeyPiece::into_usize) and back with
+/// [`from_usize`](KeyPiece::from_usize), or the other way around, must always give
+/// back the same number.
 pub unsafe trait KeyPiece:
     Copy
     + From<<Self as KeyPiece>::AsNonZero>
