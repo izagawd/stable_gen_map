@@ -4,8 +4,6 @@
 //! keeps capacity. Unlike `clear`, it does **not** invalidate outstanding keys:
 //! later inserts reproduce key values already handed out, so a pre-`reset` key
 //! can silently resolve to a *different* value. Memory-safe, but a logic hazard.
-//!
-//! These tests are feature-independent — `GenMap` does not require `castable`.
 
 use crate::keys::key::DefaultKey;
 use crate::slots::boxed_slot::StableGenMap;

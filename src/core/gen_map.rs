@@ -175,11 +175,19 @@ impl<'a, C: SlotStorage> Drop for FreeGuard<'a, C> {
                 let old_head = self.map.next_free.get();
                 slot.storage.set_vacant(old_head);
                 self.map.next_free.set(Some(self.idx));
+            } else {
+                // +2 overflowed; the reserved slot's generation wraps to 0 (vacant).
+                slot.generation = GenOfStorage::<C>::zero();
+                if <KeyOfStorage<C> as Key>::WRAP_ON_OVERFLOW {
+                    let old_head = self.map.next_free.get();
+                    slot.storage.set_vacant(old_head);
+                    self.map.next_free.set(Some(self.idx));
+                }
+                // else: retire, off the free list, never reused
             }
         }
     }
 }
-
 // ─── PanicOnDrop (aborts via double-panic if dropped while unwinding) ─────────
 
 struct PanicOnDrop(&'static str);
@@ -400,6 +408,9 @@ impl<C: SlotStorage> GenMap<C> {
     // ── insert ──────────────────────────────────────────────────────────
 
     /// Simple insert. Returns the key for the stored output.
+    /// # Panics
+    ///
+    /// Panics if the GenMap is full
     #[inline]
     pub fn insert(&self, value: C::Stored) -> KeyOfStorage<C> {
         self.insert_with_key(|_| value)
@@ -407,6 +418,9 @@ impl<C: SlotStorage> GenMap<C> {
 
     /// Inserts a value produced by `func`, which receives the key that will
     /// identify the inserted element.
+    /// # Panics
+    ///
+    /// Panics if the GenMap is full
     #[inline]
     pub fn insert_with_key(
         &self,
@@ -417,6 +431,9 @@ impl<C: SlotStorage> GenMap<C> {
 
     /// Like [`insert_with_key`](Self::insert_with_key) but the closure may
     /// return `Err`, in which case the slot is released.
+    /// # Panics
+    ///
+    /// Panics if the GenMap is full
     #[inline]
     pub fn try_insert_with_key<E>(
         &self,
@@ -446,7 +463,7 @@ impl<C: SlotStorage> GenMap<C> {
                 (idx, generation)
             };
 
-            let generation_zeroable: GenOfStorage<C> = generation.into();
+            let generation_zeroable: GenOfStorage<C> = generation;
             // key gen is one ahead; only valid after we commit
             let key = KeyOfStorage::<C>::from(KeyData {
                 idx,
@@ -503,7 +520,15 @@ impl<C: SlotStorage> GenMap<C> {
                 next_free.set(Some(key_data.idx));
             }
             None => {
+                // Generation is at its max and can't be incremented.
                 slot.generation = GenOfStorage::<C>::zero();
+                if <KeyOfStorage<C> as Key>::WRAP_ON_OVERFLOW {
+                    // wrap: return the slot (now at generation 0) to the free list
+                    let old_head = next_free.get();
+                    slot.storage.set_vacant(old_head);
+                    next_free.set(Some(key_data.idx));
+                }
+                // else: retire, leave it off the free list, never reused
             }
         }
 
@@ -526,15 +551,13 @@ impl<C: SlotStorage> GenMap<C> {
         }
     }
 
-    /// Empties the map and resets every slot's generation to zero, reclaiming
-    /// generation headroom. Capacity is retained.
+    /// Empties the map, dropping every element and removing every slot, but keeps
+    /// the buffer's capacity.
+    /// Afterwards [`len`](Self::len) and
+    /// [`slots_len`](Self::slots_len) are 0 and the next insert starts again at
+    /// index 0, generation 1, so generations don't creep toward overflow.
     ///
-    /// Unlike [`clear`](Self::clear), this does **not** invalidate already existing
-    /// keys: `clear` bumps generations of the slots so old keys can never match again, whereas
-    /// `reset` winds them back to zero, so later inserts reproduce key values
-    /// already handed out. A pre-`reset` key may then resolve to a *different*
-    /// value. Memory-safe, but a silent logic hazard
-    /// use [`clear`](Self::clear) if you need old keys to be invalid.
+    /// Unlike [`clear`](Self::clear), it functions as if it is a completely new GenMap, with the exception that its capacity is reserved.
     #[inline]
     pub fn reset(&mut self) {
         self.slots.get_mut().clear();
@@ -706,7 +729,8 @@ impl<C: SlotStorageClone> GenMap<C> {
         // A panic mid-clone leaves the slots half-rebuilt with no consistent
         // state to recover, so abort by double-panicking. `forget` disarms the
         // guard on success.
-        let guard = PanicOnDrop("aborting: a panic during GenMap::unsafe_clone_from is unrecoverable");
+        let guard =
+            PanicOnDrop("aborting: a panic during GenMap::unsafe_clone_from is unrecoverable");
 
         let src_slots = &*source.slots.get();
         let dst_slots = self.slots.get_mut();

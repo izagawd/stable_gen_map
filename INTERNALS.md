@@ -1,9 +1,9 @@
 # Internal invariants
 
 These are rules `GenMap`'s internals rely on. You only need to care about
-these if you're implementing a custom `SlotStorage`, using `from_raw_parts`, or
-building on top of `GenMap` with `unsafe`. Ordinary users of `StableGenMap`,
-`StableDerefMap`, or the castable maps can ignore this file.
+these if you're implementing a custom `SlotStorage`, or
+building on top of `GenMap` with `unsafe`. Ordinary users of `StableGenMap` or
+`StableDerefMap` can ignore this file.
 
 - **Generation parity.** Even generation means vacant, odd generation means
   occupied. A freshly created slot starts at generation 0 (even, vacant). Each
@@ -12,17 +12,21 @@ building on top of `GenMap` with `unsafe`. Ordinary users of `StableGenMap`,
   `FreeGuard` rollback increments by 2 (even → even, staying vacant) to maintain
   parity.
 
-- **Generation overflow retirement.** When a slot's generation cannot be
-  incremented further (checked via `checked_add`), the slot's generation is set
-  to 0 and the slot is **not** returned to the free list. It is permanently
-  retired and will never be reused. This ensures a stale key cannot accidentally
-  match a different value at the same index.
+- **Generation overflow: retire or wrap.** When a slot's generation cannot be
+  incremented further (checked via `checked_add`), the generation is set to 0
+  and behavior depends on the key type's `Key::WRAP_ON_OVERFLOW` constant. When
+  it is `false` (the default), the slot is **not** returned to the free list. It
+  is permanently retired and never reused, so a stale key cannot accidentally
+  match a different value at the same index. When it is `true`, the slot **is**
+  returned to the free list and reused; this is memory-safe (a key only carries
+  an odd generation and only matches an occupied slot) but a pre-overflow key
+  can then match a new value at that index
 
 - **Free-list consistency.** The free list is a singly linked list threaded
   through the `vacant` field of each vacant slot's `SlotData` union. `next_free`
   points to the head. Each vacant slot's `vacant` field points to the next free
-  slot, or `None` at the tail. Occupied slots and retired slots (generation 0
-  after overflow) are not in the free list.
+  slot, or `None` at the tail. Occupied slots are not in the free list, and
+  neither are retired slots.
 
 - **`num_elements` accuracy.** The `num_elements` cell must exactly equal the
   number of slots whose generation is odd (occupied). It is incremented by 1 on

@@ -80,6 +80,13 @@ pub unsafe trait SlotStorage: Sized {
     /// Slot must be occupied.
     unsafe fn stored_mut(&mut self) -> &mut Self::Stored;
 
+    /// Shared reference to the *stored* value (the shared counterpart of
+    /// [`stored_mut`](Self::stored_mut)). For `BoxedSlot` this is `&T`; for
+    /// `DerefSlot` this is `&Ptr`.
+    /// # Safety
+    /// Slot must be occupied.
+    unsafe fn ref_stored(&self) -> &Self::Stored;
+
     /// Manually drop whatever the storage holds depending on their `occupied` state.
     /// Designed to be used to drop state that is inside unions that rely on occupancy/
     ///

@@ -160,3 +160,81 @@ fn snapshot_with_macro_key() {
     assert!(values.contains(&20));
     assert!(values.contains(&30));
 }
+
+// ─── wrapping opt-in via the macro ───────────────────────────────────────────
+
+crate::new_key_type! {
+    wrapping struct WrappingDefaultKey;         // u32/u32, wraps on overflow
+    wrapping struct WrappingSmallKey(u8, u8);   // u8/u8, wraps on overflow
+}
+
+// wrapping and default keys coexist in a single invocation
+crate::new_key_type! {
+    wrapping struct MixWrapKey(u8, u8);
+    struct MixRetireKey(u8, u8);
+}
+
+#[test]
+fn macro_wrapping_flag_sets_const_and_default_does_not() {
+    assert!(<WrappingDefaultKey as Key>::WRAP_ON_OVERFLOW);
+    assert!(<WrappingSmallKey as Key>::WRAP_ON_OVERFLOW);
+    assert!(<MixWrapKey as Key>::WRAP_ON_OVERFLOW);
+
+    // Keys declared without the `wrapping` keyword retire (the safe default).
+    assert!(!<MixRetireKey as Key>::WRAP_ON_OVERFLOW);
+    assert!(!<TestKey as Key>::WRAP_ON_OVERFLOW);
+    assert!(!<SmallKey as Key>::WRAP_ON_OVERFLOW);
+}
+
+#[test]
+fn macro_wrapping_key_actually_reuses_slot_on_overflow() {
+    // The macro-generated const must really drive the runtime overflow path.
+    let mut map = StableGenMap::<WrappingSmallKey, u32>::new();
+
+    let key_a = map.insert(1000);
+    assert_eq!(key_a.data().index(), 0);
+    assert_eq!(key_a.data().generation(), 1);
+
+    // Cycle the single slot until its u8 generation overflows.
+    let mut last = key_a;
+    let mut expected = 1000u32;
+    loop {
+        let gen = last.data().generation();
+        assert_eq!(map.remove(last), Some(expected));
+        assert_eq!(map.slots_len(), 1, "slot must be reused, never appended");
+        if gen == u8::MAX {
+            break;
+        }
+        last = map.insert(7);
+        expected = 7;
+    }
+
+    // Wrapped back to the original key value; the slot was reused, not retired.
+    let revived = map.insert(2222);
+    assert_eq!(revived, key_a);
+    assert_eq!(map.slots_len(), 1);
+    assert_eq!(map.get(key_a), Some(&2222)); // ABA hazard, memory-safe
+}
+
+#[test]
+fn macro_default_key_retires_slot_on_overflow() {
+    // MixRetireKey has no `wrapping` keyword: overflow must retire the slot.
+    let mut map = StableGenMap::<MixRetireKey, u32>::new();
+
+    let key_a = map.insert(1000);
+    let mut last = key_a;
+    loop {
+        let gen = last.data().generation();
+        map.remove(last);
+        if gen == u8::MAX {
+            break;
+        }
+        last = map.insert(0);
+    }
+
+    // Retired slot is not reused: next insert appends a new slot.
+    let after = map.insert(2222);
+    assert_eq!(after.data().index(), 1);
+    assert_eq!(map.slots_len(), 2);
+    assert!(map.get(key_a).is_none());
+}

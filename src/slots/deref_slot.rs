@@ -1,7 +1,5 @@
 use crate::core::gen_map::GenMap;
-use crate::core::slot_storage::{
-    SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
-};
+use crate::core::slot_storage::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::keys::key::Key;
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
@@ -70,6 +68,11 @@ unsafe impl<K: Key, Ptr: DerefGenMapPromise> SlotStorage for DerefSlot<K, Ptr> {
     #[inline]
     unsafe fn stored_mut(&mut self) -> &mut Ptr {
         &mut self.0.occupied
+    }
+
+    #[inline]
+    unsafe fn ref_stored(&self) -> &Self::Stored {
+        self.0.occupied.deref()
     }
 
     #[inline]

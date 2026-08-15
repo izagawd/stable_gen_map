@@ -97,3 +97,59 @@ fn stale_key_after_generation_overflow_is_not_accepted_stable_deref_gen_map() {
 
     assert!(map.get(overflow_key).is_none());
 }
+
+// ─── generation-overflow policy: WRAP_ON_OVERFLOW (deref storage) ─────────────
+
+use crate::keys::key::KeyData;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+struct WrapDerefKey {
+    key_data: KeyData<u8, u8>,
+}
+
+impl From<KeyData<u8, u8>> for WrapDerefKey {
+    fn from(key_data: KeyData<u8, u8>) -> Self {
+        Self { key_data }
+    }
+}
+
+unsafe impl Key for WrapDerefKey {
+    type Idx = u8;
+    type Gen = u8;
+    const WRAP_ON_OVERFLOW: bool = true;
+    fn data(&self) -> KeyData<u8, u8> {
+        self.key_data
+    }
+}
+
+#[test]
+fn wrapping_key_reuses_slot_on_overflow_deref() {
+    let mut map = BoxStableDerefMap::<WrapDerefKey, u32>::new();
+
+    let key_a = map.insert(Box::new(1000));
+    assert_eq!(key_a.data().index(), 0);
+    assert_eq!(key_a.data().generation(), 1);
+    assert_eq!(map.slots_len(), 1);
+
+    let mut last = key_a;
+    let mut expected = 1000u32;
+    loop {
+        let gen = last.data().generation();
+        assert_eq!(map.remove(last).map(|b| *b), Some(expected));
+        assert_eq!(map.slots_len(), 1, "slot must be reused, never appended");
+        if gen == u8::MAX {
+            break;
+        }
+        last = map.insert(Box::new(7));
+        expected = 7;
+        assert_eq!(last.data().index(), 0);
+    }
+
+    // Wrapped back around to the very first key value.
+    let revived = map.insert(Box::new(2222));
+    assert_eq!(revived, key_a);
+    assert_eq!(map.slots_len(), 1);
+
+    // ABA hazard, memory-safe: stale key_a resolves to the new deref target.
+    assert_eq!(map.get(key_a), Some(&2222));
+}
