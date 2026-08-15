@@ -1,5 +1,3 @@
-
-
 // Module tree
 // ===========
 // Files are grouped into folders that mirror the public module hierarchy
@@ -16,12 +14,10 @@ pub mod core;
 pub mod keys;
 pub mod slots;
 
-
 pub use core::gen_map::{GenMap, Slot};
 pub use keys::key::{DefaultKey, Key, KeyData};
 pub use slots::boxed_slot::{BoxedSlot, StableGenMap};
 pub use slots::deref_slot::{BoxStableDerefMap, DerefSlot, StableDerefMap};
-
 
 #[cfg(test)]
 mod tests {

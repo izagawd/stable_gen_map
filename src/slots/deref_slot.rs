@@ -1,7 +1,5 @@
 use crate::core::gen_map::GenMap;
-use crate::core::slot_storage::{
-    SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput,
-};
+use crate::core::slot_storage::{SlotData, SlotStorage, SlotStorageClone, SlotStorageMutOutput};
 use crate::keys::key::Key;
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};

@@ -729,7 +729,8 @@ impl<C: SlotStorageClone> GenMap<C> {
         // A panic mid-clone leaves the slots half-rebuilt with no consistent
         // state to recover, so abort by double-panicking. `forget` disarms the
         // guard on success.
-        let guard = PanicOnDrop("aborting: a panic during GenMap::unsafe_clone_from is unrecoverable");
+        let guard =
+            PanicOnDrop("aborting: a panic during GenMap::unsafe_clone_from is unrecoverable");
 
         let src_slots = &*source.slots.get();
         let dst_slots = self.slots.get_mut();
