@@ -175,11 +175,19 @@ impl<'a, C: SlotStorage> Drop for FreeGuard<'a, C> {
                 let old_head = self.map.next_free.get();
                 slot.storage.set_vacant(old_head);
                 self.map.next_free.set(Some(self.idx));
+            } else {
+                // +2 overflowed; the reserved slot's generation wraps to 0 (vacant).
+                slot.generation = GenOfStorage::<C>::zero();
+                if <KeyOfStorage<C> as Key>::WRAP_ON_OVERFLOW {
+                    let old_head = self.map.next_free.get();
+                    slot.storage.set_vacant(old_head);
+                    self.map.next_free.set(Some(self.idx));
+                }
+                // else: retire, off the free list, never reused
             }
         }
     }
 }
-
 // ─── PanicOnDrop (aborts via double-panic if dropped while unwinding) ─────────
 
 struct PanicOnDrop(&'static str);
@@ -512,7 +520,15 @@ impl<C: SlotStorage> GenMap<C> {
                 next_free.set(Some(key_data.idx));
             }
             None => {
+                // Generation is at its max and can't be incremented.
                 slot.generation = GenOfStorage::<C>::zero();
+                if <KeyOfStorage<C> as Key>::WRAP_ON_OVERFLOW {
+                    // wrap: return the slot (now at generation 0) to the free list
+                    let old_head = next_free.get();
+                    slot.storage.set_vacant(old_head);
+                    next_free.set(Some(key_data.idx));
+                }
+                // else: retire, leave it off the free list, never reused
             }
         }
 

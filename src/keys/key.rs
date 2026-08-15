@@ -51,6 +51,16 @@ pub unsafe trait Key: Copy + From<KeyData<Self::Idx, Self::Gen>> {
     /// This type will be used as the Gen type for the key
     type Gen: KeyPiece;
 
+    /// What happens when a slot's generation can't be incremented any further.
+    ///
+    /// `false` (default): the slot is **retired**. Its generation is set to 0,
+    /// and it is never reused, so a stale key cannot match a different value.
+    ///
+    /// `true`: the generation **wraps** back to 0 and the slot is reused. This
+    /// is memory-safe, but a stale key from before the wrap can then match a
+    /// *new, unrelated* value in that slot.
+    const WRAP_ON_OVERFLOW: bool = false;
+
     fn data(&self) -> KeyData<Self::Idx, Self::Gen>;
 }
 
