@@ -72,8 +72,10 @@ The safety model follows from those signatures:
 - `remove` and `clear` need `&mut self`, so the borrow checker prevents you from
   freeing elements while `&T` references are still alive.
 - Generational keys mean a stale key returns `None` rather than aliasing a newly
-  inserted element. When a slot's generation overflows it is permanently retired
-  and never reused, so a stale key can never match a different value.
+  inserted element. By default, when a slot's generation overflows it is
+  permanently retired and never reused, so a stale key can never match a
+  different value. A key type may instead opt into wrapping the generation on
+  overflow, which reuses the slot
 
 ---
 

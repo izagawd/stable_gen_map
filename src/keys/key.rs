@@ -100,35 +100,18 @@ unsafe impl Key for DefaultKey {
 /// new_key_type! {
 ///     pub struct SmallKey(u16, u16);
 /// }
+///
+/// // Prefix with `wrapping` to reuse slots on generation overflow instead of
+/// // retiring them (see `Key::WRAP_ON_OVERFLOW`). Without it, keys retire.
+/// new_key_type! {
+///     wrapping pub struct FastKey;
+///     wrapping pub struct FastSmallKey(u16, u16);
+/// }
 /// ```
 #[macro_export]
 macro_rules! new_key_type {
-    ( $(#[$attr:meta])* $vis:vis struct $name:ident ; $($rest:tt)* ) => {
-        $(#[$attr])*
-        #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-        $vis struct $name {
-            key_data: $crate::keys::key::KeyData<u32, u32>,
-        }
-
-        impl From<$crate::keys::key::KeyData<u32, u32>> for $name {
-            #[inline]
-            fn from(key_data: $crate::keys::key::KeyData<u32, u32>) -> Self {
-                Self { key_data }
-            }
-        }
-
-        unsafe impl $crate::keys::key::Key for $name {
-            type Idx = u32;
-            type Gen = u32;
-            #[inline]
-            fn data(&self) -> $crate::keys::key::KeyData<u32, u32> {
-                self.key_data
-            }
-        }
-
-        $crate::new_key_type!($($rest)*);
-    };
-    ( $(#[$attr:meta])* $vis:vis struct $name:ident ( $idx:ty , $gen:ty ) ; $($rest:tt)* ) => {
+    // Internal: emit a single key type with an explicit WRAP_ON_OVERFLOW value.
+    (@emit $(#[$attr:meta])* $vis:vis $name:ident, $idx:ty, $gen:ty, $wrap:expr) => {
         $(#[$attr])*
         #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
         $vis struct $name {
@@ -136,6 +119,7 @@ macro_rules! new_key_type {
         }
 
         impl From<$crate::keys::key::KeyData<$idx, $gen>> for $name {
+            #[inline]
             fn from(key_data: $crate::keys::key::KeyData<$idx, $gen>) -> Self {
                 Self { key_data }
             }
@@ -144,12 +128,32 @@ macro_rules! new_key_type {
         unsafe impl $crate::keys::key::Key for $name {
             type Idx = $idx;
             type Gen = $gen;
-
+            const WRAP_ON_OVERFLOW: bool = $wrap;
+            #[inline]
             fn data(&self) -> $crate::keys::key::KeyData<$idx, $gen> {
                 self.key_data
             }
         }
+    };
 
+    // `wrapping` opt-in, custom index/generation types.
+    ( wrapping $(#[$attr:meta])* $vis:vis struct $name:ident ( $idx:ty , $gen:ty ) ; $($rest:tt)* ) => {
+        $crate::new_key_type!(@emit $(#[$attr])* $vis $name, $idx, $gen, true);
+        $crate::new_key_type!($($rest)*);
+    };
+    // `wrapping` opt-in, default u32/u32.
+    ( wrapping $(#[$attr:meta])* $vis:vis struct $name:ident ; $($rest:tt)* ) => {
+        $crate::new_key_type!(@emit $(#[$attr])* $vis $name, u32, u32, true);
+        $crate::new_key_type!($($rest)*);
+    };
+    // Default (retire on overflow), custom index/generation types.
+    ( $(#[$attr:meta])* $vis:vis struct $name:ident ( $idx:ty , $gen:ty ) ; $($rest:tt)* ) => {
+        $crate::new_key_type!(@emit $(#[$attr])* $vis $name, $idx, $gen, false);
+        $crate::new_key_type!($($rest)*);
+    };
+    // Default (retire on overflow), default u32/u32.
+    ( $(#[$attr:meta])* $vis:vis struct $name:ident ; $($rest:tt)* ) => {
+        $crate::new_key_type!(@emit $(#[$attr])* $vis $name, u32, u32, false);
         $crate::new_key_type!($($rest)*);
     };
     () => {};
