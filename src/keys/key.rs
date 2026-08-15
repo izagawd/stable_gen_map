@@ -37,21 +37,13 @@ pub(crate) fn is_occupied_by_generation<Num: KeyPiece>(generation: Num) -> bool 
 /// generational invariants that keep lookups sound.
 ///
 /// Additionally, the [`From`] implementation that builds the key from its
-/// [`KeyData`] must faithfully store what it is given: for any `kd`,
-/// `Self::from(kd).data()` must equal `kd`. The map constructs keys from
-/// `KeyData` and later relies on `data` returning the exact same index and
-/// generation — for example, `drain` reconstructs a key and removes by it with
-/// an unchecked unwrap, so a `From` that alters or drops part of the `KeyData`
-/// can turn that into undefined behaviour.
+/// [`KeyData`] must faithfully store what it is given.
 ///
 /// Finally, neither `data` nor the `From` implementation may re-enter the map.
 /// They must not call any [`GenMap`](crate::core::gen_map::GenMap) method,
 /// directly or indirectly, that could `insert`, `reserve`, `clear`, or
-/// otherwise mutate it, and must not run arbitrary user code that might. Key
-/// construction and `data` reads can happen while the map holds a live internal
-/// reference into its backing storage; a re-entrant call that grows or
-/// reallocates that storage invalidates the reference, causing undefined
-/// behaviour. Both must behave as pure functions of the key's own data.
+/// otherwise mutate it, and must not run arbitrary user code that might, as that may cause
+/// undefined behavior
 pub unsafe trait Key: Copy + From<KeyData<Self::Idx, Self::Gen>> {
     /// This type will be used as the Idx type for the key
     type Idx: KeyPiece;
