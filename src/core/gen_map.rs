@@ -463,7 +463,7 @@ impl<C: SlotStorage> GenMap<C> {
                 (idx, generation)
             };
 
-            let generation_zeroable: GenOfStorage<C> = generation.into();
+            let generation_zeroable: GenOfStorage<C> = generation;
             // key gen is one ahead; only valid after we commit
             let key = KeyOfStorage::<C>::from(KeyData {
                 idx,
